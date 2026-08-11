@@ -1,0 +1,348 @@
+{
+  "uid": "lzd-overview",
+  "title": "00 · End-to-End Pipeline Overview",
+  "description": "Nhin 1 man hinh biet du lieu dang chay den dau: App -> Kafka -> Lake -> DuckDB -> Redis -> FastAPI",
+  "tags": ["lzd", "overview"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-3h", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "type": "row",
+      "title": "1. INGESTION — App → Kafka → Lake",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Event produced /s",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null }, { "color": "green", "value": 0.5 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(lzd_events_produced_total[1m]))", "legendFormat": "produced" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Event consumed /s",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 1,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 0.5 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(lzd_events_consumed_total[1m]))", "legendFormat": "consumed" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Kafka consumer lag",
+      "description": "Lag lon = consumer khong theo kip. Xem chi tiet o dashboard 02.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 10000 }, { "color": "red", "value": 50000 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(kafka_consumergroup_lag)", "legendFormat": "lag" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Event vao DLQ (5m)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(lzd_events_dlq_total[5m]))", "legendFormat": "dlq" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Micro-batch ghi xuong MinIO (1h)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(lzd_lake_files_written_total[1h]))", "legendFormat": "parquet files" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Realtime overlay keys",
+      "description": "So user co feature realtime (rt:u:*) trong Redis",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(redis_key_size{key=~\"rt:u:.*\"}) or sum(lzd_realtime_overlay_keys)", "legendFormat": "rt keys" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Throughput producer vs consumer",
+      "description": "2 duong tach xa nhau => backlog dang tich tu",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(lzd_events_produced_total[1m]))", "legendFormat": "produced/s" },
+        { "refId": "B", "expr": "sum(rate(lzd_events_consumed_total[1m]))", "legendFormat": "consumed/s" },
+        { "refId": "C", "expr": "sum(rate(lzd_events_dlq_total[1m]))", "legendFormat": "dlq/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Event theo loai (event_type)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (event_type) (rate(lzd_events_consumed_total[1m]))", "legendFormat": "{{event_type}}" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "2. FEATURE STORE — DuckDB → Redis",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Active feature version",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 15 },
+      "options": {
+        "colorMode": "none", "graphMode": "none", "textMode": "name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "" }
+      },
+      "targets": [
+        { "refId": "A", "expr": "lzd_feature_store_active_version_info", "legendFormat": "{{feature_version}}", "instant": true }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tuoi cua feature online",
+      "description": "> 26h la vi pham SLA daily refresh",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "s",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 86400 }, { "color": "red", "value": 93600 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_store_age_seconds)", "legendFormat": "age" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "So user co feature (batch)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_sync_written_rows) or max(lzd_feature_rows_synced_total)", "legendFormat": "rows" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Sai lech offline vs online",
+      "description": "So sanh mau gia tri DuckDB vs Redis sau moi lan sync",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 4,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 0.001 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_validation_mismatch_ratio)", "legendFormat": "mismatch" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Lich su feature sync (ops.feature_sync_audit)",
+      "description": "Nguon su that ve idempotency/recovery. status=ACTIVE la version dang phuc vu.",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 9, "w": 14, "x": 0, "y": 20 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": {
+                  "ACTIVE":      { "color": "green",  "index": 0 },
+                  "IN_PROGRESS": { "color": "blue",   "index": 1 },
+                  "VALIDATING":  { "color": "purple", "index": 2 },
+                  "FAILED":      { "color": "red",    "index": 3 },
+                  "ROLLED_BACK": { "color": "orange", "index": 4 },
+                  "RETIRED":     { "color": "text",   "index": 5 }
+                } }
+              ] }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT started_at AS \"start\", feature_version, status, completed_shards || '/' || total_shards AS shards, written_rows, expected_rows, ROUND(EXTRACT(EPOCH FROM (finished_at - started_at))::numeric, 1) AS sec, error_message FROM ops.feature_sync_audit ORDER BY started_at DESC LIMIT 20"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tien do shard cua lan sync gan nhat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 10, "x": 14, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 15, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_sync_completed_shards)", "legendFormat": "shard xong" },
+        { "refId": "B", "expr": "max(lzd_feature_sync_total_shards)", "legendFormat": "tong shard" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "3. SERVING — FastAPI đọc Redis",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Inference QPS",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 1 }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(lzd_inference_requests_total[1m]))", "legendFormat": "qps" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "p99 decision latency",
+      "description": "SLA nghiep vu: < 100ms",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 4,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 0.05 }, { "color": "red", "value": 0.1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(lzd_inference_latency_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "p99 Redis feature lookup",
+      "description": "Muc tieu: < 10ms",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 4,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 0.005 }, { "color": "red", "value": 0.01 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.99, sum by (le) (rate(lzd_feature_lookup_seconds_bucket[5m])))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cache hit rate",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 30 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 0.9 }, { "color": "green", "value": 0.95 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(lzd_feature_lookup_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(lzd_feature_lookup_total[5m])), 0.001)", "legendFormat": "hit rate" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Quyet dinh phat voucher",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 25, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (decision) (rate(lzd_inference_decisions_total[1m]))", "legendFormat": "{{decision}}" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Log toan he thong (loc theo level)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [
+        { "refId": "A", "expr": "{job=\"docker\", layer=~\"$layer\"} |~ \"(?i)$search\"" }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "layer",
+        "label": "Layer",
+        "type": "custom",
+        "query": "ingestion,streaming,storage,online-store,orchestration,ml,serving,observability",
+        "current": { "text": "All", "value": ".*" },
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "options": []
+      },
+      {
+        "name": "search",
+        "label": "Log chua chu",
+        "type": "textbox",
+        "query": "",
+        "current": { "text": "", "value": "" }
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Feature sync activated",
+        "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+        "enable": true,
+        "iconColor": "green",
+        "target": {
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT activated_at AS time, 'ACTIVE ' || feature_version AS text, 'feature-sync' AS tags FROM ops.feature_sync_audit WHERE activated_at IS NOT NULL ORDER BY 1 DESC LIMIT 50"
+        }
+      }
+    ]
+  }
+}

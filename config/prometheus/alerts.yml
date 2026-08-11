@@ -1,0 +1,126 @@
+groups:
+
+  # ======================================================================
+  # SLA cua feature store: cai gi vo o day thi voucher se phat sai
+  # ======================================================================
+  - name: feature-store
+    interval: 30s
+    rules:
+      - alert: FeatureStoreStale
+        expr: lzd_feature_store_age_seconds > 26 * 3600
+        for: 5m
+        labels: {severity: critical, layer: feature-store}
+        annotations:
+          summary: "Feature tren Redis cu hon 26h"
+          description: "active_version={{ $labels.feature_version }} da {{ $value | humanizeDuration }} chua duoc refresh. Kiem tra DAG 40_sync_features_to_redis."
+
+      - alert: FeatureSyncFailed
+        expr: lzd_feature_sync_status{status="FAILED"} == 1
+        for: 1m
+        labels: {severity: critical, layer: feature-store}
+        annotations:
+          summary: "Feature sync that bai"
+          description: "version={{ $labels.feature_version }}. Xem bang ops.feature_sync_shard de biet shard nao hong."
+
+      - alert: OnlineOfflineMismatch
+        expr: lzd_feature_validation_mismatch_ratio > 0.001
+        for: 2m
+        labels: {severity: critical, layer: feature-store}
+        annotations:
+          summary: "Gia tri Redis lech so voi DuckDB"
+          description: "Ty le lech {{ $value | humanizePercentage }} > 0.1%. Nguy co training/serving skew."
+
+      - alert: FeatureRowCountDrop
+        expr: |
+          lzd_feature_rows_synced_total
+            < 0.7 * (lzd_feature_rows_synced_total offset 1d)
+        for: 5m
+        labels: {severity: warning, layer: feature-store}
+        annotations:
+          summary: "So user duoc sync giam >30% so voi hom qua"
+
+  # ======================================================================
+  # Streaming
+  # ======================================================================
+  - name: streaming
+    interval: 30s
+    rules:
+      - alert: KafkaConsumerLagHigh
+        expr: sum by (consumergroup, topic) (kafka_consumergroup_lag) > 50000
+        for: 5m
+        labels: {severity: warning, layer: streaming}
+        annotations:
+          summary: "Consumer lag cao: {{ $labels.consumergroup }} / {{ $labels.topic }}"
+          description: "Lag = {{ $value }}. Consumer khong theo kip producer."
+
+      - alert: NoEventsIngested
+        expr: rate(lzd_events_consumed_total[10m]) == 0
+        for: 10m
+        labels: {severity: critical, layer: ingestion}
+        annotations:
+          summary: "Khong co event nao duoc consume trong 10 phut"
+
+      - alert: DLQGrowing
+        expr: rate(lzd_events_dlq_total[15m]) > 1
+        for: 5m
+        labels: {severity: warning, layer: ingestion}
+        annotations:
+          summary: "Event hong dang do vao DLQ"
+          description: "{{ $value }} msg/s vao topic DLQ - schema doi hoac producer bug."
+
+  # ======================================================================
+  # Serving
+  # ======================================================================
+  - name: serving
+    interval: 30s
+    rules:
+      - alert: InferenceLatencyP99High
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(lzd_inference_latency_seconds_bucket[5m]))) > 0.1
+        for: 3m
+        labels: {severity: critical, layer: serving}
+        annotations:
+          summary: "p99 latency inference > 100ms (vi pham SLA)"
+
+      - alert: FeatureLookupLatencyHigh
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(lzd_feature_lookup_seconds_bucket[5m]))) > 0.01
+        for: 3m
+        labels: {severity: warning, layer: serving}
+        annotations:
+          summary: "Redis lookup p99 > 10ms"
+
+      - alert: FeatureCacheMissHigh
+        expr: |
+          sum(rate(lzd_feature_lookup_total{result="miss"}[5m]))
+            / clamp_min(sum(rate(lzd_feature_lookup_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: {severity: warning, layer: serving}
+        annotations:
+          summary: "Cache miss > 5% - nhieu user chua co feature tren Redis"
+
+  # ======================================================================
+  # Ha tang
+  # ======================================================================
+  - name: infra
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: {severity: critical, layer: infra}
+        annotations: {summary: "Redis khong phan hoi"}
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.85
+        for: 5m
+        labels: {severity: warning, layer: infra}
+        annotations: {summary: "Redis dung >85% maxmemory"}
+
+      - alert: AirflowSchedulerHeartbeatMissing
+        expr: rate(airflow_scheduler_heartbeat_total[5m]) == 0
+        for: 5m
+        labels: {severity: critical, layer: orchestration}
+        annotations: {summary: "Airflow scheduler khong con heartbeat"}

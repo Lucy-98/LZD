@@ -1,0 +1,168 @@
+{
+  "uid": "lzd-airflow-infra",
+  "title": "03 · Airflow & Infra (Redis / Postgres / MinIO)",
+  "description": "Suc khoe orchestration va ha tang ben duoi",
+  "tags": ["lzd", "airflow", "infra"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Airflow",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Task ket thuc theo trang thai",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 25, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*failed.*" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] },
+          { "matcher": { "id": "byRegexp", "options": ".*success.*" },
+            "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }
+        ] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (dag_id, state) (increase(airflow_task_instance_finished_total[5m]))", "legendFormat": "{{dag_id}} · {{state}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Thoi gian chay DAG (success)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "avg by (dag_id) (airflow_dagrun_duration_success_seconds)", "legendFormat": "{{dag_id}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pool slot (duckdb_writer, redis_sync)",
+      "description": "duckdb_writer = 1 slot: chong 2 task ghi DuckDB cung luc",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "airflow_pool_open_slots", "legendFormat": "open · {{pool}}" },
+        { "refId": "B", "expr": "airflow_pool_running_slots", "legendFormat": "running · {{pool}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scheduler heartbeat & do tre lich",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(airflow_scheduler_heartbeat[5m])", "legendFormat": "heartbeat/s" },
+        { "refId": "B", "expr": "avg by (dag_id) (airflow_dagrun_schedule_delay_seconds)", "legendFormat": "delay · {{dag_id}}" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Lich su pipeline_run (ops.pipeline_run)",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": { "defaults": {}, "overrides": [
+        { "matcher": { "id": "byName", "options": "status" },
+          "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "mappings", "value": [ { "type": "value", "options": {
+                "SUCCESS": { "color": "green", "index": 0 },
+                "RUNNING": { "color": "blue",  "index": 1 },
+                "FAILED":  { "color": "red",   "index": 2 } } } ] }
+          ] }
+      ] },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT started_at, dag_id, task_id, status, rows_in, rows_out, ROUND(duration_sec::numeric,1) AS sec FROM ops.pipeline_run ORDER BY started_at DESC LIMIT 50" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Redis (online store)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Bo nho Redis",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 15 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "redis_memory_used_bytes", "legendFormat": "used" },
+        { "refId": "B", "expr": "redis_memory_max_bytes", "legendFormat": "max" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis ops/s & hit ratio",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 17 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rate(redis_commands_processed_total[1m])", "legendFormat": "commands/s" },
+        { "refId": "B", "expr": "rate(redis_keyspace_hits_total[5m]) / clamp_min(rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]), 0.001)", "legendFormat": "hit ratio" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "So key & key sap het han",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "redis_db_keys{db=\"db0\"}", "legendFormat": "keys" },
+        { "refId": "B", "expr": "redis_db_keys_expiring{db=\"db0\"}", "legendFormat": "co TTL" },
+        { "refId": "C", "expr": "rate(redis_expired_keys_total[5m])", "legendFormat": "expired/s" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Postgres & MinIO",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Postgres connections & transactions",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 25 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (datname) (pg_stat_database_numbackends)", "legendFormat": "conn · {{datname}}" },
+        { "refId": "B", "expr": "sum by (datname) (rate(pg_stat_database_xact_commit[5m]))", "legendFormat": "commit/s · {{datname}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "MinIO: dung luong & request",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 25 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (bucket) (minio_bucket_usage_total_bytes)", "legendFormat": "{{bucket}}" },
+        { "refId": "B", "expr": "sum(rate(minio_s3_requests_total[5m]))", "legendFormat": "s3 req/s" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Log ha tang (postgres/redis/minio/kafka)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 25 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        { "refId": "A", "expr": "{layer=~\"storage|streaming|online-store\"}" }
+      ]
+    }
+  ],
+  "templating": { "list": [] }
+}

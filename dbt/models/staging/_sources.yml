@@ -1,0 +1,34 @@
+version: 2
+
+sources:
+  # ----------------------------------------------------------------------
+  # RAW layer = parquet nam tren MinIO. dbt-duckdb doc truc tiep bang
+  # read_parquet() nen KHONG phai copy du lieu vao warehouse -> giong het
+  # cach BigQuery doc external table tren GCS.
+  # ----------------------------------------------------------------------
+  - name: raw
+    description: "Data lake raw (MinIO) - chua bien doi gi"
+    tables:
+      - name: user_snapshot
+        description: "Snapshot feature user hang ngay (nap tu CSV DESCN)"
+        meta:
+          external_location: "s3://lakehouse/raw/user_snapshot/**/*.parquet"
+        columns:
+          - name: user_id
+            description: "Khoa entity - dan tu data_id"
+            tests: [not_null]
+          - name: label
+            description: "1 = user co conversion"
+          - name: is_treat
+            description: "1 = user duoc phat voucher (treatment)"
+
+      - name: app_events
+        description: "Event tu Web/Mobile, do stream-consumer ghi xuong tu Kafka"
+        meta:
+          external_location: "s3://lakehouse/raw/app_events/**/*.parquet"
+        columns:
+          - name: event_id
+            description: "Khoa de dedup (consumer la at-least-once nen co trung)"
+          - name: user_id
+          - name: event_ts
+            description: "Epoch giay - thoi diem xay ra o client"

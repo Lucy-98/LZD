@@ -1,0 +1,39 @@
+# Dung cho image `lzd/python-service` (producer + consumer + inference API).
+# Nguyen tac: chi cai thu 3 service nay THAT SU can luc runtime.
+# Moi thu chi dung trong Airflow (duckdb, dbt, mlflow server...) nam o
+# docker/airflow/requirements.txt.
+
+# --- API -------------------------------------------------------------------
+fastapi==0.115.2
+uvicorn[standard]==0.31.1
+pydantic==2.9.2
+
+# --- online store + streaming ---------------------------------------------
+redis==5.1.1
+confluent-kafka==2.5.3
+
+# --- ghi parquet xuong MinIO (stream-consumer) ----------------------------
+pyarrow==17.0.0
+boto3==1.35.36
+
+# --- suy luan model --------------------------------------------------------
+# numpy/pandas de model_loader dung; teammate them thu vien model tuong ung
+# (lightgbm / scikit-learn / torch) khi lam den phan do.
+numpy==1.26.4
+pandas==2.2.3
+# skinny = chi client cua MLflow, khong keo theo server + scipy + alembic.
+# Doi sang `mlflow` day du neu can log_model tu trong API (thuong khong can).
+mlflow-skinny==2.16.2
+
+# --- observability ---------------------------------------------------------
+prometheus-client==0.21.0
+python-json-logger==2.0.7
+
+# --- tien ich --------------------------------------------------------------
+PyYAML==6.0.2
+tenacity==9.0.0
+
+# CO Y KHONG CAI o image nay:
+#   duckdb        - chi Airflow doc/ghi warehouse; API doc feature tu Redis
+#   pydantic-settings - config doc bang os.environ, khong can them lib
+#   s3fs          - boto3 la du de put_object

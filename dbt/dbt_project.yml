@@ -1,0 +1,42 @@
+name: lzd_uplift
+version: "1.0.0"
+config-version: 2
+
+profile: lzd_uplift
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Ngay logic - Airflow truyen vao bang --vars '{"run_date": "2026-08-05"}'
+  run_date: "1970-01-01"
+  # Cua so tinh feature realtime (giay) - PHAI khop voi TTL overlay tren Redis
+  realtime_window_seconds: 3600
+  # Cua so lich su cho feature batch
+  history_days: 30
+
+models:
+  lzd_uplift:
+    +persist_docs:
+      relation: true
+      columns: true
+
+    staging:
+      +materialized: view
+      +schema: staging
+
+    marts:
+      +materialized: table
+      +schema: marts
+
+# Chay `dbt test` sau moi lan build - ket qua duoc DAG doc va ghi vao ops.dq_result
+tests:
+  lzd_uplift:
+    +store_failures: true
+    +schema: dq_failures

@@ -1,0 +1,57 @@
+# Custom query -> bien bang audit cua pipeline thanh metric Prometheus.
+# Nho vay Grafana ve duoc "trang thai feature sync" ngay tren dashboard metric.
+
+lzd_feature_sync:
+  query: |
+    SELECT
+      feature_version,
+      status,
+      total_shards,
+      completed_shards,
+      COALESCE(written_rows, 0)  AS written_rows,
+      COALESCE(expected_rows, 0) AS expected_rows,
+      EXTRACT(EPOCH FROM (now() - started_at)) AS age_seconds
+    FROM ops.feature_sync_audit
+    WHERE started_at > now() - INTERVAL '3 days'
+  metrics:
+    - feature_version: {usage: "LABEL", description: "Feature version"}
+    - status:          {usage: "LABEL", description: "Trang thai sync"}
+    - total_shards:     {usage: "GAUGE", description: "Tong so shard"}
+    - completed_shards: {usage: "GAUGE", description: "So shard da xong"}
+    - written_rows:     {usage: "GAUGE", description: "So dong da ghi len Redis"}
+    - expected_rows:    {usage: "GAUGE", description: "So dong ky vong tu warehouse"}
+    - age_seconds:      {usage: "GAUGE", description: "Tuoi cua lan sync (giay)"}
+
+lzd_dq:
+  query: |
+    SELECT
+      check_name,
+      target,
+      severity,
+      COUNT(*) FILTER (WHERE NOT passed) AS failed_count,
+      COUNT(*)                           AS total_count
+    FROM ops.dq_result
+    WHERE checked_at > now() - INTERVAL '24 hours'
+    GROUP BY 1, 2, 3
+  metrics:
+    - check_name:   {usage: "LABEL"}
+    - target:       {usage: "LABEL"}
+    - severity:     {usage: "LABEL"}
+    - failed_count: {usage: "GAUGE", description: "So check that bai trong 24h"}
+    - total_count:  {usage: "GAUGE", description: "Tong so check trong 24h"}
+
+lzd_pipeline_run:
+  query: |
+    SELECT
+      dag_id,
+      status,
+      COUNT(*)                    AS run_count,
+      COALESCE(AVG(duration_sec), 0) AS avg_duration_sec
+    FROM ops.pipeline_run
+    WHERE started_at > now() - INTERVAL '24 hours'
+    GROUP BY 1, 2
+  metrics:
+    - dag_id:           {usage: "LABEL"}
+    - status:           {usage: "LABEL"}
+    - run_count:        {usage: "GAUGE", description: "So lan chay 24h qua"}
+    - avg_duration_sec: {usage: "GAUGE", description: "Thoi gian chay trung binh"}

@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: feat_user_behaviour
+    description: "Feature hanh vi 30 ngay tinh tu event stream"
+    columns:
+      - name: user_id
+        tests: [not_null, unique]
+
+  - name: feat_user_serving
+    description: >
+      BUSINESS READY - bang duoc sync len Redis. Cot phai khop feature_spec.yml
+      (batch_features). Sync job se fail neu lech.
+    columns:
+      - name: user_id
+        tests:
+          - not_null
+          - unique          # 1 dong / 1 user -> HSET len Redis khong dam nhau
+      - name: dt
+        tests: [not_null]
+      - name: feature_ts
+        tests: [not_null]
+      - name: f0
+        tests:
+          - not_null
+      - name: hist_gmv_30d
+        tests:
+          - not_null
+          - dbt_utils_at_least_zero:
+              config:
+                severity: warn
+
+  - name: feat_user_realtime_pit
+    description: "Feature realtime tinh point-in-time - dung cho training"
+    columns:
+      - name: user_id
+        tests: [not_null]
+      - name: rt_events_1h
+        tests: [not_null]
+
+  - name: training_dataset
+    description: "Dataset cuoi cung cho uplift model"
+    columns:
+      - name: user_id
+        tests: [not_null]
+      - name: label
+        tests:
+          - not_null
+          - accepted_values: {values: [0, 1], quote: false}
+      - name: is_treat
+        tests:
+          - not_null
+          - accepted_values: {values: [0, 1], quote: false}
+      - name: split
+        tests:
+          - accepted_values: {values: ['train', 'test']}

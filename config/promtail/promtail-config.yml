@@ -1,0 +1,80 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ----------------------------------------------------------------------
+  # 1) Log cua moi container trong stack, lay qua docker socket.
+  #    Nho label com.lzd.component/com.lzd.layer trong docker-compose,
+  #    trong Grafana co the loc: {component="stream-consumer"}
+  # ----------------------------------------------------------------------
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project"]
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_label_com_lzd_component"]
+        target_label: component
+      - source_labels: ["__meta_docker_container_label_com_lzd_layer"]
+        target_label: layer
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: service
+      - target_label: job
+        replacement: docker
+    pipeline_stages:
+      # Service Python cua minh log JSON -> parse ra field de query duoc
+      - json:
+          expressions:
+            level: level
+            logger: logger
+            message: message
+            event: event
+            run_id: run_id
+            feature_version: feature_version
+            user_id: user_id
+          drop_malformed: false
+      - labels:
+          level:
+          event:
+          feature_version:
+      # Log khong phai JSON (kafka, postgres...) van giu nguyen dong text
+      - output:
+          source: message
+
+  # ----------------------------------------------------------------------
+  # 2) Task log cua Airflow tren dia (chi tiet hon log stdout cua scheduler)
+  #    Duong dan: /opt/airflow/logs/dag_id=X/run_id=Y/task_id=Z/attempt=N.log
+  # ----------------------------------------------------------------------
+  - job_name: airflow-task-logs
+    static_configs:
+      - targets: ["localhost"]
+        labels:
+          job: airflow-tasks
+          component: airflow-task
+          layer: orchestration
+          __path__: /opt/airflow/logs/dag_id=*/run_id=*/task_id=*/*.log
+    pipeline_stages:
+      - regex:
+          source: filename
+          expression: "dag_id=(?P<dag_id>[^/]+)/run_id=(?P<run_id>[^/]+)/task_id=(?P<task_id>[^/]+)/attempt=(?P<attempt>\\d+)"
+      - labels:
+          dag_id:
+          task_id:
+          attempt:
+      - regex:
+          expression: "\\[(?P<ts>[^\\]]+)\\] \\{(?P<src>[^}]+)\\} (?P<level>[A-Z]+) - (?P<message>.*)"
+      - labels:
+          level:

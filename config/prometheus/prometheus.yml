@@ -1,0 +1,68 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    env: local
+    project: lzd-uplift
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Metric cua cac task Airflow (batch) day qua pushgateway
+  - job_name: pushgateway
+    honor_labels: true          # giu lai job/instance do job push len
+    static_configs:
+      - targets: ["pushgateway:9091"]
+
+  # Metric noi bo cua Airflow (statsd -> exporter)
+  - job_name: airflow
+    static_configs:
+      - targets: ["statsd-exporter:9102"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+
+  # Service Python tu expose /metrics bang prometheus_client
+  - job_name: event-producer
+    static_configs:
+      - targets: ["event-producer:9105"]
+        labels:
+          component: event-producer
+          layer: ingestion
+
+  - job_name: stream-consumer
+    static_configs:
+      - targets: ["stream-consumer:9106"]
+        labels:
+          component: stream-consumer
+          layer: ingestion
+
+  - job_name: inference-api
+    static_configs:
+      - targets: ["inference-api:8000"]
+        labels:
+          component: inference-api
+          layer: serving
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]

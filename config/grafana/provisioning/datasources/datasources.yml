@@ -1,0 +1,53 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 2000
+      derivedFields:
+        # Bam vao run_id trong log -> nhay sang query loc theo run do
+        - name: run_id
+          matcherRegex: '"run_id":\s*"([^"]+)"'
+          url: '/explore?left={"datasource":"loki","queries":[{"expr":"{job=\"docker\"} |= \"${__value.raw}\""}]}'
+
+  # Doc truc tiep bang audit ops.* -> ve bang/timeline trong dashboard
+  - name: Pipeline-Postgres
+    type: postgres
+    uid: pipeline_pg
+    access: proxy
+    url: postgres:5432
+    database: pipeline
+    user: ${PG_USER}
+    secureJsonData:
+      password: ${PG_PASSWORD}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+
+  # Xem truc tiep key tren Redis tu Grafana (plugin redis-datasource)
+  - name: Redis
+    type: redis-datasource
+    uid: redis
+    access: proxy
+    url: redis://redis:6379
+    jsonData:
+      client: standalone
+      poolSize: 5
+      timeout: 10
+      pingInterval: 0
+      pipelineWindow: 0

@@ -1,0 +1,120 @@
+# ==========================================================================
+# FEATURE SPEC - single source of truth cho ca offline (training) va online
+# (serving). Muc dich: chong training/serving skew.
+#
+#   - dbt build mart theo dung danh sach nay (test `columns_match_spec`).
+#   - Sync job doc spec nay de biet ghi field nao len Redis.
+#   - Inference API doc spec nay de biet doc field nao + default khi thieu.
+#
+# Doi feature => sua DUY NHAT file nay => bump `version` => pipeline tu align.
+# ==========================================================================
+version: 1
+entity: user
+entity_key: user_id
+
+offline:
+  # Bang mart trong DuckDB dung lam nguon sync (mo phong bang BigQuery)
+  serving_table: marts.feat_user_serving
+  training_table: marts.training_dataset
+  # Cot moc thoi gian de kiem tra freshness
+  event_time_column: feature_ts
+  partition_column: dt
+
+online:
+  # Key layout tren Redis:
+  #   fs:{version}:u:{user_id}      -> HASH feature batch (ghi boi Airflow sync)
+  #   rt:u:{user_id}                -> HASH realtime overlay (ghi boi stream consumer)
+  #   fs:meta:active_version        -> STRING con tro version dang phuc vu
+  #   fs:meta:{version}:status      -> HASH trang thai sync
+  #   fs:meta:{version}:shards      -> SET shard da ghi xong (idempotency)
+  #   fs:meta:versions              -> ZSET version theo timestamp (dung de GC)
+  batch_key_template: "fs:{version}:u:{user_id}"
+  realtime_key_template: "rt:u:{user_id}"
+  meta_prefix: "fs:meta"
+  # Active version khong set TTL. Version cu bi ha TTL khi retire.
+  stale_ttl_seconds: 86400
+  realtime_ttl_seconds: 3600
+
+# --------------------------------------------------------------------------
+# 1) BATCH FEATURES - tinh hang ngay tu warehouse, sync len Redis
+# --------------------------------------------------------------------------
+batch_features:
+  # f0..f82 tu dataset DESCN (Lazada voucher distribution).
+  # Khai bao dang range de khoi liet ke 83 dong.
+  - range:
+      prefix: f
+      start: 0
+      end: 82          # inclusive
+      dtype: float
+      default: 0.0
+      group: descn_raw
+      description: "Feature an danh f0-f82 tu dataset production Lazada"
+
+  # Feature ke thua tu warehouse (tu tinh trong dbt)
+  - name: user_tenure_days
+    dtype: int
+    default: 0
+    group: profile
+    description: "So ngay ke tu lan dau nhin thay user"
+  - name: hist_order_cnt_30d
+    dtype: int
+    default: 0
+    group: behaviour
+    description: "So don 30 ngay gan nhat (batch)"
+  - name: hist_gmv_30d
+    dtype: float
+    default: 0.0
+    group: behaviour
+    description: "GMV 30 ngay gan nhat (batch)"
+  - name: voucher_used_30d
+    dtype: int
+    default: 0
+    group: promo
+    description: "So voucher da dung 30 ngay"
+
+# --------------------------------------------------------------------------
+# 2) REALTIME FEATURES - stream consumer ghi thang vao Redis overlay,
+#    TTL ngan. Inference merge: batch <- overlay (overlay thang).
+#    Ban cung tinh lai chinh xac cac cot nay trong dbt de train khong bi skew
+#    (point-in-time join, xem models/marts/training_dataset.sql).
+# --------------------------------------------------------------------------
+realtime_features:
+  - name: rt_events_1h
+    dtype: int
+    default: 0
+    description: "Tong event trong 1 gio truot"
+  - name: rt_page_view_1h
+    dtype: int
+    default: 0
+  - name: rt_add_to_cart_1h
+    dtype: int
+    default: 0
+  - name: rt_order_1h
+    dtype: int
+    default: 0
+  - name: rt_gmv_1h
+    dtype: float
+    default: 0.0
+  - name: rt_session_len_sec
+    dtype: float
+    default: 0.0
+  - name: rt_last_event_ts
+    dtype: int
+    default: 0
+    description: "Epoch giay cua event cuoi - dung do freshness cua overlay"
+
+# --------------------------------------------------------------------------
+# 3) Cot khong phai feature nhung di kem trong training set
+# --------------------------------------------------------------------------
+label_column: label            # 1 = conversion
+treatment_column: is_treat     # 1 = duoc phat voucher
+
+# --------------------------------------------------------------------------
+# 4) Kiem tra chat luong ap dung cho feature
+# --------------------------------------------------------------------------
+quality:
+  max_null_rate: 0.02          # >2% null tren 1 cot batch => FAIL
+  max_freshness_hours: 26      # data cu hon 26h => FAIL (SLA daily + buffer)
+  min_row_count: 1000
+  # Sai lech tuong doi cho phep khi so gia tri offline vs online
+  online_offline_tolerance: 0.0001

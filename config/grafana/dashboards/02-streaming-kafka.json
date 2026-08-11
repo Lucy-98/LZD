@@ -1,0 +1,128 @@
+{
+  "uid": "lzd-streaming",
+  "title": "02 · Streaming (Kafka → Lake → Redis overlay)",
+  "description": "Lag theo partition, throughput consumer, DLQ, do tuoi cua realtime overlay",
+  "tags": ["lzd", "kafka", "streaming"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Tong message trong topic",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(kafka_topic_partition_current_offset{topic=~\"app.*\"})", "legendFormat": "offset" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Consumer lag tong",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 10000 }, { "color": "red", "value": 50000 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(kafka_consumergroup_lag)", "legendFormat": "lag" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Do tre xu ly (event_ts -> ghi Redis)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 120 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(lzd_event_end_to_end_lag_seconds_bucket[5m])))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Broker up",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "kafka_brokers", "legendFormat": "brokers" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Lag theo partition",
+      "description": "1 partition lag lech han = du lieu bi skew theo key (user_id)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (topic, partition) (kafka_consumergroup_lag)", "legendFormat": "{{topic}} p{{partition}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Toc do message vao/ra topic",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (topic) (rate(kafka_topic_partition_current_offset[1m]))", "legendFormat": "in {{topic}}" },
+        { "refId": "B", "expr": "sum by (topic) (rate(kafka_consumergroup_current_offset[1m]))", "legendFormat": "out {{topic}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer: batch size & thoi gian flush",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(lzd_consumer_batch_size_bucket[5m])))", "legendFormat": "p95 batch size" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(lzd_consumer_flush_seconds_bucket[5m])))", "legendFormat": "p95 flush (s)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Event hong (DLQ) theo ly do",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 25, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (rate(lzd_events_dlq_total[5m]))", "legendFormat": "{{reason}}" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Log stream-consumer",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [
+        { "refId": "A", "expr": "{component=\"stream-consumer\"}" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Log event-producer",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 20 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [
+        { "refId": "A", "expr": "{component=\"event-producer\"}" }
+      ]
+    }
+  ],
+  "templating": { "list": [] }
+}

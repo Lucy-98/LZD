@@ -1,0 +1,130 @@
+{
+  "uid": "lzd-dq-skew",
+  "title": "04 · Data Quality & Training-Serving Skew",
+  "description": "Freshness, null rate, phan bo feature offline vs online, va do lech giua luc train va luc serve",
+  "tags": ["lzd", "data-quality"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "DQ check FAIL trong 24h",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "sum(lzd_dq_failed_count)", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Freshness bang mart (gio)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "h", "decimals": 1,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 24 }, { "color": "red", "value": 26 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_table_freshness_hours)", "legendFormat": "{{table}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Null rate cao nhat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 0.02 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_null_rate)", "legendFormat": "{{feature}}" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Ty le treatment (is_treat=1)",
+      "description": "Bien dong manh => thay doi chinh sach phat voucher, model can retrain",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3 }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_training_treatment_ratio)", "legendFormat": "treated" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Null rate theo feature (top 10)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "custom": { "fillOpacity": 5 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "topk(10, lzd_feature_null_rate)", "legendFormat": "{{feature}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Trung binh feature: offline (DuckDB) vs online (Redis)",
+      "description": "2 duong phai trung nhau. Lech = training/serving skew.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "lzd_feature_mean{source=\"offline\"}", "legendFormat": "offline · {{feature}}" },
+        { "refId": "B", "expr": "lzd_feature_mean{source=\"online\"}", "legendFormat": "online · {{feature}}" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Chi tiet DQ check gan nhat",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 12 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": { "defaults": {}, "overrides": [
+        { "matcher": { "id": "byName", "options": "passed" },
+          "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "mappings", "value": [ { "type": "value", "options": {
+                "true":  { "color": "green", "text": "PASS", "index": 0 },
+                "false": { "color": "red",   "text": "FAIL", "index": 1 } } } ] }
+          ] }
+      ] },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT checked_at, check_name, target, severity, passed, observed, threshold, details FROM ops.dq_result ORDER BY checked_at DESC LIMIT 200" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Inference log gan nhat (do skew that su)",
+      "description": "Doi chieu feature_version dung luc serve voi version dung luc train",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 10, "w": 10, "x": 14, "y": 12 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT requested_at, user_id, feature_version, model_version, ROUND(uplift_score::numeric, 5) AS uplift, decision, ROUND(latency_ms::numeric, 2) AS ms, cache_hit, features_missing FROM ops.inference_log ORDER BY requested_at DESC LIMIT 100" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Log DQ & transform (dbt / DAG 20, 50)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 22 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [
+        { "refId": "A", "expr": "{job=\"airflow-tasks\", dag_id=~\"20_build_features_dbt|50_data_quality\"}" }
+      ]
+    }
+  ],
+  "templating": { "list": [] }
+}

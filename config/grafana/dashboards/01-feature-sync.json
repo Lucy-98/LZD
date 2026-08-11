@@ -1,0 +1,185 @@
+{
+  "uid": "lzd-feature-sync",
+  "title": "01 · Feature Sync (DuckDB → Redis)",
+  "description": "Soi ky job sync: idempotency, tien do shard, validate offline/online, cache invalidation, rollback",
+  "tags": ["lzd", "feature-store"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-24h", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Trạng thái hiện tại",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Version dang ACTIVE",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 1 },
+      "options": { "colorMode": "none", "graphMode": "none", "textMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/" } },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT feature_version FROM ops.feature_sync_audit WHERE status = 'ACTIVE' ORDER BY activated_at DESC LIMIT 1" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Shard hoan thanh",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percentunit",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 0.9 }, { "color": "green", "value": 1 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_sync_completed_shards) / clamp_min(max(lzd_feature_sync_total_shards), 1)", "legendFormat": "pct" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Thoi gian sync gan nhat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 1 }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_sync_duration_seconds)", "legendFormat": "duration" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Rows/giay khi ghi Redis",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 15, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_sync_write_rate_rows_per_sec)", "legendFormat": "rows/s" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Version cu con ton tai",
+      "description": "Cache invalidation: GC phai don bot, chi giu N version",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "short",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "refId": "A", "expr": "max(lzd_feature_versions_present)", "legendFormat": "versions" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Tiến độ & thông lượng",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows da ghi len Redis theo thoi gian",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "max by (feature_version) (lzd_feature_sync_written_rows)", "legendFormat": "{{feature_version}}" },
+        { "refId": "B", "expr": "max(lzd_feature_sync_expected_rows)", "legendFormat": "expected (offline)" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "So key trong Redis theo pattern",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (key) (redis_key_size)", "legendFormat": "{{key}}" },
+        { "refId": "B", "expr": "redis_db_keys{db=\"db0\"}", "legendFormat": "tong key db0" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Shard cua version gan nhat (ops.feature_sync_shard)",
+      "description": "Shard FAILED co the rerun rieng - day chinh la fault tolerance",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 14 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "status" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [ { "type": "value", "options": {
+                  "DONE":    { "color": "green",  "index": 0 },
+                  "PENDING": { "color": "blue",   "index": 1 },
+                  "FAILED":  { "color": "red",    "index": 2 } } } ] }
+            ] }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT s.shard_id, s.status, s.rows_written, s.attempt, s.duration_ms, s.error_message FROM ops.feature_sync_shard s WHERE s.feature_version = (SELECT feature_version FROM ops.feature_sync_audit ORDER BY started_at DESC LIMIT 1) ORDER BY s.shard_id" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Bao cao validate offline vs online",
+      "description": "So sanh gia tri tung feature giua DuckDB va Redis tren mau ngau nhien",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 14 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT feature_version, validation_report->>'sampled' AS sampled, validation_report->>'mismatched' AS mismatched, validation_report->>'missing_keys' AS missing_keys, validation_report->>'mismatch_ratio' AS ratio, checksum, activated_at FROM ops.feature_sync_audit WHERE validation_report IS NOT NULL ORDER BY started_at DESC LIMIT 10" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Data quality & log của DAG sync",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 }
+    },
+    {
+      "type": "table",
+      "title": "Data quality check 24h",
+      "datasource": { "type": "postgres", "uid": "pipeline_pg" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 25 },
+      "options": { "showHeader": true, "cellHeight": "sm" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "passed" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [ { "type": "value", "options": {
+                  "true":  { "color": "green", "text": "PASS", "index": 0 },
+                  "false": { "color": "red",   "text": "FAIL", "index": 1 } } } ] }
+            ] }
+        ]
+      },
+      "targets": [
+        { "refId": "A", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT checked_at, check_name, target, severity, passed, observed, threshold FROM ops.dq_result WHERE checked_at > now() - INTERVAL '24 hours' ORDER BY checked_at DESC LIMIT 100" }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Log task cua DAG 40_sync_features_to_redis",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 25 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [
+        { "refId": "A", "expr": "{job=\"airflow-tasks\", dag_id=~\"40_sync_features_to_redis.*\"}" }
+      ]
+    }
+  ],
+  "templating": { "list": [] }
+}

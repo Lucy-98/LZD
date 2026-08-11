@@ -1,0 +1,64 @@
+# ==========================================================================
+# Nhung gi KHONG duoc gui sang Docker daemon khi build.
+#
+# Truoc khi co file nay: build context = 549 MB (chu yeu la CSV trong data/),
+# nhan voi 3 image = ~1.6 GB truyen di moi lan build, va moi thay doi trong
+# data/ deu lam invalidate cache.
+# Sau khi co: ~1 MB.
+#
+# data/ van duoc dung luc RUNTIME qua bind mount (xem docker-compose.yml),
+# khong can nam trong image.
+# ==========================================================================
+
+# --- du lieu (bind mount luc runtime, khong bake vao image)
+data/
+*.csv
+*.parquet
+*.duckdb
+*.duckdb.wal
+lakehouse/
+
+# --- tai lieu
+docs/
+*.md
+!README.md
+
+# --- state cua runtime
+airflow/logs/
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+logs/
+
+# --- python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# --- git / IDE / OS
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- secret: khong bao gio bake .env vao image
+.env
+.env.*
+!.env.example
+
+# --- file cua chinh docker (khong can trong context)
+docker-compose*.yml
+Makefile
+scripts/stack.ps1
+tests/
+requirements-dev.txt

@@ -1,0 +1,59 @@
+# Map metric statsd cua Airflow -> ten metric Prometheus co label.
+# Khong co file nay thi ten metric se bi bam nat (vd airflow_dagrun_duration_success_dag_40_...).
+mappings:
+  - match: "airflow.dag.*.*.duration"
+    name: "airflow_task_duration_seconds"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+
+  - match: "airflow.dagrun.duration.success.*"
+    name: "airflow_dagrun_duration_success_seconds"
+    labels:
+      dag_id: "$1"
+
+  - match: "airflow.dagrun.duration.failed.*"
+    name: "airflow_dagrun_duration_failed_seconds"
+    labels:
+      dag_id: "$1"
+
+  - match: "airflow.dagrun.schedule_delay.*"
+    name: "airflow_dagrun_schedule_delay_seconds"
+    labels:
+      dag_id: "$1"
+
+  - match: "airflow.ti.finish.*.*.*"
+    name: "airflow_task_instance_finished_total"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+      state: "$3"
+
+  - match: "airflow.ti.start.*.*"
+    name: "airflow_task_instance_started_total"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+
+  - match: "airflow.pool.open_slots.*"
+    name: "airflow_pool_open_slots"
+    labels:
+      pool: "$1"
+
+  - match: "airflow.pool.running_slots.*"
+    name: "airflow_pool_running_slots"
+    labels:
+      pool: "$1"
+
+  - match: "airflow.operator_failures_*"
+    name: "airflow_operator_failures_total"
+    labels:
+      operator: "$1"
+
+  - match: "airflow.operator_successes_*"
+    name: "airflow_operator_successes_total"
+    labels:
+      operator: "$1"
+
+  # Metric khong khop rule nao o tren van duoc exporter giu lai,
+  # chi doi dau "." thanh "_" (hanh vi mac dinh) - vd airflow_scheduler_heartbeat.
