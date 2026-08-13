@@ -1,4 +1,4 @@
-"""Kafka -> (1) Data Lake parquet trong MinIO  (2) Redis realtime overlay.
+"""Kafka -> MinIO raw parquet -> Redis realtime overlay.
 
 Thu tu xu ly 1 micro-batch (RAT quan trong):
 

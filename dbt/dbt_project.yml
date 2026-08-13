@@ -20,6 +20,10 @@ vars:
   realtime_window_seconds: 3600
   # Cua so lich su cho feature batch
   history_days: 30
+  # Semantic f30 van UNIDENTIFIED. Day chi la nhanh van hanh dang duoc test.
+  f30_semantic_branch: "H1"
+  counter_window_days: 365
+  reconstruction_encoding_version: "encoding_2026_08_v1"
 
 models:
   lzd_uplift:

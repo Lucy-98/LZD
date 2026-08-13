@@ -9,8 +9,8 @@ models:
 
   - name: feat_user_serving
     description: >
-      BUSINESS READY - bang duoc sync len Redis. Cot phai khop feature_spec.yml
-      (batch_features). Sync job se fail neu lech.
+      Baseline/full snapshot feature mart. Khong phai nguon sync selected
+      reconstruction feature store.
     columns:
       - name: user_id
         tests:
@@ -29,6 +29,24 @@ models:
           - dbt_utils_at_least_zero:
               config:
                 severity: warn
+
+  - name: feat_user_selected_serving
+    description: >
+      Selected 36-feature mart duoc sync len Redis theo feature_spec.yml
+      (batch_features). Khong chua label/is_treat va khong sync f0..f82 day du.
+    columns:
+      - name: user_id
+        tests:
+          - not_null
+          - unique
+      - name: dt
+        tests: [not_null]
+      - name: feature_ts
+        tests: [not_null]
+      - name: f1
+        tests: [not_null]
+      - name: f82
+        tests: [not_null]
 
   - name: feat_user_realtime_pit
     description: "Feature realtime tinh point-in-time - dung cho training"

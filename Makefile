@@ -1,5 +1,5 @@
 # Tuong duong scripts/stack.ps1 cho ai dung bash/WSL/Linux.
-.PHONY: help init build up up-all down reset ps status logs health test redis duckdb load-test
+.PHONY: help init build up up-all down reset ps status logs health test redis duckdb reconstruction track-a snapshot load-test
 
 help:
 	@echo "make init      - tao .env + build image"
@@ -11,6 +11,8 @@ help:
 	@echo "make logs s=<service> - xem log 1 service"
 	@echo "make health    - goi thu cac endpoint"
 	@echo "make test      - chay unit test"
+	@echo "make snapshot  - ghi reconstruction snapshot vao docs/"
+	@echo "make track-a   - gen Track A raw events tu data/full_trainset.csv (limit=1000)"
 	@echo "make load-test - ban traffic vao inference API"
 
 init:
@@ -61,6 +63,15 @@ health:
 
 test:
 	python -m pytest tests/ -v
+
+reconstruction:
+	PYTHONPATH=src python -m lzd_pipeline.reconstruction.e2e
+
+track-a:
+	PYTHONPATH=src python -m lzd_pipeline.reconstruction.track_a_batch --limit 1000 --verify-limit 50
+
+snapshot:
+	PYTHONPATH=src python -m lzd_pipeline.reconstruction.snapshot
 
 redis:
 	docker compose exec redis redis-cli

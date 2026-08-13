@@ -1,0 +1,372 @@
+# ==========================================================================
+# BUSINESS ALIASES FOR SELECTED LZD FEATURES
+#
+# This file is a narrative bridge for the synthetic Lazada voucher-uplift
+# project. It DOES NOT claim the real Lazada/DESCN semantic of f0..f82.
+#
+# Rules:
+#   - Redis/dbt/model-facing names remain f1, f2, ...
+#   - alias is a synthetic business name used in docs/reports.
+#   - confidence must stay SYNTHETIC_ASSUMPTION unless the true source is known.
+#   - T3 aliases are latent snapshot signals; they are not reconstructed events.
+# ==========================================================================
+version: business_aliases_2026_08_v1
+feature_set_id: fs_2026_08_v1
+scope: selected_36_features
+semantic_status: SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT
+
+feature_aliases:
+  # ------------------------------------------------------------------------
+  # T1 - event-like CFS counters/recency. These names explain the role in a
+  # voucher decision story, but Track A still emits CFS witness events.
+  # ------------------------------------------------------------------------
+  f1:
+    tier: T1
+    alias: days_since_first_commerce_signal
+    display_name: Days since first commerce signal
+    business_role: Long-term relationship / customer lifecycle recency.
+    source_family: recency
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: CFS recency marker; not proof of a real Lazada order event.
+
+  f2:
+    tier: T1
+    alias: days_since_last_commerce_signal
+    display_name: Days since last commerce signal
+    business_role: Recent intent; lower values mean the customer is warmer.
+    source_family: recency
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: CFS recency marker; not proof of a real Lazada order event.
+
+  f5:
+    tier: T1
+    alias: product_browse_intensity_365d_ln
+    display_name: Product browse intensity, 365d, ln encoded
+    business_role: High browse volume can indicate unresolved purchase intent.
+    source_family: engagement_counter
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Decoded as round(exp(f5)); emitted as CFS counter witness.
+
+  f11:
+    tier: T1
+    alias: cart_checkout_intent_365d_ln
+    display_name: Cart / checkout intent, 365d, ln encoded
+    business_role: Strong buying intent; useful for deciding whether a voucher can convert.
+    source_family: intent_counter
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Decoded as round(exp(f11)); emitted as CFS counter witness.
+
+  f18:
+    tier: T1
+    alias: promo_touch_intensity_365d_log10
+    display_name: Promotion touch intensity, 365d, log10 encoded
+    business_role: Historical exposure to promo surfaces; proxy for promo sensitivity.
+    source_family: promo_counter
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Decoded as round(10 ** f18); emitted as CFS counter witness.
+
+  f30:
+    tier: T1
+    alias: active_days_30d_log10
+    display_name: Active days in last 30d, log10 encoded
+    business_role: Recent activity frequency; helps avoid sending vouchers to inactive users.
+    source_family: active_day_counter
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: H1 counts distinct active days; H2 counts a separate CFS marker.
+
+  # ------------------------------------------------------------------------
+  # T2 - synthetic customer attributes. These are entity-level levels/encoders.
+  # ------------------------------------------------------------------------
+  f37:
+    tier: T2
+    alias: price_sensitivity_segment_64_encoded
+    display_name: Price sensitivity segment, 64-level encoding
+    business_role: Customers with stronger price sensitivity may respond better to discounts.
+    source_family: customer_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Decoded through a fitted train-only encoding map.
+
+  f38:
+    tier: T2
+    alias: promo_affinity_segment_241_encoded
+    display_name: Promotion affinity segment, 241-level encoding
+    business_role: Captures heterogeneous promo responsiveness at customer level.
+    source_family: customer_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Separate variable from f37, even if some encoded values overlap.
+
+  f79:
+    tier: T2
+    alias: preferred_leaf_category_515_enc_a
+    display_name: Preferred leaf category, encoding A
+    business_role: Category preference changes voucher effectiveness and order value.
+    source_family: category_preference_515
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: One latent 515-level category variable encoded four ways.
+
+  f80:
+    tier: T2
+    alias: preferred_leaf_category_515_enc_b
+    display_name: Preferred leaf category, encoding B
+    business_role: Same latent category preference as f79, alternate encoding.
+    source_family: category_preference_515
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: One latent 515-level category variable encoded four ways.
+
+  f81:
+    tier: T2
+    alias: preferred_leaf_category_515_enc_c
+    display_name: Preferred leaf category, encoding C
+    business_role: Same latent category preference as f79, alternate encoding.
+    source_family: category_preference_515
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: One latent 515-level category variable encoded four ways.
+
+  f82:
+    tier: T2
+    alias: preferred_leaf_category_515_enc_d
+    display_name: Preferred leaf category, encoding D
+    business_role: Same latent category preference as f79, alternate encoding.
+    source_family: category_preference_515
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: One latent 515-level category variable encoded four ways.
+
+  f40:
+    tier: T2
+    alias: preferred_platform_segment_flag
+    display_name: Preferred platform segment flag
+    business_role: App/web platform preference affects journey and voucher placement.
+    source_family: one_hot_customer_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a larger one-hot source group.
+
+  f43:
+    tier: T2
+    alias: lifecycle_new_or_cold_flag
+    display_name: New/cold lifecycle flag
+    business_role: Early or cold customers may need different voucher pressure.
+    source_family: one_hot_lifecycle_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a 10-level lifecycle one-hot group.
+
+  f44:
+    tier: T2
+    alias: lifecycle_active_flag
+    display_name: Active lifecycle flag
+    business_role: Active customers may buy without subsidy; useful for avoiding wasted vouchers.
+    source_family: one_hot_lifecycle_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a 10-level lifecycle one-hot group.
+
+  f45:
+    tier: T2
+    alias: lifecycle_high_intent_flag
+    display_name: High-intent lifecycle flag
+    business_role: High-intent customers are close to conversion; voucher economics matter.
+    source_family: one_hot_lifecycle_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a 10-level lifecycle one-hot group.
+
+  f64:
+    tier: T2
+    alias: city_tier_major_metro_flag
+    display_name: Major metro city-tier flag
+    business_role: Region/city tier can change purchasing power and shipping friction.
+    source_family: one_hot_geo_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a larger geo segment group.
+
+  f68:
+    tier: T2
+    alias: discount_hunter_flag
+    display_name: Discount hunter flag
+    business_role: Customers who hunt deals are more likely to react to voucher offers.
+    source_family: one_hot_discount_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a binary discount segment group.
+
+  # ------------------------------------------------------------------------
+  # T3 - latent/pass-through signals. They stay frozen and are not event
+  # reconstructed. Names are only presentation aliases.
+  # ------------------------------------------------------------------------
+  f3:
+    tier: T3
+    alias: latent_customer_value_score
+    display_name: Latent customer value score
+    business_role: Proxy for expected economic value if the user converts.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f4:
+    tier: T3
+    alias: latent_purchase_power_score
+    display_name: Latent purchase power score
+    business_role: Proxy for spending capacity.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f8:
+    tier: T3
+    alias: latent_baseline_conversion_propensity
+    display_name: Latent baseline conversion propensity
+    business_role: Helps distinguish sure-thing customers from persuadable users.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f9:
+    tier: T3
+    alias: latent_incremental_response_score
+    display_name: Latent incremental response score
+    business_role: Synthetic proxy for voucher uplift responsiveness.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f10:
+    tier: T3
+    alias: latent_discount_sensitivity_score
+    display_name: Latent discount sensitivity score
+    business_role: Proxy for how much discount is needed to change behavior.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f12:
+    tier: T3
+    alias: latent_category_affinity_score
+    display_name: Latent category affinity score
+    business_role: Captures strength of category interest not represented by the 515-level segment.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f13:
+    tier: T3
+    alias: latent_brand_affinity_score
+    display_name: Latent brand affinity score
+    business_role: Proxy for willingness to buy branded or premium products.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f16:
+    tier: T3
+    alias: latent_churn_risk_score
+    display_name: Latent churn risk score
+    business_role: High churn risk may justify retention voucher spend.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f20:
+    tier: T3
+    alias: latent_budget_fit_score
+    display_name: Latent budget-fit score
+    business_role: Proxy for whether the voucher cost is economically acceptable.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f21:
+    tier: T3
+    alias: latent_margin_risk_score
+    display_name: Latent margin risk score
+    business_role: Helps avoid subsidizing low-margin conversions.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f22:
+    tier: T3
+    alias: latent_abuse_risk_score
+    display_name: Latent voucher abuse risk score
+    business_role: Proxy for repeated discount extraction or abuse risk.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f23:
+    tier: T3
+    alias: latent_ltv_signal_a
+    display_name: Latent LTV signal A
+    business_role: Long-term value proxy used only as selected pass-through.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f25:
+    tier: T3
+    alias: latent_ltv_signal_b
+    display_name: Latent LTV signal B
+    business_role: Long-term value proxy; near-duplicate risk must be handled by feature selection.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f26:
+    tier: T3
+    alias: latent_shipping_sensitivity_score
+    display_name: Latent shipping sensitivity score
+    business_role: Shipping cost/friction can change voucher response.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f28:
+    tier: T3
+    alias: latent_payment_friction_score
+    display_name: Latent payment friction score
+    business_role: Payment friction can block checkout even with a voucher.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f29:
+    tier: T3
+    alias: latent_search_intent_score
+    display_name: Latent search intent score
+    business_role: Search-heavy users may still be comparing products and need different timing.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f31:
+    tier: T3
+    alias: latent_campaign_fatigue_score
+    display_name: Latent campaign fatigue score
+    business_role: Too much promo exposure can reduce marginal voucher impact.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f35:
+    tier: T3
+    alias: latent_seller_quality_preference_score
+    display_name: Latent seller quality preference score
+    business_role: Seller quality preference may change response to discount versus trust signals.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+track_a_event_aliases:
+  EVT_F5:
+    alias: CFS_PRODUCT_BROWSE_INTENSITY
+    note: Witness event for f5; not a Lazada domain event.
+  EVT_F11:
+    alias: CFS_CART_CHECKOUT_INTENT
+    note: Witness event for f11; not a Lazada domain event.
+  EVT_F18:
+    alias: CFS_PROMO_TOUCH
+    note: Witness event for f18; not a Lazada domain event.
+  EVT_F30:
+    alias: CFS_ACTIVE_DAY_MARKER
+    note: H2 witness event for f30; not used by H1.
+  EVT_ORDER_PAID:
+    alias: CFS_RECENCY_MARKER
+    note: Recency witness for f1/f2; do not read as proven ORDER_PAID semantic.
+  EVT_SESSION_STARTED:
+    alias: CFS_ACTIVE_DAY_FILLER
+    note: H1 active-day filler; not a real SESSION_STARTED claim.

@@ -1,359 +1,589 @@
 # Feature Dictionary
 
+> Business alias note: selected `f*` columns now have synthetic business aliases
+> in `config/features/business_aliases.yml` and `docs/BUSINESS_ALIAS_MAP.md`.
+> These names make the voucher-uplift story readable, but they are not confirmed
+> Lazada/DESCN semantics. Redis/dbt names remain `f*`.
+
 > **Vai trò:** Layer 3 (Feature Engineering / Feature Store) — hợp đồng của từng feature.
 >
-> **Trạng thái:** phần "hiện có" mô tả code đang chạy; phần "đề xuất" chưa code.
+> **Trạng thái:** Track A/B mô tả dữ liệu & code hiện có; Track C là đề xuất.
 >
-> **Nguyên tắc §15 của project:** mỗi feature có đủ 13 trường lineage.
-> Feature chưa biết semantic ⇒ `business_definition: UNKNOWN`, `confidence: UNKNOWN`.
-> **Không bịa.**
+> **Nguyên tắc §15:** mỗi feature có đủ **14 trường** lineage (13 trường gốc +
+> `reconstruction_tier`). Feature chưa biết semantic ⇒ `business_definition: UNKNOWN`,
+> `confidence: UNKNOWN`. **Không bịa.**
+>
+> **Nguyên tắc bổ sung của bản sửa này:**
+> ```
+> ❌ SAI:  f30 IS order_count_30d
+> ✅ ĐÚNG: f30
+>            structural constraint:        10^f30 ∈ ℤ ∩ [1,30]  (CONFIRMED)
+>            candidate synthetic semantic: order_count_30d
+>            confidence:                   SYNTHETIC_ASSUMPTION
+>            true semantic:                UNKNOWN
+> ```
 
 ---
 
 ## Mục lục
 
-1. [Thang confidence](#1-thang-confidence)
-2. [Tổng quan 94 feature hiện có](#2-tổng-quan-94-feature-hiện-có)
-3. [Track A — `f0`..`f82` (opaque)](#3-track-a--f0f82-opaque)
-4. [Track B — feature event-derived hiện có](#4-track-b--feature-event-derived-hiện-có)
-5. [Track C — feature đề xuất từ synthetic business system](#5-track-c--feature-đề-xuất-từ-synthetic-business-system)
-6. [Lỗi contract phát hiện được](#6-lỗi-contract-phát-hiện-được)
-7. [Feature bị loại và lý do](#7-feature-bị-loại-và-lý-do)
+1. [Thang confidence & schema bản ghi](#1-thang-confidence--schema-bản-ghi)
+2. [Cardinality profile — 83 cột](#2-cardinality-profile--83-cột)
+3. [Reconstruction tier](#3-reconstruction-tier)
+4. [Track A1 — reconstructable](#4-track-a1--reconstructable)
+5. [Track A2 — pass-through (T3)](#5-track-a2--pass-through-t3)
+6. [Feature group & redundancy](#6-feature-group--redundancy)
+7. [Track B — event-derived hiện có](#7-track-b--event-derived-hiện-có)
+8. [Track C — feature nghiệp vụ mới](#8-track-c--feature-nghiệp-vụ-mới)
+9. [Lỗi contract phát hiện được](#9-lỗi-contract-phát-hiện-được)
+10. [Feature bị loại và lý do](#10-feature-bị-loại-và-lý-do)
 
 ---
 
-## 1. Thang confidence
+## 1. Thang confidence & schema bản ghi
+
+### 1.1 · Confidence
 
 | Mức | Định nghĩa | Được phép làm gì |
 |---|---|---|
-| **CONFIRMED** | Có công thức trong repo **hoặc** đo trực tiếp trên dữ liệu | Dùng tự do, viết test parity |
-| **INFERRED** | Suy luận hợp lý, chưa chứng minh | Ghi vào doc, **không** hard-code semantic vào tên biến |
-| **SYNTHETIC** | Do project thiết kế, lineage đầy đủ nhưng không đối chiếu được với LZD | Dùng tự do trong synthetic system |
-| **UNKNOWN** | Không có bằng chứng | **Chỉ** seed nguyên trạng. Không diễn giải, không mô phỏng, không đặt tên gợi ý |
+| **CONFIRMED** | Có công thức trong repo **hoặc** đo trực tiếp trên dữ liệu | Dùng tự do, viết test |
+| **SYNTHETIC_ASSUMPTION** | Semantic do project **đặt ra** để phục vụ CFS. Ràng buộc cấu trúc là CONFIRMED, nhưng *nghĩa* là giả định | Dùng trong synthetic system, **luôn** kèm nhãn. Không bao giờ trình bày như fact |
+| **INFERRED** | Suy luận hợp lý, chưa chứng minh | Ghi vào doc, không hard-code vào tên biến |
+| **SYNTHETIC** | Feature do project thiết kế, không đối chiếu với LZD | Dùng tự do trong synthetic system |
+| **UNKNOWN** | Không có bằng chứng | Chỉ pass-through có kiểm soát. Không diễn giải |
 
----
+> ⚠️ **`SYNTHETIC_ASSUMPTION` ≠ `CONFIRMED`.** Việc reconstruction khớp 100% **không**
+> nâng semantic lên CONFIRMED — xem `FEATURE_LINEAGE.md` §12 (Tautology vs Validation).
 
-## 2. Tổng quan 94 feature hiện có
-
-`spec.all_names` = 87 batch + 7 realtime = **94**.
-
-| Track | Số cột | Nguồn | Lineage | Confidence chủ đạo |
-|---|---|---|---|---|
-| **A** — `f0`–`f82` | 83 | CSV DESCN | ❌ không có | UNKNOWN |
-| **B** — `hist_*`/`tenure`/`voucher_used` | 4 | Event → dbt batch | ✅ đầy đủ | CONFIRMED (2 cột có lỗi contract) |
-| **B** — `rt_*` | 7 | Event → stream + dbt PIT | ✅ đầy đủ | CONFIRMED (1 cột skew) |
-
----
-
-## 3. Track A — `f0`..`f82` (opaque)
-
-### 3.1 · Bản ghi lineage chung
+### 1.2 · Schema bản ghi (14 trường)
 
 ```yaml
-feature_name:        f0 .. f82        # 83 cột
-business_definition: UNKNOWN
-source_entity:       UNKNOWN          # nằm ngoài repo, bên trong Lazada
-source_field:        UNKNOWN
-source_event:        UNKNOWN
-transformation:      UNKNOWN          # stg_user_snapshot.sql CHỈ cast(... as double)
-window:              UNKNOWN
-aggregation:         UNKNOWN
-encoding:            UNKNOWN
-batch_or_realtime:   BATCH (seed tĩnh — không bao giờ cập nhật)
-offline_definition:  đọc nguyên trạng từ marts.feat_user_serving
-online_definition:   đọc nguyên trạng từ Redis fs:{ver}:u:{uid}
-confidence:          UNKNOWN
+feature_name:                 …
+feature_group:                …    # ★ MỚI — nhóm cùng underlying information
+business_definition:          …
+candidate_synthetic_semantic: …    # ★ MỚI — chỉ dùng cho Track A1
+source_entity:                …
+source_field:                 …
+source_event:                 …
+transformation:               …
+window:                       …
+aggregation:                  …
+encoding:                     …
+batch_or_realtime:            …
+offline_definition:           …
+online_definition:            …
+reconstruction_tier:          T1 | T2 | T3 | UNKNOWN    # ★ MỚI
+confidence:                   …
 ```
 
-> **Ràng buộc thực thi:** không cột `f*` nào được đặt alias mang nghĩa nghiệp vụ ở
-> bất kỳ đâu trong code. Chúng là **vector trạng thái lịch sử mờ**.
+---
 
-### 3.2 · Cấu trúc đo được (CONFIRMED — không phải semantic)
+## 2. Cardinality profile — 83 cột
 
-Đây là **tính chất thống kê**, không phải nghĩa nghiệp vụ. Nguồn:
-`AUDIT_KIEN_TRUC_VA_FEATURE.md` §5.2 + đo bổ sung trong session này.
+Đo trên **toàn bộ** 926,669 dòng `full_trainset.csv`, không lấy mẫu.
 
-| Cột | Cấu trúc đo được | Bằng chứng | Confidence |
-|---|---|---|---|
-| `f40`–`f78` | **11 nhóm one-hot loại trừ**, `row_sum = 11.0` ở 100% dòng | 926,669/926,669 | CONFIRMED |
-| `f68 ≡ f71 ≡ f77`, `f74` lệch 2 dòng | 8 cột mã hoá **1 bit** | `sum(abs(a−b)) = 0` | CONFIRMED |
-| `f70` | **hằng số 1** — zero information | `min=max=1` | CONFIRMED |
-| `f23`, `f25` | trùng nhau 99.78%, `corr = 0.999957` | query trực tiếp | CONFIRMED |
-| `f79`–`f82` | 4 mã hoá của **cùng 1 biến 515 mức**, phân bố tần suất trùng khít | 663,495 / 28,969 / 3,947 giống hệt cả 4 cột | CONFIRMED |
-| `f1`, `f2` | nguyên `[0,365]`, 366 giá trị, `f1 ≥ f2` luôn đúng | `min(f1−f2)=0` | CONFIRMED |
-| `f30` | `10^f30` = số nguyên `[1,30]` ở **100%** dòng (tol. tương đối 1e-4); lưu 6 chữ số thập phân | đo lại trên 926,669 dòng — **nâng I2 → CONFIRMED** | CONFIRMED (cấu trúc) |
-| `f27`, `f34` | nguyên `[0,100]`, 32 và 31 giá trị | query | CONFIRMED |
-
-**Sau khi gộp trùng:** `f40`–`f78` (39 cột) chỉ mang **7 biến categorical thực sự**.
-
-### 3.3 · Điều KHÔNG được suy ra từ §3.2
-
-| Cấu trúc đo được | ❌ Kết luận **cấm** | Vì sao |
+| Cardinality | Số cột | Cột |
 |---|---|---|
-| `f30 = log10(n)`, `n ∈ [1,30]` | ~~"số đơn 30 ngày"~~ | Cũng khớp: số ngày hoạt động, số phiên, số sản phẩm xem — vô số khả năng |
-| 1 biến 515 mức | ~~"category_id"~~ | Cũng khớp: thành phố, brand, seller cluster |
-| `f1`,`f2` ∈ `[0,365]`, `f1 ≥ f2` | ~~"days_since_signup / days_since_last_order"~~ | Chỉ biết **có thứ tự**, không biết là gì |
-| `f27`,`f34` ∈ `[0,100]` | ~~"điểm loyalty"~~ | Percentile? điểm? tỉ lệ? — không phân biệt được |
+| **≤ 2** | **39** | `f40`–`f78` |
+| **3–30** | **3** | `f0`, `f7`, `f30` |
+| **31–400** | **8** | `f1`, `f2`, `f18`, `f19`, `f27`, `f34`, `f37`, `f38` |
+| **401–1000** | **10** | `f5`, `f6`, `f11`, `f14`, `f15`, `f39`, `f79`, `f80`, `f81`, `f82` |
+| **> 1000** | **23** | `f3`, `f4`, `f8`, `f9`, `f10`, `f12`, `f13`, `f16`, `f17`, `f20`, `f21`, `f22`, `f23`, `f24`, … |
 
-Cả bốn suy luận đều **hợp lý** và cả bốn đều **không có bằng chứng**.
-Điều cấm số 1 của project áp dụng.
+```
+Tổng:      83 cột
+Rời rạc:   60 / 83   (72%)   →  ứng viên Constrained Forward Synthesis
+Liên tục:  23 / 83   (28%)   →  T3 / UNKNOWN
+```
+
+> Đây là thông tin nền của toàn bộ chiến lược reconstruction. **Không được làm mất
+> khi rewrite tài liệu.**
 
 ---
 
-## 4. Track B — feature event-derived hiện có
+## 3. Reconstruction tier
 
-### 4.1 · `user_tenure_days` ⚠️ **CÓ LỖI CONTRACT**
+| Tier | Định nghĩa | Cơ chế |
+|---|---|---|
+| **T1 — EVENT-LEVEL** | Feature nảy sinh từ business event được sinh ra | sinh `n` event → aggregate → transform |
+| **T2 — ATTRIBUTE-LEVEL** | Feature là encoding của thuộc tính entity | gán level → encode |
+| **T3 — PASS-THROUGH** | Liên tục / cardinality cao, chưa đủ bằng chứng semantic | mang theo có kiểm soát, **chỉ nếu** selection cho thấy model cần |
+| **UNKNOWN** | Chưa đo đủ để phân loại | **không gán tier** |
+
+### 3.1 · Tổng quan phân bổ hiện tại
+
+| Tier | Số cột | Cột |
+|---|---|---|
+| **T1** | **7** | `f1`, `f2`, `f5`, `f11`, `f18`, `f19`, `f30` |
+| **T1 \| T2** (tier tự nó là assumption) | **4** | `f0`, `f7`, `f27`, `f34` |
+| **T2** | **45** | `f40`–`f78` (39), `f79`–`f82` (4), `f37`, `f38` |
+| **UNKNOWN** | **4** | `f6`, `f14`, `f15`, `f39` — ngoài selected set, xem §4.9 |
+| **T3** | **23** | 23 cột `>1000` |
+
+### 3.2 · Tier của 36 cột **đã chọn** (selection đã chốt)
+
+| Tier | Số | Cột |
+|---|---|---|
+| **T1** | **6** | `f1`, `f2`, `f5`, `f11`, `f18`, `f30` |
+| **T2** | **12** | `f37`, `f38`, `f79`, `f80`, `f81`, `f82`, `f40`, `f43`, `f44`, `f45`, `f64`, `f68` |
+| **T3** | **18** | `f3`,`f4`,`f8`,`f9`,`f10`,`f12`,`f13`,`f16`,`f20`,`f21`,`f22`,`f23`,`f25`,`f26`,`f28`,`f29`,`f31`,`f35` |
+| **UNKNOWN** | **0** | — |
+
+Chi tiết reconstruction: `DATA_GENERATION.md` · `RECONSTRUCTION_CONTRACT.md` §4.
+
+---
+
+## 4. Track A1 — reconstructable
+
+### 4.1 · `f30` — log10 counter, trần 30
 
 ```yaml
-feature_name:        user_tenure_days
-business_definition: "Số ngày kể từ lần đầu nhìn thấy user"   # theo feature_spec.yml
-source_entity:       EVENT
-source_field:        event_ts
-source_event:        (mọi loại)
-transformation:      date_diff('day', min(event_ts), now())
-window:              30 ngày   ← ★ ĐÂY LÀ VẤN ĐỀ
-aggregation:         MIN → DATE_DIFF
-encoding:            none
-batch_or_realtime:   BATCH
-offline_definition:  dbt/models/marts/feat_user_behaviour.sql
-online_definition:   seed từ batch, không cập nhật
-confidence:          CONFIRMED (công thức) / ⚠️ SAI so với business_definition
+feature_name:                 f30
+feature_group:                G_counter_30
+business_definition:          UNKNOWN
+candidate_synthetic_semantic: order_count_30d          # ★ chỉ là ứng viên
+structural_constraint:        10^f30 ∈ ℤ ∩ [1,30], 100% dòng (926,669/926,669)
+                              lưu 6 chữ số thập phân ⇒ max(10^f30) = 29.999982
+                              ⇒ so sánh phải dùng DUNG SAI TƯƠNG ĐỐI (1e-4), không tuyệt đối
+transformation:               log10(counter)
+aggregation:                  COUNT → log10
+encoding:                     none
+reconstruction_tier:          T1
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+true_semantic:                UNKNOWN
 ```
 
-> **Lỗi:** CTE `events` lọc `event_ts >= now() - interval '30 days'` **trước** khi
-> tính `min(event_ts)`. Nên `user_tenure_days` **bị chặn trên ở 30** — nó là
-> *"số ngày kể từ event đầu tiên trong 30 ngày gần nhất"*, không phải tuổi tài khoản.
+### 4.2 · `f18`, `f19` — cùng họ `log10(counter)`, trần khác
+
+| | `f18` | `f19` |
+|---|---|---|
+| Cardinality | 144 | 156 |
+| `10^x ∈ ℤ` | **100%** dòng | **100%** dòng |
+| Tỉ lệ dòng `= 0.0` | **95.5%** | **93.0%** |
+| max | 3.354108 ⇒ `n_max = 2260` | 3.673205 ⇒ `n_max ≈ 4712` |
+| Alphabet quan sát | `log10(1)=0`, `log10(2)=0.30103`, `log10(3)=0.477121`, `log10(4)=0.60206`, `log10(5)=0.69897`, … | cùng dạng |
+| `reconstruction_tier` | **T1** | **T1** |
+
+```yaml
+structural_constraint:        10^f{18,19} ∈ ℤ, 100% dòng
+candidate_synthetic_semantic: counter thưa (95.5% / 93.0% dòng = giá trị nhỏ nhất)
+                              trần rất khác f30 ⇒ ĐẾM MỘT THỨ KHÁC
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+```
+
+> **Ba cột `f18`, `f19`, `f30` cùng một họ biến đổi nhưng ba trần khác nhau
+> (2260 / 4712 / 30).** Chúng đếm ba thứ khác nhau. Không được gán cùng một semantic.
+
+### 4.3 · `f1`, `f2` — cặp có thứ tự
+
+```yaml
+feature_group:                G_recency_pair
+structural_constraint:        nguyên [0,365], 366 mức mỗi cột
+                              f1 ≥ f2 ĐÚNG Ở MỌI DÒNG  (min(f1−f2) = 0)
+candidate_synthetic_semantic: hai mốc ngày có thứ tự trên CUSTOMER
+transformation:               date_diff('day', attr_date, feature_ts)
+reconstruction_tier:          T1
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+```
+
+Ràng buộc `f1 ≥ f2` **tự thoả** khi reconstruct nếu `attr_date_A ≤ attr_date_B`.
+
+### 4.4 · `f0`, `f7`, `f27`, `f34` — tier tự nó là assumption
+
+| Cột | Cardinality | Miền | Ghi chú |
+|---|---|---|---|
+| `f0` | 6 | `{0,1,2,3,4,5}` nguyên | phân bố: 271043 / 123771 / 159113 / 170725 / 91804 / 110213 |
+| `f7` | 6 | `{0,1,2,3,4,5}` nguyên | khác `f0` ở **470,346 / 926,669 dòng (50.8%)** ⇒ **biến khác hẳn** |
+| `f27` | 32 | nguyên `[0,100]` | |
+| `f34` | 31 | nguyên `[0,100]` | |
+
+```yaml
+reconstruction_tier:          T1 | T2      # ★ dữ liệu KHỚP CẢ HAI cách đọc
+```
+
+```
+T1:  counter bị cap        →  sinh n event, COUNT
+T2:  mức ordinal / tier    →  gán thuộc tính, encode
+```
+
+Cả hai đều cho tái tạo chính xác từng dòng. **Việc chọn cái nào không suy ra được
+từ dữ liệu** — nó là `SYNTHETIC_ASSUMPTION`, phải ghi rõ khi chốt.
+
+### 4.5 · `f40`–`f78` — khối one-hot, **7 biến thật**
+
+```yaml
+feature_group:                G_onehot_1 .. G_onehot_7
+structural_constraint:        11 nhóm loại trừ lẫn nhau
+                              row_sum(f40..f78) = 11.0 ở 100% dòng (926,669/926,669)
+                              f68 ≡ f71 ≡ f77  (sum(abs(a−b)) = 0)
+                              f74 lệch f68 ở 2/926,669 dòng
+                              f70 hằng số = 1  ⇒ zero information
+                              ⇒ sau khử trùng: 39 cột mã hoá 7 BIẾN CATEGORICAL
+candidate_synthetic_semantic: CUSTOMER.synthetic_segment_G1..G7
+encoding:                     one-hot
+reconstruction_tier:          T2
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+```
+
+### 4.6 · `f79`–`f82` — **MỘT** biến categorical 515 mức, bốn encoding
+
+```yaml
+feature_name:                 f79, f80, f81, f82
+feature_group:                G_category_515                    # ★ MỘT nhóm duy nhất
+structural_constraint:        cardinality(f79) = cardinality(f80)
+                            = cardinality(f81) = cardinality(f82) = 515
+                              cardinality(tuple f79,f80,f81,f82) = 515      ← BẰNG NHAU
+                              ⇒ ánh xạ value ↔ level id là SONG ÁNH HOÀN HẢO
+                              ⇒ bốn cột là BỐN CÁCH MÃ HOÁ CỦA MỘT BIẾN
+                              (bằng chứng cũ: phân bố tần suất trùng khít
+                               663,495 / 28,969 / 3,947 giống hệt cả bốn cột)
+source_entity:                CUSTOMER
+source_field:                 synthetic_category_515            # MỘT thuộc tính
+encoding:                     4 encoding khác nhau của cùng level id
+                              (bảng mã hoá suy ra từ chính dataset: 515 cặp level↔value)
+reconstruction_tier:          T2
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+true_semantic:                UNKNOWN
+```
+
+> ❌ **Không được coi `f79`–`f82` là bốn business variable độc lập.**
+> Trong ERD chúng ứng với **một** thuộc tính duy nhất.
+
+### 4.7 · `f37`, `f38` — **HAI** biến, chung một bảng mã hoá
+
+```yaml
+feature_group:                G_encoded_64  /  G_encoded_241     # ★ HAI nhóm khác nhau
+structural_constraint:        cardinality(f37) = 64,  miền [0, 0.715096]
+                              cardinality(f38) = 241, miền [0, 0.843222]
+                              cardinality(tuple f37,f38) = 1133  >  max(64,241)
+                                    ⇒ KHÔNG song ánh ⇒ HAI BIẾN ĐỘC LẬP
+                              alphabet(f37) ⊂ alphabet(f38) hoàn toàn (64/64 giá trị)
+                                    ⇒ DÙNG CHUNG MỘT HÀM ENCODE
+                              test x·q ∈ ℤ phẳng 17.8% (f37) / 6.2% (f38) với mọi
+                              q ∈ {2,3,4,5,6,8,10,12,20,50,100,1000}
+                                    = đúng tỉ lệ dòng bằng 0
+                                    ⇒ KHÔNG phải tỉ lệ của các counter nhỏ
+                              f37 = f38 ở 109,690 dòng; f37 ≤ f38 ở 685,289/926,669
+reconstruction_tier:          T2
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+```
+
+> ⚠️ **Đây là cấu trúc trông giống `f79`–`f82` nhưng phải mô hình hoá KHÁC.**
 >
-> **Sửa đúng:** lấy từ `CUSTOMER.registered_at` (ERD §3.1), không lấy từ event.
-> Tuổi tài khoản là thuộc tính của entity, không phải hàm của event window.
+> | | `f79`–`f82` | `f37`, `f38` |
+> |---|---|---|
+> | tuple cardinality | **= per-column** (515) | **> per-column** (1133 > 241) |
+> | Kết luận | **1** biến, 4 encoding | **2** biến, 1 bảng mã hoá dùng chung |
+> | ERD | 1 thuộc tính | 2 thuộc tính |
 
-### 4.2 · `hist_order_cnt_30d`
-
-```yaml
-business_definition: "Số đơn trong 30 ngày gần nhất"
-source_entity:       ORDER  (qua EVENT)
-source_event:        order            → ĐỀ XUẤT ĐỔI: ORDER_PAID
-transformation:      count(*) filter (where event_type = 'order')
-window:              30 ngày (var history_days)
-aggregation:         COUNT
-batch_or_realtime:   BATCH
-offline_definition:  feat_user_behaviour.sql
-online_definition:   seed từ batch, KHÔNG cập nhật realtime (đúng — lambda)
-confidence:          CONFIRMED
-```
-
-> 🟦 **Đề xuất:** đổi nguồn sang `ORDER_PAID` thay vì `order`. Hiện tại `order` không
-> phân biệt đơn đã trả tiền hay chưa (`BUSINESS_EVENT_MODEL.md` §7.1) ⇒ đang đếm cả
-> đơn sẽ bị huỷ.
-
-### 4.3 · `hist_gmv_30d`
+### 4.8 · `f5`, `f11` — **T1**, counter log cơ số **e** *(đã đo)*
 
 ```yaml
-business_definition: "GMV 30 ngày gần nhất"
-source_entity:       ORDER_ITEM (qua EVENT)
-source_field:        price, quantity
-transformation:      sum(price * quantity) filter (event_type='order')
-                     -- gmv định nghĩa tại stg_app_events.sql
-window:              30 ngày
-aggregation:         SUM
-batch_or_realtime:   BATCH
-confidence:          CONFIRMED (công thức) / ⚠️ dữ liệu không nhất quán
+feature_group:                G_counter_ln_a / G_counter_ln_b     # HAI biến độc lập
+structural_constraint:        e^f ∈ ℤ ở 100% dòng (dung sai tương đối 1e-12)
+                              f5 :  n ∈ [1, 14245], 864 mức, 74.2% dòng có n = 1
+                              f11:  n ∈ [1,  2144], 669 mức, 70.2% dòng có n = 1
+                              lưu ở ĐỘ CHÍNH XÁC float64 ĐẦY ĐỦ (16 chữ số)
+                              f5 ≠ f11 ở 381,058 dòng; card(tuple) = 16,479
+                                    ⇒ HAI biến độc lập, không song ánh
+transformation:               ln(counter)
+reconstruction_tier:          T1
+confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
+true_semantic:                UNKNOWN — đếm cái gì, cửa sổ bao lâu
 ```
 
-> ⚠️ **Vấn đề nguồn:** `price` do `event_producer` sinh ngẫu nhiên **cho từng event**
-> (`lognormvariate(3.2, 0.8)`). Cùng một `item_id` có giá khác nhau ở hai event khác
-> nhau. GMV vì vậy không truy ngược về catalog nào. Sau khi có SKU (ERD §3.4) thì
-> `unit_price` lấy từ `SKU.list_price` và GMV trở nên kiểm chứng được.
-
-### 4.4 · `voucher_used_30d` ⚠️ **TÊN SAI SO VỚI CÔNG THỨC**
-
-```yaml
-business_definition: "Số voucher đã dùng 30 ngày"    # theo feature_spec.yml
-transformation:      count(*) filter (where event_type = 'voucher_claim')   # ← đếm CLAIM
-window:              30 ngày
-confidence:          CONFIRMED (công thức) / ⚠️ SAI so với business_definition
-```
-
-> **CLAIM ≠ REDEEM.** Thu thập voucher là *ý định*; dùng voucher là *giao dịch có
-> `order_id`* (`LAZADA_BUSINESS_DOMAIN.md` §7.2). Đây là hai feature khác nhau về
-> sức dự báo và nên tồn tại song song:
+> ⚠️ **Dataset dùng HAI quy ước log khác nhau:**
 >
-> | Feature | Nguồn đúng |
-> |---|---|
-> | `voucher_claimed_30d` | `VOUCHER_CLAIMED` ← đây là thứ đang được tính |
-> | `voucher_redeemed_30d` | `VOUCHER_REDEEMED` ← đây là thứ tên đang hứa |
+> | Regime | Cột | Cơ số | Lưu trữ | Round-trip khớp chính xác |
+> |---|---|---|---|---|
+> | `L10` | `f18`, `f19`, `f30` | 10 | 6 chữ số | **100.0000%** |
+> | `LN` | `f5`, `f11` | **e** | float64 đầy đủ | **93.05% / 93.42%** — cần dung sai `1e-15` |
 >
-> **Không đổi tên cột hiện có mà không bump `feature_spec.version`** (điều cấm số 10).
-> Xem `MIGRATION_PLAN.md` §4.
+> ⇒ Hai regime cần **hai luật so sánh khác nhau** ở GATE A.
+> Xem `RECONSTRUCTION_CONTRACT.md` §9.
 
-### 4.5 · Nhóm `rt_*` (7 cột)
+### 4.9 · `f6`, `f14`, `f15`, `f39` — ngoài selected set, có trùng lặp
 
-Cửa sổ 1h, chia **12 ô 5 phút** ở cả hai phía — đây là thiết kế chống skew rất tốt
-đã có sẵn, giữ nguyên.
+`[MEASURED]` — không thuộc 36 cột đã chọn, ghi lại để không đo lại:
+
+| Cặp | Kết quả | Ghi chú |
+|---|---|---|
+| `f6` ≡ `f15` | **trùng tuyệt đối** — `sum(abs(f6−f15)) = 0`, 0 dòng lệch | `10^x ∈ ℤ` 100% ⇒ log10 counter |
+| `f14` ≡ `f39` | **trùng tuyệt đối** — 0 dòng lệch | `[0, 0.999327]`, **không** phải log counter |
+
+⇒ Khối "401–1000" gồm 10 cột chỉ mang **5 biến độc lập**:
+`f5` · `f11` · `f6≡f15` · `f14≡f39` · `f79`–`f82`.
+
+---
+
+## 5. Track A2 — pass-through (T3)
+
+23 cột: `f3`, `f4`, `f8`, `f9`, `f10`, `f12`, `f13`, `f16`, `f17`, `f20`, `f21`,
+`f22`, `f23`, `f24`, …
+
+```yaml
+business_definition:          UNKNOWN
+candidate_synthetic_semantic: (không có — KHÔNG được ép)
+reconstruction_tier:          T3
+confidence:                   UNKNOWN
+```
+
+**Quy tắc xử lý — chỉ áp dụng SAU feature selection:**
+
+```
+if feature ∈ selected_set:
+        → controlled pass-through strategy
+          (thuộc tính mờ của CUSTOMER; ghi rõ đây KHÔNG phải feature engineering;
+           đánh dấu baseline/fallback)
+else:
+        → loại khỏi production feature pipeline
+```
+
+> **Không tự động gán business semantic cho 23 cột này chỉ để tài liệu trông đẹp.**
+
+---
+
+## 6. Feature group & redundancy
+
+### 6.1 · Bảng nhóm
+
+| `feature_group` | Cột | Số biến thật | Bằng chứng |
+|---|---|---|---|
+| `G_dup_continuous` | `f23`, `f25` | **1** | trùng 99.78% dòng, `corr = 0.999957` |
+| `G_onehot_1..7` | `f40`–`f78` (39 cột) | **7** | 11 nhóm loại trừ; `f68≡f71≡f77`; `f74` lệch 2 dòng; `f70` hằng số |
+| `G_category_515` | `f79`–`f82` | **1** | tuple cardinality = per-column = 515 |
+| `G_encoded_64` | `f37` | **1** | |
+| `G_encoded_241` | `f38` | **1** | tuple(f37,f38) = 1133 ⇒ tách khỏi `f37` |
+| `G_zero_info` | `f70` | **0** | `min = max = 1` |
+
+### 6.2 · Quy tắc selection
+
+```
+❌ SAI:   6 feature  =  6 nguồn thông tin độc lập
+✅ ĐÚNG:  group TRƯỚC, rồi mới selection
+```
+
+Selection chạy ở **hai** mức: `feature level` và `feature-group level`.
+
+**Hệ quả đã đo:** ~21% "gain" ở đỉnh bảng importance thực chất thuộc về **2 biến,
+không phải 6**. Mọi quyết định dựa trên bảng importance chưa group đều bị bóp méo.
+
+### 6.3 · Ràng buộc
+
+Không xoá/gộp cột chỉ vì correlation cao **mà chưa có baseline/ablation evidence**.
+Grouping ở §6.1 là để **selection đọc đúng**, không phải lệnh xoá.
+Ngoại lệ duy nhất: `f70` — và vẫn phải bump `feature_spec.version`.
+
+---
+
+## 7. Track B — event-derived hiện có
+
+11 feature event-derived tồn tại trong baseline/full mart hoặc training path cũ.
+Chúng **không** thuộc Redis selected feature sync v2, vốn chỉ có 36 cột
+`fs_2026_08_v1`. `reconstruction_tier` không áp dụng cho nhóm này.
+
+### 7.1 · `user_tenure_days` ⚠️ **LỖI CONTRACT**
+
+```yaml
+business_definition:  "Số ngày kể từ lần đầu nhìn thấy user"      # legacy/full mart
+transformation:       date_diff('day', min(event_ts), now())
+window:               30 ngày                                     # ← VẤN ĐỀ
+confidence:           CONFIRMED (công thức) / ⚠️ SAI so với business_definition
+```
+
+CTE `events` lọc `event_ts >= now() − 30 days` **trước** khi `min(event_ts)` ⇒
+feature **bị chặn trên ở 30**. Nó là *"số ngày kể từ event đầu tiên trong 30 ngày
+gần nhất"*, không phải tuổi tài khoản.
+
+**Sửa:** lấy từ `CUSTOMER.registered_at` (ERD §3.1) — tuổi tài khoản là thuộc tính
+entity, không phải hàm của event window.
+
+### 7.2 · `hist_order_cnt_30d`
+
+```yaml
+source_event:         order      → ĐỀ XUẤT ĐỔI: ORDER_PAID
+transformation:       count(*) filter (event_type = 'order')
+window:               30 ngày (var history_days)
+batch_or_realtime:    BATCH
+confidence:           CONFIRMED
+```
+
+Hiện `order` không phân biệt đơn đã trả tiền hay chưa ⇒ đang đếm cả đơn sẽ bị huỷ.
+
+### 7.3 · `hist_gmv_30d`
+
+```yaml
+transformation:       sum(price × quantity) filter (event_type='order')
+confidence:           CONFIRMED (công thức) / ⚠️ dữ liệu không nhất quán
+```
+
+`price` do `event_producer` sinh ngẫu nhiên **cho từng event** ⇒ cùng `item_id` có
+giá khác nhau ở hai event ⇒ GMV không truy ngược về catalog nào. Sau khi có SKU
+(ERD §3.4) thì `unit_price` lấy từ `SKU.list_price`.
+
+### 7.4 · `voucher_used_30d` ⚠️ **TÊN SAI SO VỚI CÔNG THỨC**
+
+```yaml
+business_definition:  "Số voucher đã dùng 30 ngày"
+transformation:       count(*) filter (event_type = 'voucher_claim')   # ← đếm CLAIM
+confidence:           CONFIRMED (công thức) / ⚠️ SAI so với business_definition
+```
+
+**CLAIM ≠ REDEEM.** Hai feature khác nhau, nên tồn tại song song:
+
+| Feature | Nguồn đúng |
+|---|---|
+| `voucher_claimed_30d` | `VOUCHER_CLAIMED` ← thứ đang được tính |
+| `voucher_redeemed_30d` | `VOUCHER_REDEEMED` ← thứ tên đang hứa |
+
+Nếu đưa lại feature này vào selected feature contract thì phải đặt tên đúng và
+bump `feature_spec.version`; hiện nó không thuộc 36 cột Redis sync.
+
+### 7.5 · Nhóm `rt_*` (7 cột)
+
+Cửa sổ 1h chia **12 ô 5 phút** ở cả hai phía — thiết kế chống skew tốt, giữ nguyên.
 
 | Feature | source_event | aggregation | offline | online | confidence |
 |---|---|---|---|---|---|
-| `rt_events_1h` | mọi event | `COUNT(*)` | `feat_user_realtime_pit.sql` | `_update_realtime()` | **CONFIRMED** |
-| `rt_page_view_1h` | `page_view` | `COUNT filter` | ✅ | ✅ `EVENT_TO_COUNTER` | **CONFIRMED** |
+| `rt_events_1h` | mọi event | `COUNT(*)` | ✅ | ✅ | **CONFIRMED** |
+| `rt_page_view_1h` | `page_view` | `COUNT filter` | ✅ | ✅ | **CONFIRMED** |
 | `rt_add_to_cart_1h` | `add_to_cart` | `COUNT filter` | ✅ | ✅ | **CONFIRMED** |
 | `rt_order_1h` | `order` | `COUNT filter` | ✅ | ✅ | **CONFIRMED** |
 | `rt_gmv_1h` | `order` | `SUM(price×qty)` | ✅ | ✅ | **CONFIRMED** |
 | `rt_session_len_sec` | mọi event | `date_diff('second', min, max)` | ✅ | ❌ **KHÔNG GHI** | ⚠️ **SKEW** |
-| `rt_last_event_ts` | mọi event | `MAX(event_ts)` | ✅ | ✅ (set, không cộng dồn) | **CONFIRMED** |
+| `rt_last_event_ts` | mọi event | `MAX(event_ts)` | ✅ | ✅ | **CONFIRMED** |
 
-#### `rt_session_len_sec` — training/serving skew có thật
+**`rt_session_len_sec`:** offline tính thật, online luôn nhận default `0.0`.
+Đây là training/serving skew có thật (audit C16).
 
-```yaml
-offline_definition:  date_diff('second', min(event_ts), max(event_ts))
-                     trên cửa sổ 12 ô × 5 phút   → GIÁ TRỊ THẬT
-online_definition:   (không tồn tại)             → LUÔN NHẬN DEFAULT 0.0
-confidence:          CONFIRMED là có skew
-```
+> **Khi sửa:** chốt **một** định nghĩa trước — từ `SESSION.started_at` hay từ
+> `min(event_ts)` trong cửa sổ 1h? Hai công thức khác nhau với phiên > 1 giờ.
+> Sửa vội sẽ thay skew này bằng skew khác.
 
-`stream_consumer._update_realtime()` chỉ ghi `rt_events_1h`, 3 counter trong
-`EVENT_TO_COUNTER`, `rt_gmv_1h`, `rt_last_event_ts`. **Không có** `rt_session_len_sec`.
-Đây là audit C16 — độc lập với mọi kế hoạch mô phỏng, sửa rẻ, giá trị ngay.
+### 7.6 · Vấn đề point-in-time của nhóm batch
 
-> 🟦 **Cách sửa đúng về nghiệp vụ:** khi có entity SESSION (ERD §4.1), độ dài phiên
-> tính từ `SESSION.started_at` chứ không từ `min(event_ts)` trong cửa sổ 1h. Hai công
-> thức cho kết quả khác nhau với phiên kéo dài quá 1 giờ. **Chốt một định nghĩa duy
-> nhất trước khi sửa**, nếu không sẽ sửa skew này bằng cách tạo ra skew khác.
-
-### 4.6 · Vấn đề point-in-time của nhóm batch — **phát hiện mới**
-
-| | Cửa sổ tính tại | Point-in-time? |
+| | Cửa sổ tính tại | PIT? |
 |---|---|---|
-| `rt_*` (`feat_user_realtime_pit.sql`) | `feature_ts` của snapshot, làm tròn ô 5 phút | ✅ Đúng — `e.event_ts < s.feature_ts` |
-| `hist_*`, `user_tenure_days` (`feat_user_behaviour.sql`) | **`now()` lúc dbt build** | ❌ **Không** |
+| `rt_*` (`feat_user_realtime_pit.sql`) | `feature_ts`, làm tròn ô 5 phút | ✅ |
+| `hist_*`, `user_tenure_days` (`feat_user_behaviour.sql`) | **`now()` lúc dbt build** | ❌ |
 
-`seed_loader.py` gán `feature_ts = now()` lúc nạp CSV. dbt chạy **sau đó**. Nên
-`feat_user_behaviour` gộp cả event xảy ra **sau** `feature_ts` — tức là **sau mốc
-point-in-time mà `rt_*` tôn trọng**.
+`seed_loader` gán `feature_ts = now()` lúc nạp CSV; dbt chạy **sau đó** ⇒
+`feat_user_behaviour` gộp cả event xảy ra **sau** `feature_ts`.
 
-Hệ quả: trong cùng một dòng `marts.training_dataset`, `rt_*` tôn trọng biên PIT còn
-`hist_*` thì không. Mức nghiêm trọng phụ thuộc khoảng cách seed → dbt build; hiện
-tại nhỏ vì user seed chưa có event nào (gap **G4**), nhưng sẽ thành leakage thật ngay
-khi backfill event lịch sử.
-
-**Sửa:** `feat_user_behaviour` phải join với snapshot và dùng `feature_ts` làm mốc,
-đúng như `feat_user_realtime_pit` đang làm.
+Hiện chưa gây hại vì user seed chưa có event (gap G4) — nhưng sẽ thành **leakage thật**
+ngay khi backfill event lịch sử.
 
 ---
 
-## 5. Track C — feature đề xuất từ synthetic business system
+## 8. Track C — feature nghiệp vụ mới
 
-Đây là feature **có lineage đầy đủ từ Layer 1**, do synthetic business system sinh ra.
-Tất cả ở mức `SYNTHETIC` — nghĩa là hợp lệ và kiểm chứng được **trong hệ thống này**,
-nhưng không tuyên bố tương ứng với bất kỳ `f*` nào.
+Feature **không** có trong LZD, do synthetic business system sinh ra.
+`reconstruction_tier` không áp dụng. Confidence: `SYNTHETIC`.
 
-> **Chưa cột nào được thêm vào `feature_spec.yml`.** Danh sách này là đề xuất để bàn.
-> Thêm feature ⇒ bump `feature_spec.version` ⇒ train lại. Xem `MIGRATION_PLAN.md` §4.
+> **Chưa feature nghiệp vụ mới nào được thêm vào selected feature contract.**
+> Thêm feature ⇒ bump `feature_spec.version` và cập nhật mart sync tương ứng.
 
-### 5.1 · Profile (từ `CUSTOMER`, batch)
+### 8.1 · Profile (từ `CUSTOMER`, batch)
 
-| Feature | source | transformation | window | encoding |
-|---|---|---|---|---|
-| `cust_tenure_days_true` | `CUSTOMER.registered_at` | `date_diff('day', registered_at, feature_ts)` | — | none |
-| `cust_member_tier` | `CUSTOMER.member_tier` | — | — | **one-hot (4)** |
-| `cust_city_tier` | `CUSTOMER.city_tier` | — | — | ordinal |
-| `cust_country` | `CUSTOMER.country` | — | — | one-hot (6) |
+| Feature | source | transformation | encoding |
+|---|---|---|---|
+| `cust_tenure_days_true` | `CUSTOMER.registered_at` | `date_diff('day', registered_at, feature_ts)` | none |
+| `cust_member_tier` | `CUSTOMER.member_tier` | — | one-hot (4) |
+| `cust_city_tier` | `CUSTOMER.city_tier` | — | ordinal |
+| `cust_country` | `CUSTOMER.country` | — | one-hot (6) |
 
-### 5.2 · RFM (từ `ORDER`, batch)
+### 8.2 · RFM (từ `ORDER`, batch)
 
 | Feature | source_event | aggregation | window |
 |---|---|---|---|
 | `recency_days_since_last_order` | `ORDER_PAID` | `date_diff('day', max(event_ts), feature_ts)` | 365d |
 | `frequency_orders_90d` | `ORDER_PAID` | `COUNT` | 90d |
 | `monetary_gmv_90d` | `ORDER_PAID` | `SUM(amount)` | 90d |
-| `avg_order_value_90d` | `ORDER_PAID` | `SUM(amount)/COUNT` | 90d |
+| `avg_order_value_90d` | `ORDER_PAID` | `SUM/COUNT` | 90d |
 | `log_orders_90d` | ↑ | `log10(1 + frequency_orders_90d)` | 90d |
 
 > `log_orders_90d` dùng log10 vì đó là dạng biến đổi **đã quan sát được** trong dataset
-> (`f30`). Đây là quyết định thiết kế lấy cảm hứng từ cấu trúc LZD — ✅ hợp lệ.
-> ❌ Nó **không** tuyên bố `log_orders_90d` tương ứng `f30`.
+> (`f18`, `f19`, `f30`). ✅ Lấy cảm hứng từ cấu trúc LZD là hợp lệ.
+> ❌ Nó **không** tuyên bố tương ứng với bất kỳ `f*` nào.
 
-### 5.3 · Cart / intent (từ `CART`, gần realtime)
+### 8.3 · Cart / intent
 
 | Feature | source | window | mode |
 |---|---|---|---|
-| `cart_value_current` | `CART_ITEM × SKU.list_price` | trạng thái hiện tại | REALTIME |
+| `cart_value_current` | `CART_ITEM × SKU.list_price` | hiện tại | REALTIME |
 | `cart_item_cnt_current` | `CART_ITEM` | hiện tại | REALTIME |
 | `cart_age_hours` | `min(CART_ITEM.added_at)` | hiện tại | REALTIME |
 | `cart_abandoned_cnt_30d` | giỏ có item nhưng không `ORDER_CREATED` | 30d | BATCH |
 
-> **Đây là nhóm có sức dự báo uplift cao nhất về mặt nghiệp vụ** — user có giỏ giá
-> trị cao để lâu chưa mua chính là *persuadable* điển hình
-> (`LAZADA_BUSINESS_DOMAIN.md` §8.1). Không nhóm feature nào hiện có nắm được tín hiệu này.
+> Nhóm có sức dự báo uplift cao nhất về nghiệp vụ — giỏ giá trị cao để lâu chưa mua
+> chính là *persuadable* điển hình. Không nhóm feature nào hiện có nắm được tín hiệu này.
+>
+> ⚠️ Đây là feature **trạng thái**, không cộng dồn được qua ô 5 phút ⇒ cơ chế parity
+> hiện tại không áp dụng trực tiếp. Cần thiết kế riêng — công việc thật, không miễn phí.
 
-### 5.4 · Voucher (từ Domain D)
+### 8.4 · Voucher
 
-| Feature | source_event | window | mode | Ghi chú |
-|---|---|---|---|---|
-| `voucher_issued_30d` | `VOUCHER_ISSUED` | 30d | BATCH | lịch sử **treatment** |
-| `voucher_claimed_30d` | `VOUCHER_CLAIMED` | 30d | BATCH | = `voucher_used_30d` hiện tại |
-| `voucher_redeemed_30d` | `VOUCHER_REDEEMED` | 30d | BATCH | thứ tên cũ đang hứa |
-| `voucher_claim_rate_30d` | ↑ | 30d | BATCH | `claimed / issued`, ratio |
-| `voucher_redeem_rate_30d` | ↑ | 30d | BATCH | `redeemed / claimed` |
-| `rt_voucher_active_cnt` | `VOUCHER_ISSUED` − `REDEEMED`/`EXPIRED` | hiện tại | **REALTIME** | ★ policy cần cho cooldown |
-| `days_since_last_voucher` | `VOUCHER_ISSUED` | 365d | BATCH | |
-
-> ⚠️ **Cảnh báo nhân quả:** `voucher_*_30d` là **lịch sử treatment**. Đưa chúng vào
-> model uplift phải cân nhắc — nếu chính sách phát voucher trong quá khứ đã targeted
-> (như train set của LZD), thì các feature này mã hoá luôn *chính sách cũ*, và model
-> có thể học "ai từng được phát thì phát tiếp" thay vì học uplift thật. Cần
-> ablation trước khi đưa vào production. Ghi nhận, chưa quyết.
-
-### 5.5 · Realtime mở rộng
-
-| Feature | source_event | window | Ghi chú |
+| Feature | source_event | window | mode |
 |---|---|---|---|
-| `rt_checkout_started_1h` | `CHECKOUT_STARTED` | 1h | tín hiệu ý định mạnh nhất |
-| `rt_search_1h` | `SEARCH_PERFORMED` | 1h | |
-| `rt_cart_remove_1h` | `ITEM_REMOVED_FROM_CART` | 1h | do dự |
-| `rt_payment_failed_1h` | `PAYMENT_FAILED` | 1h | ma sát |
-| `rt_distinct_category_1h` | `PRODUCT_VIEWED` | 1h | `COUNT(DISTINCT category_id)` — duyệt rộng vs sâu |
+| `voucher_issued_30d` | `VOUCHER_ISSUED` | 30d | BATCH |
+| `voucher_claimed_30d` | `VOUCHER_CLAIMED` | 30d | BATCH |
+| `voucher_redeemed_30d` | `VOUCHER_REDEEMED` | 30d | BATCH |
+| `voucher_claim_rate_30d` | ↑ | 30d | BATCH |
+| `voucher_redeem_rate_30d` | ↑ | 30d | BATCH |
+| `rt_voucher_active_cnt` | `ISSUED` − `REDEEMED`/`EXPIRED` | hiện tại | **REALTIME** |
+| `days_since_last_voucher` | `VOUCHER_ISSUED` | 365d | BATCH |
 
-Tất cả tuân đúng cơ chế **12 ô × 5 phút** đang có ⇒ parity offline/online miễn phí.
-Ngoại lệ: `rt_distinct_category_1h` dùng `COUNT(DISTINCT)` **không cộng dồn được**
-qua các ô — cần HyperLogLog trên Redis hoặc chấp nhận xấp xỉ. **Ghi nhận là feature
-khó, cân nhắc bỏ nếu không muốn thêm phức tạp.**
+> ⚠️ **Cảnh báo nhân quả:** đây là *lịch sử treatment*. Nếu chính sách phát voucher
+> quá khứ đã targeted (như train set LZD), feature này mã hoá luôn *chính sách cũ*,
+> và model có thể học "ai từng được phát thì phát tiếp" thay vì học uplift thật.
+> **Cần ablation trước khi đưa vào production.**
+
+### 8.5 · Realtime mở rộng
+
+| Feature | source_event | window |
+|---|---|---|
+| `rt_checkout_started_1h` | `CHECKOUT_STARTED` | 1h |
+| `rt_search_1h` | `SEARCH_PERFORMED` | 1h |
+| `rt_cart_remove_1h` | `ITEM_REMOVED_FROM_CART` | 1h |
+| `rt_payment_failed_1h` | `PAYMENT_FAILED` | 1h |
+| `rt_distinct_category_1h` | `PRODUCT_VIEWED` | 1h |
+
+Tất cả tuân cơ chế 12 ô × 5 phút ⇒ parity miễn phí. Ngoại lệ: `rt_distinct_category_1h`
+dùng `COUNT(DISTINCT)` **không cộng dồn được** qua các ô — cần HyperLogLog hoặc chấp
+nhận xấp xỉ. **Cân nhắc bỏ nếu không muốn thêm phức tạp.**
 
 ---
 
-## 6. Lỗi contract phát hiện được
-
-Tổng hợp — xếp theo mức độ.
+## 9. Lỗi contract phát hiện được
 
 | # | Feature | Vấn đề | Mức | Sửa ở đâu |
 |---|---|---|---|---|
 | **D1** | `rt_session_len_sec` | Offline tính thật, online luôn 0 ⇒ **skew** | 🔴 | `stream_consumer._update_realtime()` |
-| **D2** | `user_tenure_days` | Bị chặn ở 30 do lọc cửa sổ trước khi `min()`; không phải tuổi tài khoản | 🟠 | `feat_user_behaviour.sql` + cần `CUSTOMER.registered_at` |
-| **D3** | `voucher_used_30d` | Tên nói "used", công thức đếm **claim** | 🟠 | Đặt lại tên khi bump spec version |
-| **D4** | `hist_*` không point-in-time | Dùng `now()` lúc dbt build thay vì `feature_ts` ⇒ leakage khi có event lịch sử | 🟠 | `feat_user_behaviour.sql` |
-| **D5** | `hist_gmv_30d`, `rt_gmv_1h` | `price` ngẫu nhiên mỗi event, không truy về catalog | 🟡 | Cần SKU (ERD §3.4) |
-| **D6** | `f70` | Hằng số 1 — zero information, vẫn chiếm 1 cột trong 94 | 🟡 | Loại khi bump spec |
-| **D7** | `f23`/`f25`, `f68`/`f71`/`f74`/`f77` | Trùng lặp đo được ⇒ importance đếm hai lần | 🟡 | Loại khi bump spec, **cần ablation trước** (điều cấm số 5) |
+| **D2** | `user_tenure_days` | Bị chặn ở 30; không phải tuổi tài khoản | 🟠 | Legacy/full mart; không thuộc selected Redis sync |
+| **D3** | `voucher_used_30d` | Tên nói "used", công thức đếm **claim** | 🟠 | Legacy/full mart; chỉ đưa lại khi đặt tên đúng |
+| **D4** | `hist_*` không PIT | Dùng `now()` lúc dbt build thay vì `feature_ts` | 🟠 | Legacy/full mart; không thuộc selected Redis sync |
+| **D5** | `hist_gmv_30d`, `rt_gmv_1h` | `price` ngẫu nhiên mỗi event | 🟡 | Cần SKU (ERD §3.4) |
+| **D6** | `f70` | Hằng số 1 — zero information | 🟡 | Loại khi bump spec |
+| **D7** | `f23`/`f25`, `f68`/`f71`/`f74`/`f77`, `f79`–`f82` | Trùng lặp ⇒ importance đếm nhiều lần | 🟡 | **Group trước selection** (§6), ablation trước khi xoá |
 
-> **Không cột nào bị xoá trong tài liệu này.** Điều cấm số 5 của project: không xoá/gộp
-> feature chỉ vì correlation cao mà chưa có baseline/ablation evidence. D6 là ngoại lệ
-> hiển nhiên (`min = max = 1` ⇒ zero information theo định nghĩa), nhưng vẫn phải bump
-> `feature_spec.version` chứ không sửa lén.
+> **Không cột selected nào bị xoá trong tài liệu này.** `f70` không thuộc 36 cột
+> selected; nếu một ngày đưa vào contract thì vẫn phải bump `feature_spec.version`.
 
 ---
 
-## 7. Feature bị loại và lý do
+## 10. Feature bị loại và lý do
 
-| Ứng viên | Lý do không đưa vào |
+| Ứng viên | Lý do |
 |---|---|
 | Feature từ `REVIEW`/`RATING` | Entity đã bị loại (A-05) |
 | `shipment_delay_days` | Xảy ra **sau** điểm quyết định ⇒ không dùng được lúc inference |
-| `return_rate_90d` | Cần RETURN có dữ liệu thật; hiện RETURN chỉ để đóng lifecycle (ERD §5.4) |
-| Embedding sản phẩm / text search | Vượt scope; thêm một hạ tầng model thứ hai |
-| Feature mức `(user × category)` | Đổi entity key của feature store ⇒ thay đổi lớn (A-03) |
+| `return_rate_90d` | RETURN hiện chỉ để đóng lifecycle (ERD §5.4) |
+| Embedding sản phẩm / text search | Vượt scope; thêm hạ tầng model thứ hai |
+| Feature mức `(user × category)` | Đổi entity key feature store ⇒ thay đổi lớn (A-03) |
 
 ---
 
-## Tiếp theo
+## Liên quan
 
-- `FEATURE_LINEAGE.md` — sơ đồ đường đi đầy đủ của từng nhóm
-- `MIGRATION_PLAN.md` §4 — thứ tự bump `feature_spec.version` an toàn
+`FEATURE_LINEAGE.md` (CFS, tautology vs validation) · `ERD.md` ·
+`MIGRATION_PLAN.md` MX · `AUDIT_KIEN_TRUC_VA_FEATURE.md`

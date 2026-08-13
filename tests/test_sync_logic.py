@@ -44,7 +44,7 @@ def test_dt_of():
 
 # ------------------------------------------------------------ idempotency
 def test_write_rows_is_idempotent(store):
-    rows = [{"user_id": "U1", "f0": 1.5, "f1": 2.5}, {"user_id": "U2", "f0": 3.0}]
+    rows = [{"user_id": "U1", "f1": 1.5, "f2": 2.5}, {"user_id": "U2", "f1": 3.0}]
     assert store.write_rows("v1", rows) == 2
     first = store.r.hgetall("fs:v1:u:U1")
 
@@ -52,12 +52,13 @@ def test_write_rows_is_idempotent(store):
     assert store.write_rows("v1", rows) == 2
     second = store.r.hgetall("fs:v1:u:U1")
 
-    assert first["f0"] == second["f0"] == "1.5"
+    assert first["f1"] == second["f1"] == "1.5"
+    assert first["_feature_set_id"] == "fs_2026_08_v1"
     assert store.count_keys("fs:v1:u:*") == 2
 
 
 def test_shard_marker_prevents_rewrite(store):
-    rows = [{"user_id": "U1", "f0": 1.0}]
+    rows = [{"user_id": "U1", "f1": 1.0}]
     r1 = store.write_shard("v1", 0, rows)
     assert r1.rows_written == 1 and not r1.skipped
 
@@ -67,44 +68,44 @@ def test_shard_marker_prevents_rewrite(store):
 
 # ------------------------------------------------------- atomic activation
 def test_activate_version_swaps_pointer(store):
-    store.write_rows("v1", [{"user_id": "U1", "f0": 1.0}])
-    store.write_rows("v2", [{"user_id": "U1", "f0": 9.0}])
+    store.write_rows("v1", [{"user_id": "U1", "f1": 1.0}])
+    store.write_rows("v2", [{"user_id": "U1", "f1": 9.0}])
 
     store.activate_version("v1")
     assert store.get_active_version() == "v1"
     merged, _, hit = store.get_features_merged("U1")
-    assert hit and merged["f0"] == 1.0
+    assert hit and merged["f1"] == 1.0
 
     previous = store.activate_version("v2")
     assert previous == "v1"
     merged, _, _ = store.get_features_merged("U1")
-    assert merged["f0"] == 9.0
+    assert merged["f1"] == 9.0
 
     # Rollback khong can ghi lai du lieu
     store.rollback_to("v1")
     merged, _, _ = store.get_features_merged("U1")
-    assert merged["f0"] == 1.0
+    assert merged["f1"] == 1.0
 
 
 def test_data_written_is_invisible_before_activation(store):
     """Ghi vao version moi KHONG duoc anh huong traffic dang chay."""
-    store.write_rows("v1", [{"user_id": "U1", "f0": 1.0}])
+    store.write_rows("v1", [{"user_id": "U1", "f1": 1.0}])
     store.activate_version("v1")
 
-    store.write_rows("v2", [{"user_id": "U1", "f0": 99.0}])   # dang sync
+    store.write_rows("v2", [{"user_id": "U1", "f1": 99.0}])   # dang sync
     merged, _, _ = store.get_features_merged("U1")
-    assert merged["f0"] == 1.0                                 # van la ban cu
+    assert merged["f1"] == 1.0                                 # van la ban cu
 
 
 # ------------------------------------------------------- realtime overlay
 def test_realtime_overlay_wins(store):
-    store.write_rows("v1", [{"user_id": "U1", "f0": 1.0, "rt_events_1h": 0}])
+    store.write_rows("v1", [{"user_id": "U1", "f1": 1.0, "rt_events_1h": 0}])
     store.activate_version("v1")
     store.incr_realtime_counters("U1", {"rt_events_1h": 7})
 
     merged, _, _ = store.get_features_merged("U1")
     assert merged["rt_events_1h"] == 7
-    assert merged["f0"] == 1.0
+    assert merged["f1"] == 1.0
 
 
 def test_realtime_has_ttl(store):
@@ -173,7 +174,7 @@ def test_lua_path_is_actually_exercised(store):
     xanh nhung Lua script chua he duoc kiem tra. Test nay bat lo hong do.
     """
     pytest.importorskip("lupa", reason="can `pip install lupa` de chay Lua")
-    store.write_rows("v1", [{"user_id": "U1", "f0": 1.0}])
+    store.write_rows("v1", [{"user_id": "U1", "f1": 1.0}])
     store.activate_version("v1")
     store.incr_realtime_counters("U1", {"rt_events_1h": 1})
     store.read_for_serving("U1")
@@ -182,13 +183,13 @@ def test_lua_path_is_actually_exercised(store):
 
 def test_serving_read_returns_version_and_both_hashes(store):
     """read_for_serving lay ca version lan 2 hash trong 1 lan goi."""
-    store.write_rows("v1", [{"user_id": "U1", "f0": 1.0}])
+    store.write_rows("v1", [{"user_id": "U1", "f1": 1.0}])
     store.activate_version("v1")
     store.incr_realtime_counters("U1", {"rt_events_1h": 2})
 
     version, batch_raw, rt_raw = store.read_for_serving("U1")
     assert version == "v1"
-    assert batch_raw["f0"] == "1.0"
+    assert batch_raw["f1"] == "1.0"
     assert rt_raw                       # co it nhat 1 o
     assert store.read_for_serving("KHONG_TON_TAI")[1] == {}
 
@@ -196,7 +197,7 @@ def test_serving_read_returns_version_and_both_hashes(store):
 # --------------------------------------------------------------------- GC
 def test_gc_keeps_recent_and_active(store):
     for v in ("v1", "v2", "v3", "v4"):
-        store.write_rows(v, [{"user_id": "U1", "f0": 1.0}])
+        store.write_rows(v, [{"user_id": "U1", "f1": 1.0}])
         store.set_version_status(v, status="ACTIVE")
     store.activate_version("v4")
 
@@ -209,7 +210,7 @@ def test_gc_keeps_recent_and_active(store):
 
 
 def test_expire_version_sets_ttl_not_delete(store):
-    store.write_rows("v1", [{"user_id": "U1", "f0": 1.0}])
+    store.write_rows("v1", [{"user_id": "U1", "f1": 1.0}])
     store.expire_version("v1", ttl=60)
     assert store.r.ttl("fs:v1:u:U1") > 0
     assert store.r.exists("fs:v1:u:U1")            # van con, chi la se tu het han

@@ -1,234 +1,618 @@
-# LZD Uplift — Production Data Pipeline (offline training + online serving)
+# LZD Uplift Feature Platform
 
-Hệ thống feature store hai nhánh cho bài toán **phát voucher bằng uplift model**,
-mô phỏng đúng pattern production của Lazada trên Docker local.
+Repo nay dung de dung lai pipeline du lieu cho bai toan Lazada voucher uplift:
+nap dataset goc, build feature bang dbt/DuckDB, sync 36 selected features len
+Redis, va kiem chung reconstruction tu feature train ve event witness.
 
-| Nhánh | Đường đi | SLA |
-|---|---|---|
-| **Offline (training)** | MinIO (parquet) → DuckDB + dbt → `marts.training_dataset` → train → MLflow | hàng ngày |
-| **Online (serving)** | DuckDB → **sync job** → Redis → FastAPI đọc merged features | lookup < 10ms, decision < 100ms |
-| **Realtime overlay** | App → Kafka → stream-consumer → Redis (`rt:u:*`, TTL 1h) | < 30s |
+Scope hien tai cua nhanh nay la data pipeline va reconstruction. API serving va
+model co trong repo de lam integration surface, nhung khong phai phan can sua
+trong nhanh reconstruction.
 
-> DuckDB đóng vai **BigQuery** (nguồn sự thật), Redis đóng vai **online store** (bản sao phục vụ đọc).
+## 1. Tong Quan Cho Nguoi Moi
 
----
+### Muc tieu
 
-## 1. Kiến trúc
+- Co mot stack local de dong doi/mentor co the tai tao lai du lieu va quan sat
+  luong `CSV -> lakehouse -> dbt -> Redis`.
+- Giai thich ro 36 feature nao duoc sync len Redis thay vi sync ca `f0..f82`.
+- Chung minh reconstruction: tu selected feature trong train, sinh nguoc Track A
+  witness events, chay lai dbt SQL, va so lai feature expected/actual.
 
+### Nguoi dung repo
+
+- Data/ML engineer muon xem feature lineage va sync contract.
+- Mentor/reviewer muon clone repo, cai dat, chay test, xem artifact
+  reconstruction, va neu can thi chay lai pipeline.
+- Developer khong can sua API/model trong nhanh nay.
+
+### Luong chinh
+
+```text
+data/full_trainset.csv
+data/full_testset.csv
+        |
+        v
+Airflow DAG 00_bootstrap_lake
+        |
+        v
+MinIO bucket lakehouse/raw/user_snapshot/*.parquet
+        |
+        v
+Airflow DAG 20_build_features_dbt
+        |
+        v
+DuckDB marts.feat_user_selected_serving
+        |
+        v
+Airflow DAG 40_sync_features_to_redis
+        |
+        v
+Redis fs:{version}:u:{user_id}
 ```
- Web/Mobile ─► Kafka ─► stream-consumer ─┬─► MinIO  raw/app_events/*.parquet
-                                         └─► Redis  rt:u:{user}       (overlay, TTL 1h)
-                                                        ▲
- data/*.csv ─► MinIO raw/user_snapshot ──► DuckDB ──► dbt ──► marts.feat_user_serving
-                                                        │              │
-                                                        │       [DAG 40 sync, versioned]
-                                                        │              ▼
-                                                        │      Redis fs:{v}:u:{user}
-                                                        │              │
-                                              marts.training_dataset   │
-                                                        │              ▼
-                                                     train ──► MLflow ──► FastAPI /decide
+
+Realtime demo chay rieng:
+
+```text
+event-producer -> Kafka app.user.events.v1 -> stream-consumer
+        -> MinIO lakehouse/raw/app_events
+        -> Redis rt:u:{user_id}
 ```
 
-Sơ đồ gốc: [docs/img/architecture.png](docs/img/architecture.png) ·
-Giải thích từng bước: [docs/DATA_FLOW.md](docs/DATA_FLOW.md)
+Reconstruction chay rieng:
 
-> **Mới vào dự án?** Đọc [docs/KIEN_THUC.md](docs/KIEN_THUC.md) trước — giải
-> thích từng công nghệ dùng để làm gì, nguyên tắc thiết kế đằng sau, lộ trình
-> học 4 tuần và 12 câu tự kiểm tra.
+```text
+selected train features -> Track A events -> dbt reconstruction SQL
+        -> gates -> CustomerState(T0) -> Track B future events
+```
 
----
+Reconstruction dry-run khong ghi production vao MinIO, Kafka, Redis hay
+Postgres.
 
-## 2. Chạy lần đầu
+## 2. Trang Thai Hien Tai
 
-> **Chưa `docker compose up` gì cả** — code đã sẵn sàng, bạn chủ động bật khi muốn.
+Dang hoan thanh:
+
+- Local unit/contract tests: `210 passed, 1 warning`.
+- Reconstruction snapshot da commit trong `docs/reconstruction_snapshot/`.
+- Track A batch tu `data/full_trainset.csv` da chay pilot 1,000 va 10,000 row.
+- Redis batch contract da chot cho 36 selected features.
+- Airflow DAG cho batch/reconstruction dry-run da co.
+
+Chua lam trong nhanh nay:
+
+- Khong viet moi API.
+- Khong tune/train model.
+- Chua publish Track B production vao Kafka topic v2.
+- Chua ghi reconstruction production `events_v2` vao MinIO trong DAG batch.
+- Chua dung reconstruction artifact `.tmp/` lam source of truth production.
+
+## 3. Repository Layout
+
+```text
+airflow/dags/                 Airflow DAGs
+config/features/              feature spec, selected 36-feature set
+config/features/business_aliases.yml  synthetic business aliases for selected f*
+config/reconstruction/        reconstruction runtime config
+dbt/                          DuckDB/dbt models and tests
+docker/                       Dockerfiles for Airflow/Python/MLflow images
+docs/                         architecture docs and committed review snapshot
+docs/reconstruction_snapshot/ small committed reconstruction artifact
+scripts/                      stack helpers and init scripts
+src/lzd_pipeline/             Python pipeline code
+tests/                        unit and contract tests
+data/                         committed/expected source CSV data
+.tmp/                         local generated runtime output, ignored by git
+```
+
+Important: `data/` is no longer ignored by git. If the mentor needs to recreate
+the same run from a clean clone, commit these files:
+
+```text
+data/full_trainset.csv
+data/full_testset.csv
+```
+
+`.dockerignore` still excludes `data/` from Docker build context. That is
+intentional: Docker containers read `data/` at runtime through bind mounts; the
+CSV files do not need to be baked into images.
+
+## 4. Prerequisites
+
+Required:
+
+- Windows 10/11 with PowerShell 5+ or PowerShell 7+.
+- Python 3.11+.
+- Git.
+- Docker Desktop with Compose v2 if running the full stack.
+
+Recommended Docker Desktop resources:
+
+- CPU: 4 cores.
+- RAM: 8 GB minimum, 12 GB preferred.
+- Disk: 15 GB free.
+
+Recommended repo path:
+
+```text
+C:\dev\LZD
+```
+
+The repo can run from OneDrive, but Docker BuildKit and bind mounts are more
+stable outside OneDrive because OneDrive can mark files as reparse points.
+
+## 5. Quick Start Without Docker
+
+Use this path first. It proves the code/reconstruction contract without needing
+Docker Hub, MinIO, Kafka, Redis, or Airflow.
 
 ```powershell
-# 0) chuẩn bị (tạo .env, thư mục, build image)
-.\scripts\stack.ps1 init
-
-# 1) bật hạ tầng + observability
-.\scripts\stack.ps1 up
-
-# 2) đợi ~1-2 phút rồi kiểm tra
-.\scripts\stack.ps1 health
-
-# 3) bật streaming + serving + mlflow
-.\scripts\stack.ps1 up-all
-```
-
-Bash/WSL: `make init && make up && make up-all`
-
-### Thứ tự chạy pipeline (trong Airflow UI — http://localhost:8080)
-
-| # | DAG | Làm gì | Khi nào |
-|---|---|---|---|
-| 1 | `00_bootstrap_lake` | Nạp CSV → MinIO parquet | trigger tay, **1 lần** (đặt `row_limit=200000` để chạy thử nhanh) |
-| 2 | `20_build_features_dbt` | dbt: raw → cleaned → business-ready | trigger tay lần đầu, sau đó 01:00 hằng ngày |
-| 3 | `40_sync_features_to_redis` | Đẩy feature lên Redis (versioned) | 01:30 hằng ngày |
-| 4 | `50_data_quality` | Kiểm tra freshness/consistency | mỗi 30 phút |
-| — | `10_ingest_stream_to_lake` | Giám sát luồng stream | mỗi giờ |
-| — | `30_train_uplift_model` | **Khung cho teammate** | đang pause |
-| — | `99_ops_toolbox` | Rollback / chaos / resync | trigger tay |
-
-Kiểm tra sau khi sync xong:
-
-```powershell
-curl http://localhost:8000/store/info
-curl http://localhost:8000/features/U0000123     # xem đúng feature model sẽ nhận
-python scripts/load_test.py --rps 20 --duration 60
-```
-
----
-
-## 3. Giao diện quan sát
-
-| UI | URL | Dùng để |
-|---|---|---|
-| **Grafana** | http://localhost:3000 (admin/admin) | 4 dashboard + log Loki, xem mục 4 |
-| **Airflow** | http://localhost:8080 (admin/admin) | DAG, task log, Gantt, retry |
-| **Kafka UI** | http://localhost:8082 | topic, message, consumer lag, DLQ |
-| **MinIO** | http://localhost:9001 (minioadmin/minioadmin123) | duyệt file parquet trong lake |
-| **MLflow** | http://localhost:5000 | experiment, metric, model registry |
-| **Prometheus** | http://localhost:9090 | metric thô + alert rules |
-| **RedisInsight** | http://localhost:5540 | duyệt key `fs:*`, `rt:*` bằng tay |
-| **Swagger API** | http://localhost:8000/docs | thử `/decide`, `/features/{id}` |
-
----
-
-## 4. Dashboard Grafana (provision sẵn, không cần import tay)
-
-| Dashboard | Trả lời câu hỏi |
-|---|---|
-| `00 · End-to-End Pipeline Overview` | Dữ liệu đang chạy tới đâu? Có tắc ở đâu không? |
-| `01 · Feature Sync (DuckDB → Redis)` | Sync tới shard nào, offline vs online có lệch không, version nào đang phục vụ |
-| `02 · Streaming (Kafka → Lake → Redis)` | Lag theo partition, DLQ, độ trễ đầu-cuối |
-| `03 · Airflow & Infra` | Task pass/fail, pool slot, RAM Redis, connection Postgres |
-| `04 · Data Quality & Skew` | Null rate, freshness, offline mean vs online mean |
-
-Log tập trung: Grafana → **Explore** → datasource **Loki**
-
-```logql
-{component="stream-consumer"} | json | level="ERROR"
-{job="airflow-tasks", dag_id="40_sync_features_to_redis"}
-{job="docker"} | json | event="shard_written"
-{job="docker"} | json | feature_version="v20260805"
-```
-
----
-
-## 5. Cấu trúc thư mục
-
-```
-config/
-  features/feature_spec.yml     ⭐ HỢP ĐỒNG feature (dbt + sync + API đều đọc file này)
-  grafana/  prometheus/  loki/  promtail/  statsd/  postgres_exporter/
-dbt/models/
-  staging/                      CLEANED  (chuẩn hoá + dedup)
-  marts/                        BUSINESS READY (feat_user_serving, training_dataset)
-src/lzd_pipeline/
-  common/                       config, logging JSON, metrics, clients, audit Postgres
-  features/spec.py              đọc & validate feature spec
-  features/online_store.py      ⭐ mọi thao tác Redis (version, shard, merge, GC)
-  features/offline_store.py     mọi truy vấn DuckDB (shard, checksum, null rate)
-  features/sync.py              ⭐ sync engine: prepare → shard → validate → activate → gc
-  ingestion/                    event_producer, stream_consumer, seed_loader
-  training/                     dataset.py (xong) + train.py (KHUNG)
-  serving/                      app.py (xong) + model_loader.py (KHUNG)
-airflow/dags/                   6 DAG + callbacks
-sql/postgres/                   schema ops.* (audit, dq_result, inference_log)
-tests/                          unit test chạy không cần Docker: pytest tests/ -v
-docs/                           DATA_FLOW.md · RUNBOOK.md · OBSERVABILITY.md
-```
-
----
-
-## 6. Phần để trống cho teammate
-
-Tất cả đánh dấu `TODO(model)`, đường ống xung quanh đã nối sẵn:
-
-| File | Cần điền |
-|---|---|
-| `src/lzd_pipeline/training/train.py` | `build_model()`, `fit_model()`, `evaluate()` — S/T/X-learner hoặc DESCN theo [paper](docs/2207.09920v3.pdf) |
-| `src/lzd_pipeline/serving/model_loader.py` | `MlflowUpliftModel.load()` và `.predict()` |
-| `airflow/dags/dag_30_train_uplift_model.py` | `promote_model()` (đặt alias Production) |
-
-Trước khi có model thật, API vẫn chạy được bằng `StubModel` (`model_version="stub-0"`)
-→ đo được latency Redis, cache hit, QPS. Stub **không được dùng ra quyết định thật**.
-
-`training/dataset.py` đã trả về đúng bộ feature mà lúc serve API sẽ đọc từ Redis
-(cùng `feature_spec.yml`) → không lo training/serving skew.
-
----
-
-## 7. Bốn tính chất của job sync (yêu cầu đề bài)
-
-| Tính chất | Cài đặt ở đâu |
-|---|---|
-| **Consistency** | `validate_sync()` so mẫu Redis vs DuckDB + checksum + row count **trước khi** đổi `active_version`; DAG 50 kiểm tra lại định kỳ |
-| **Freshness** | version đặt tên theo ngày logic; `lzd_feature_store_age_seconds` + alert > 26h |
-| **Idempotency** | version deterministic (`v20260805`), ghi bằng `HSET`, đánh dấu shard đã xong trong Redis SET + Postgres |
-| **Fault tolerance** | chia 32 shard độc lập, retry từng shard, shard `DONE` được bỏ qua khi rerun, `active_version` chỉ đổi ở bước cuối nên lỗi giữa chừng **không ảnh hưởng serving** |
-
-Diễn tập: `99_ops_toolbox` → `action=chaos_partial_fail` → chạy lại DAG 40 →
-xem log chỉ ghi lại shard hỏng. Chi tiết: [docs/RUNBOOK.md](docs/RUNBOOK.md)
-
----
-
-## 8. Tình trạng production-readiness
-
-### Đã tối ưu
-
-| Hạng mục | Trước | Sau |
-|---|---|---|
-| Build context | **549 MB** (CSV bị gửi sang daemon mỗi lần build × 3 image) | **0.27 MB** — `.dockerignore` |
-| `python-service` | 1 stage, giữ cả gcc + pip cache | multi-stage, chỉ copy venv, **non-root**, có HEALTHCHECK |
-| `airflow` | cài `build-essential` + `libpq-dev` rồi giữ lại | bỏ hẳn (mọi package đều có wheel dựng sẵn) — nhẹ ~350 MB |
-| `mlflow` | như trên | multi-stage + non-root |
-| Rebuild sau khi sửa 1 dòng requirements | cài lại từ đầu | BuildKit cache mount → vài giây |
-| Xung đột dependency | phát hiện lúc DAG chạy 1h30 sáng | `pip check` chạy **lúc build** |
-| RAM | không giới hạn — Kafka JVM tự lấy 1/4 RAM máy | `mem_limit` + `KAFKA_HEAP_OPTS`/`JAVA_OPTS` cho 21/24 service |
-| Tắt container | consumer bị `SIGKILL` sau 10s, cắt ngang lúc ghi parquet | `stop_grace_period: 90s` + `init: true` |
-| Healthcheck | 3 service | 10 service |
-
-### Năm lỗi thật đã sửa
-
-1. **`/decide` mở kết nối Postgres mới mỗi request** để ghi `inference_log`
-   (+5–20ms vào đường có SLA 100ms, trong khi ngân sách Redis chỉ 10ms).
-   → [`serving/inference_logger.py`](src/lzd_pipeline/serving/inference_logger.py):
-   queue + worker thread ghi batch, hàng đợi đầy thì vứt log chứ không làm chậm request.
-2. **Kết quả `dbt test` không lên Grafana** — docstring nói có nhưng chưa implement.
-   → task `publish_dbt_results` (chạy cả khi test fail) parse `run_results.json`
-   → `ops.dq_result` + metric.
-3. **`rt_events_1h` không phải cửa sổ 1 giờ.** TTL bị đẩy lùi sau mỗi lần ghi
-   → user hoạt động liên tục thì counter cộng dồn cả ngày, trong khi dbt tính
-   đúng 1 giờ → **training/serving skew ở nhánh realtime**.
-   → cửa sổ trượt 12 ô × 5 phút, ghi/prune bằng một script Lua atomic;
-   `feat_user_realtime_pit.sql` làm tròn ô y hệt. 5 test regression.
-4. **`/decide` tốn 2 round-trip Redis** (`GET active_version` rồi mới `HGETALL`),
-   và có khe hở: giữa 2 lệnh, version có thể bị activate + GC → cache miss oan.
-   → Lua `read_for_serving()`: 1 RTT, atomic.
-5. **`duckdb_conn()` mặc định mở chế độ GHI** → một query ad-hoc là khoá cả file
-   và giết dbt đang chạy. → mặc định **read-only**, muốn ghi phải gọi
-   `duckdb_writer()`; gỡ mount `lakehouse` khỏi `inference-api`.
-
-### Còn thiếu nếu lên production thật
-
-Alertmanager (alert chưa gửi đi đâu), tracing, HA, TLS, secret manager, backup Postgres.
-Chi tiết + cách bổ sung: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md#chưa-có-biết-trước-để-khỏi-bất-ngờ)
-
----
-
-## 9. Test nhanh (không cần Docker)
-
-```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
-$env:PYTHONPATH="src"
-python -m pytest tests/ -v
 ```
 
-24 test đã chạy xanh, phủ: expand `f0..f82` từ spec, key layout, merge
-batch↔realtime↔default, version deterministic, ghi lại không nhân đôi
-(idempotency), shard marker chặn ghi trùng, atomic swap + rollback,
-dữ liệu version mới **không lộ ra** trước khi activate, TTL overlay, GC giữ
-version active, validate event → DLQ.
+Run tests:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 test
+```
+
+Generate the committed-size reconstruction snapshot:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 snapshot
+```
+
+Generate Track A raw events from real train data, limited to 1,000 rows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 track-a 1000
+```
+
+Output goes to:
+
+```text
+.tmp/reconstruction_track_a/
+```
+
+`.tmp/` is ignored because full Track A can generate very large files.
+
+## 6. Quick Start With Docker
+
+Create `.env`, check Docker Desktop, and build images:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 doctor
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 init
+```
+
+Start core services:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 up-core
+```
+
+Start core plus observability:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 up
+```
+
+Start every profile, including stream/serving/ML services:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 up-all
+```
+
+Check status and health:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 status
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 health
+```
+
+Stop:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 down
+```
+
+Reset Docker volumes:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 reset
+```
+
+## 7. Docker Services
+
+Core services:
+
+| Service | Purpose | URL |
+|---|---|---|
+| Postgres | Airflow/MLflow metadata and pipeline audit schema | localhost:5432 |
+| Redis | online feature store | localhost:6379 |
+| MinIO | local S3-compatible lake/model artifact store | http://localhost:9001 |
+| Kafka | realtime event bus | localhost:29092 |
+| Airflow | orchestration | http://localhost:8080 |
+
+Observability services:
+
+| Service | Purpose | URL |
+|---|---|---|
+| Grafana | dashboard/log exploration | http://localhost:3000 |
+| Prometheus | metrics store | http://localhost:9090 |
+| Loki | logs backend | http://localhost:3100 |
+| Kafka UI | inspect topics/messages/lag | http://localhost:8082 |
+| RedisInsight | inspect Redis keys | http://localhost:5540 |
+
+Optional profiles:
+
+| Service | Purpose |
+|---|---|
+| event-producer | sends synthetic realtime v1 app events to Kafka |
+| stream-consumer | writes Kafka v1 events to MinIO and Redis overlay |
+| inference-api | reads Redis features; not the scope of reconstruction work |
+| mlflow | experiment/model registry surface; not the scope of reconstruction work |
+
+Default UI logins:
+
+| UI | Login |
+|---|---|
+| Airflow | `admin/admin` |
+| Grafana | `admin/admin` |
+| MinIO | `minioadmin/minioadmin123` |
+
+## 8. MinIO And Kafka Config
+
+MinIO creates 3 buckets:
+
+```text
+lakehouse  -> raw/staging/marts/export data
+models     -> model artifacts surface
+mlflow     -> MLflow artifact root
+```
+
+Inside `lakehouse`, init script creates:
+
+```text
+raw/user_snapshot
+raw/app_events
+exports
+```
+
+Kafka creates 2 topics in the current production/demo path:
+
+```text
+app.user.events.v1      partitions=3, retention=2 days
+app.user.events.dlq.v1  partitions=1, retention=7 days
+```
+
+Kafka key is `user_id/customer_id` for per-user ordering. Track B v2 events are
+currently dry-run only; they are not published to a production v2 topic yet.
+
+## 9. Airflow Run Order
+
+Open Airflow:
+
+```text
+http://localhost:8080
+```
+
+Run these manually in order for the batch feature path:
+
+1. `00_bootstrap_lake`
+2. `20_build_features_dbt`
+3. `40_sync_features_to_redis`
+4. `50_data_quality`
+
+Manual reconstruction contract DAG:
+
+```text
+60_reconstruction_e2e
+```
+
+`60_reconstruction_e2e` only validates reconstruction in dry-run mode. It does
+not write MinIO/Kafka/Redis production state.
+
+## 10. dbt Data Flow
+
+`00_bootstrap_lake` loads:
+
+```text
+data/full_trainset.csv -> lakehouse/raw/user_snapshot/dt=<run_date>/train.parquet
+data/full_testset.csv  -> lakehouse/raw/user_snapshot/dt=<run_date>/test.parquet
+```
+
+`20_build_features_dbt` runs `dbt run` and `dbt test` over DuckDB.
+
+Important dbt outputs:
+
+```text
+staging.stg_user_snapshot
+staging.stg_events_v2
+marts.feat_cfs_counter
+marts.feat_cfs_recency
+marts.feat_cfs_categorical
+marts.feat_passthrough
+marts.feat_user_selected_serving
+marts.training_dataset
+```
+
+Redis sync reads only:
+
+```text
+marts.feat_user_selected_serving
+```
+
+That table contains:
+
+```text
+user_id
+dt
+feature_ts
+36 selected features
+```
+
+It does not contain `label` or `is_treat`.
+
+## 11. Redis Contract
+
+Batch selected feature key:
+
+```text
+fs:{version}:u:{user_id}
+```
+
+Type: Redis HASH.
+
+Fields:
+
+```text
+f1 f2 f5 f11 f18 f30
+f37 f38 f79 f80 f81 f82 f40 f43 f44 f45 f64 f68
+f3 f4 f8 f9 f10 f12 f13 f16 f20 f21 f22 f23 f25 f26 f28 f29 f31 f35
+_v
+_ts
+_feature_set_id
+```
+
+Metadata keys:
+
+```text
+fs:meta:active_version
+fs:meta:{version}:status
+fs:meta:{version}:shards
+fs:meta:versions
+```
+
+Sync design:
+
+- Version is deterministic by logical date, for example `v20260805`.
+- Each shard writes idempotently with `HSET`.
+- Shard completion is marked in `fs:meta:{version}:shards`.
+- Validation compares Redis sample against DuckDB before activation.
+- Activation is an atomic swap of `fs:meta:active_version`.
+- Old versions are retired/GC'd after the active version is safe.
+
+Realtime overlay key:
+
+```text
+rt:u:{user_id}
+```
+
+Type: Redis HASH.
+
+Example fields:
+
+```text
+rt_events_1h|<bucket_epoch>
+rt_page_view_1h|<bucket_epoch>
+rt_add_to_cart_1h|<bucket_epoch>
+rt_order_1h|<bucket_epoch>
+rt_gmv_1h|<bucket_epoch>
+rt_session_len_sec|<bucket_epoch>
+rt_last_event_ts
+```
+
+The consumer persists raw event first, updates Redis overlay second, then commits
+Kafka offset. This keeps the lake as source of truth.
+
+## 12. Reconstruction
+
+Reconstruction method:
+
+```text
+CFS / feature-consistent witness generation
+```
+
+This is not true recovery of historical Lazada events. It builds one valid set
+of raw-like events that reproduces the selected feature vector under the dbt
+feature logic.
+
+Business alias layer:
+
+```text
+config/features/business_aliases.yml
+docs/BUSINESS_ALIAS_MAP.md
+```
+
+This maps technical feature names such as `f30` to synthetic business names such
+as `active_days_30d_log10`. These aliases make the Lazada voucher-uplift story
+readable, but they are not confirmed Lazada/DESCN semantics. Redis and dbt still
+use `f*` names.
+
+Tracks:
+
+| Track | Meaning | Output |
+|---|---|---|
+| Track A | historical witness events before `reference_ts` | `EVT_*` / `raw_events_v2` |
+| Handoff | verified features become `CustomerState(T0)` | state object |
+| Track B | future synthetic events after `reference_ts` | business-v2 future events |
+
+Selected features:
+
+- T1/event-level: `f1,f2,f5,f11,f18,f30`
+- T2/attribute-level: `f37,f38,f79,f80,f81,f82,f40,f43,f44,f45,f64,f68`
+- T3/pass-through: `f3,f4,f8,f9,f10,f12,f13,f16,f20,f21,f22,f23,f25,f26,f28,f29,f31,f35`
+
+Examples of synthetic aliases:
+
+| Feature | Alias |
+|---|---|
+| `f5` | `product_browse_intensity_365d_ln` |
+| `f11` | `cart_checkout_intent_365d_ln` |
+| `f18` | `promo_touch_intensity_365d_log10` |
+| `f30` | `active_days_30d_log10` |
+| `f37` | `price_sensitivity_segment_64_encoded` |
+| `f38` | `promo_affinity_segment_241_encoded` |
+| `f79..f82` | `preferred_leaf_category_515_enc_*` |
+| `f68` | `discount_hunter_flag` |
+
+Track A event aliases in reports use `CFS_*` names. For example,
+`EVT_ORDER_PAID` is displayed as `CFS_RECENCY_MARKER`; it should not be read as
+proof that `f1/f2` are true Lazada order-paid recency features.
+
+Run committed-size snapshot:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 snapshot
+```
+
+Review artifact:
+
+```text
+docs/reconstruction_snapshot/README.md
+docs/reconstruction_snapshot/report.html
+docs/reconstruction_snapshot/track_a_events.csv
+docs/reconstruction_snapshot/track_b_events.csv
+docs/reconstruction_snapshot/features_expected_actual.csv
+docs/reconstruction_snapshot/feature_pass.svg
+docs/reconstruction_snapshot/timeline.svg
+docs/reconstruction_snapshot/summary.json
+docs/reconstruction_snapshot/manifest.json
+```
+
+Run Track A from real train data:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 track-a 1000
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 track-a 10000
+```
+
+Full train:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 track-a all
+```
+
+Full train has 926,669 rows and can generate tens of millions of events. Keep
+full output under `.tmp/`; commit only small review fixtures unless explicitly
+needed.
+
+## 13. Generated Track A Files
+
+`track-a` writes to:
+
+```text
+.tmp/reconstruction_track_a/
+```
+
+Files:
+
+| File | Meaning |
+|---|---|
+| `raw_events_v2.csv` | reconstructed raw events with dbt-facing schema |
+| `raw_events_v2.parquet` | parquet copy if parquet dependencies are available |
+| `track_a_events_audit.csv` | raw events plus solver audit columns |
+| `biz_reconstruction_boundary.csv` | target/reference timestamp boundary |
+| `biz_customer_attribute.csv` | decoded T2 source attributes |
+| `biz_encoding_map.csv` | fitted categorical value encodings |
+| `biz_onehot_layout.csv` | full one-hot layout |
+| `biz_passthrough_source.csv` | frozen T3 source values |
+| `targets_selected_features.csv` | expected 36-feature payload and hash |
+| `quarantine.csv` | rows that cannot be reconstructed |
+| `manifest.json` | counts, config, gate sample result |
+
+## 14. Useful Commands
+
+```powershell
+# diagnose Docker registry/proxy/CA
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 doctor
+
+# build images
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 build
+
+# container status
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 ps
+
+# logs for one service
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 logs airflow-scheduler
+
+# redis-cli
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 redis
+
+# DuckDB table list through Airflow container
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 duckdb
+
+# local tests, no Docker
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 test
+```
+
+## 15. Troubleshooting
+
+PowerShell blocks scripts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 <command>
+```
+
+Docker daemon is not reachable:
+
+- Start Docker Desktop.
+- Wait until the engine is running.
+- Retry `docker compose version`.
+
+Docker pull fails with:
+
+```text
+x509: certificate signed by unknown authority
+```
+
+This is a Docker Desktop trust/proxy/CA problem, not a repo code problem.
+
+Fix options:
+
+- If no proxy is required, disable Docker Desktop proxy.
+- If a company/MITM proxy is used, import the proxy root CA into Windows
+  `Certificates (Local Computer) -> Trusted Root Certification Authorities`.
+- Restart Docker Desktop.
+- Verify with `docker pull redis:7.2-alpine`.
+
+Docker build fails under OneDrive with `invalid file request`:
+
+- Prefer cloning to `C:\dev\LZD`.
+- Keep `.dockerignore` excluding runtime bind-mounted folders from build context.
+
+Redis has no `fs:meta:active_version`:
+
+- Run Airflow DAGs `00_bootstrap_lake`, `20_build_features_dbt`,
+  `40_sync_features_to_redis` in order.
+
+MinIO/Kafka/Redis do not change after reconstruction dry-run:
+
+- Expected behavior.
+- Reconstruction dry-run is a contract check only.
+- Production writes for reconstructed `events_v2` are still a migration item.
+
+## 16. Primary Docs
+
+- [Pipeline architecture](docs/PIPELINE_ARCHITECTURE.md)
+- [Data flow](docs/DATA_FLOW.md)
+- [Business alias map](docs/BUSINESS_ALIAS_MAP.md)
+- [Reconstruction README](docs/RECONSTRUCTION_README.md)
+- [Reconstruction contract](docs/RECONSTRUCTION_CONTRACT.md)
+- [Reconstruction spec](docs/RECONSTRUCTION_SPEC.md)
+- [Feature lineage](docs/FEATURE_LINEAGE.md)
+- [Feature dictionary](docs/FEATURE_DICTIONARY.md)
+- [Runbook](docs/RUNBOOK.md)

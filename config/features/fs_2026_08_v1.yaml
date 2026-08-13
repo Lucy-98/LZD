@@ -1,0 +1,121 @@
+# ==========================================================================
+# SELECTED FEATURE SET — solver contract artifact
+#
+# RECONSTRUCTION_SPEC.md §13.3
+#
+# SOLVER ĐỌC FILE NÀY. Nó định nghĩa 36-column reconstruction scope.
+#
+# 🚫 File này KHÔNG chứa `semantic_signal_count` hay câu hỏi ngỏ về semantic.
+#    Chúng nằm ở `feature_semantics_2026_08.yaml` — solver KHÔNG đọc file đó.
+#    Tách như vậy để `f9`/`f16` chưa giải quyết KHÔNG chặn solver (§13.2).
+#
+# 🚫 INVARIANT 1: 36 cột là hard scope. KHÔNG tự mở lên 83.
+# ==========================================================================
+id: fs_2026_08_v1
+created_at: "2026-08-12"
+source_dataset: "data/full_trainset.csv"
+split_allowed: train          # 🚫 test set bất khả xâm phạm
+
+# --------------------------------------------------------------------------
+# 36 cột mục tiêu, chia theo reconstruction tier
+# --------------------------------------------------------------------------
+columns:
+  # T1 — event-level: tái tạo bằng cách SINH EVENT
+  T1: [f1, f2, f5, f11, f18, f30]
+
+  # T2 — attribute-level: tái tạo bằng cách gán LEVEL cho source attribute
+  T2: [f37, f38, f79, f80, f81, f82, f40, f43, f44, f45, f64, f68]
+
+  # T3 — pass-through: copy nguyên trạng, KHÔNG thuộc Gate A
+  T3: [f3, f4, f8, f9, f10, f12, f13, f16, f20, f21, f22, f23,
+       f25, f26, f28, f29, f31, f35]
+
+# --------------------------------------------------------------------------
+# Comparison regime — RECONSTRUCTION_SPEC.md §7
+# Mỗi cột T1/T2 phải thuộc đúng MỘT regime.
+# --------------------------------------------------------------------------
+regimes:
+  LOG10:                      # round-trip khớp CHÍNH XÁC 100.0000%
+    columns: [f18, f30]
+    decode: "round(10 ** f)"
+    encode: "round(log10(n), 6)"
+    compare: exact
+  LN:                         # exact chỉ 93.05%/93.42% → PHẢI dùng dung sai
+    columns: [f5, f11]
+    decode: "round(exp(f))"
+    encode: "log(n)"
+    compare: relative
+    tolerance: 1.0e-15        # 🚫 CẤM nới. Fail ở đây ⇒ solver sai.
+  REC:
+    columns: [f1, f2]
+    decode: "int(f)"
+    encode: "date_diff_days"
+    compare: exact
+  CAT:
+    columns: [f37, f38, f79, f80, f81, f82, f40, f43, f44, f45, f64, f68]
+    compare: exact
+  PASS:                       # KHÔNG phải reconstruction → Gate A-T3 riêng
+    columns: [f3, f4, f8, f9, f10, f12, f13, f16, f20, f21, f22, f23,
+              f25, f26, f28, f29, f31, f35]
+    compare: exact
+
+# --------------------------------------------------------------------------
+# 7 source attribute sinh ra 12 cột T2 — RECONSTRUCTION_SPEC.md §5
+#
+# `outputs`  = TOÀN BỘ cột mà attribute sinh ra (kể cả cột KHÔNG được chọn).
+#              Group-level reconstruction: phải dựng ĐỦ mức, không phải chỉ
+#              mức của cột đã chọn (§5, G-1).
+# `selected` = tập con thực sự đi vào model.
+# --------------------------------------------------------------------------
+source_attributes:
+  synthetic_category_515:
+    levels: 515
+    encoding: encoding_map_515
+    outputs:  [f79, f80, f81, f82]
+    selected: [f79, f80, f81, f82]
+    note: "MỘT biến latent, 4 encoding. card(tuple)=card(mỗi cột)=515 (song ánh)."
+
+  synthetic_attr_64:
+    levels: 64
+    encoding: encoding_map_64
+    outputs:  [f37]
+    selected: [f37]
+    note: "alphabet ⊂ alphabet(f38) → decode PHẢI có khoá thuộc tính (§8.3)."
+
+  synthetic_attr_241:
+    levels: 241
+    encoding: encoding_map_241
+    outputs:  [f38]
+    selected: [f38]
+    note: "card(tuple f37,f38)=1133 > 241 ⇒ ĐỘC LẬP với f37."
+
+  synthetic_segment_g1:
+    levels: 3
+    encoding: one_hot
+    outputs:  [f40, f41, f42]
+    selected: [f40]
+
+  synthetic_segment_g2:
+    levels: 10
+    encoding: one_hot
+    outputs:  [f43, f44, f45, f46, f47, f48, f49, f50, f51, f52]
+    selected: [f43, f44, f45]
+
+  synthetic_segment_g4:
+    levels: 3
+    encoding: one_hot
+    outputs:  [f63, f64, f65]
+    selected: [f64]
+
+  synthetic_segment_g6:
+    levels: 2
+    encoding: one_hot
+    outputs:  [f68, f78]
+    selected: [f68]
+
+# --------------------------------------------------------------------------
+# Cột NGOÀI 36 nhưng phải dựng làm đầu ra trung gian (§1.2)
+# Chúng KHÔNG vào target contract, KHÔNG vào Gate A.
+# --------------------------------------------------------------------------
+intermediate_only:
+  [f41, f42, f46, f47, f48, f49, f50, f51, f52, f63, f65, f78]

@@ -18,6 +18,15 @@ data/
 *.duckdb.wal
 lakehouse/
 
+# --- source/runtime mounts
+# Repo nam trong OneDrive; cac file nay co the la reparse point lam BuildKit
+# fail "invalid file request". Compose van bind mount chung luc runtime.
+src/
+config/
+dbt/
+airflow/
+sql/
+
 # --- tai lieu
 docs/
 *.md

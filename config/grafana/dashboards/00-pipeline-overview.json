@@ -1,7 +1,7 @@
 {
   "uid": "lzd-overview",
   "title": "00 · End-to-End Pipeline Overview",
-  "description": "Nhin 1 man hinh biet du lieu dang chay den dau: App -> Kafka -> Lake -> DuckDB -> Redis -> FastAPI",
+  "description": "Nhin 1 man hinh biet du lieu dang chay den dau: stream App -> Kafka -> Lake -> Redis overlay; batch Lake -> DuckDB -> Redis -> FastAPI",
   "tags": ["lzd", "overview"],
   "timezone": "browser",
   "schemaVersion": 39,

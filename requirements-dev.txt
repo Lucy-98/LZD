@@ -2,6 +2,8 @@
 #   pip install -r requirements-dev.txt
 #   $env:PYTHONPATH="src"; python -m pytest tests/ -v
 pytest==8.3.3
+duckdb==1.1.3
+Jinja2==3.1.6
 fakeredis==2.25.1
 # BAT BUOC: khong co lupa thi fakeredis khong chay duoc EVAL/EVALSHA, test se
 # am tham roi vao duong du phong va Lua script KHONG duoc kiem tra lan nao.

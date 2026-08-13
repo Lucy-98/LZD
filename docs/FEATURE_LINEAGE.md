@@ -1,425 +1,705 @@
 # Feature Lineage
 
-> **Vai trò:** chứng minh đường đi `Business Entity → Raw Field/Event → Transformation
-> → Feature → Feature Store → Model` cho **từng** feature — hoặc chứng minh rằng
-> đường đi đó **không tồn tại**.
+> **Vai trò:** chứng minh đường đi
+> `Synthetic Business Entity → Raw Field/Event → Transformation → Selected Feature
+> → Feature Store → Model Input` cho từng feature được chọn.
 >
-> **Trạng thái:** mô tả code hiện tại (Track A, B) + đề xuất (Track C).
+> **Trạng thái:** thiết kế + prototype. Track B mô tả code đang chạy; Track A1/A2 và Track C là phần đang hoàn thiện.
+>
+> **Nguyên tắc trung tâm của toàn bộ project:**
+>
+> > Chúng ta **không** tuyên bố khôi phục được semantic thật của feature Lazada.
+> > Chúng ta xác định **ràng buộc cấu trúc** của feature LZD quan sát được, **chọn**
+> > những feature thực sự quan trọng với uplift model đã train, **gán semantic
+> > nghiệp vụ synthetic một cách tường minh**, và dựng một hệ thống vận hành/event
+> > kiểu-Lazada mà pipeline feature engineering **xuôi chiều** của nó tái tạo lại
+> > đúng representation của feature training đã chọn.
+> >
+> > **Khớp feature chính xác** ⇒ validate *reconstruction*.
+> > **Đồng thuận ở mức model** ⇒ validate *hệ thống tái tạo có bảo toàn hành vi ML
+> > hữu ích hay không*.
 
 ---
 
 ## Mục lục
 
 1. [Mental model bắt buộc](#1-mental-model-bắt-buộc)
-2. [Mô hình hai track — quyết định kiến trúc trung tâm](#2-mô-hình-hai-track--quyết-định-kiến-trúc-trung-tâm)
-3. [Lineage Track A — `f0`..`f82`](#3-lineage-track-a--f0f82)
-4. [Lineage Track B — event-derived hiện có](#4-lineage-track-b--event-derived-hiện-có)
-5. [Lineage Track C — synthetic business system](#5-lineage-track-c--synthetic-business-system)
-6. [Ranh giới point-in-time](#6-ranh-giới-point-in-time)
-7. [Vai trò của dataset LZD: seed vs reference](#7-vai-trò-của-dataset-lzd-seed-vs-reference)
+2. [Kiến trúc mục tiêu](#2-kiến-trúc-mục-tiêu)
+3. [Constrained Forward Synthesis — khái niệm trung tâm](#3-constrained-forward-synthesis--khái-niệm-trung-tâm)
+4. [Reconstruction ≠ Semantic Recovery](#4-reconstruction--semantic-recovery)
+5. [Cardinality profile & reconstruction tier](#5-cardinality-profile--reconstruction-tier)
+6. [Track A1 — Reconstructable](#6-track-a1--reconstructable)
+7. [Track A2 — Pass-through](#7-track-a2--pass-through)
+8. [Track B — event-derived hiện có](#8-track-b--event-derived-hiện-có)
+9. [Track C — feature nghiệp vụ mới](#9-track-c--feature-nghiệp-vụ-mới)
+10. [Feature Selection đặt ở đâu](#10-feature-selection-đặt-ở-đâu)
+11. [Redundancy & feature-group selection](#11-redundancy--feature-group-selection)
+12. [Tautology vs Validation](#12-tautology-vs-validation)
+13. [Hai tầng validation](#13-hai-tầng-validation)
+14. [Ranh giới point-in-time](#14-ranh-giới-point-in-time)
+15. [Vai trò của dataset LZD](#15-vai-trò-của-dataset-lzd)
 
 ---
 
 ## 1. Mental model bắt buộc
 
 ```
-    ERD                    ≠   Feature Store
-    Business Data          ≠   ML Feature
-    Raw Event              ≠   Feature
-    f0..f82                ≠   Business Columns
-    LZD Dataset            ≠   LZD Internal Database
-    Synthetic Reconstruction ≠ Historical Fact
+    ERD                       ≠   Feature Store
+    Business Data             ≠   ML Feature
+    Raw Event                 ≠   Feature
+    f0..f82                   ≠   Business Columns
+    LZD Dataset               ≠   LZD Internal Database
+    Synthetic Reconstruction  ≠   Historical Fact
+    Reconstruction            ≠   Semantic Recovery
+    Per-row match             ≠   Semantic proof
 ```
 
-Đọc theo chiều xuôi:
-
-```
-   Business Entity  ──(transition)──►  Domain Event
-                                            │
-                                            │ (transformation: window + aggregation
-                                            │                  + encoding)
-                                            ▼
-                                        Feature
-                                            │
-                                            ▼
-                                    Feature Store
-                                     ┌──────┴──────┐
-                                offline        online
-                                     │             │
-                                 training      inference
-                                     └──────┬──────┘
-                                            ▼
-                                          Model
-```
-
-**Mọi feature phải chỉ ra được vị trí của mình trên đường này.**
-Feature nào không chỉ ra được ⇒ `confidence: UNKNOWN` ⇒ chỉ được seed, không được mô phỏng.
+Ba dòng cuối là bổ sung của bản sửa này và là ba dòng quan trọng nhất.
 
 ---
 
-## 2. Mô hình hai track — quyết định kiến trúc trung tâm
-
-Đây là quyết định quan trọng nhất trong toàn bộ bộ tài liệu, và nó **cần bạn xác nhận**.
-
-### 2.1 · Vấn đề
-
-Yêu cầu §18 vẽ một vòng đời đi qua `f0...f82`:
+## 2. Kiến trúc mục tiêu
 
 ```
-CUSTOMER → BUSINESS ACTION → DOMAIN EVENT → RAW EVENT
-        → FEATURE ENGINEERING → FEATURE STORE
-        → f0...f82 / realtime features → UPLIFT MODEL → ...
+                    LZD TRAINING DATASET
+                            │
+                            ▼
+                 Feature Profiling / Audit
+                            │
+                            ▼
+                 Train / Evaluate Model          ◄── BẮT BUỘC đứng trước selection
+                            │
+                            ▼
+                    Feature Selection
+                            │
+                            ▼
+                  Selected Feature Set
+                            │
+                            ▼
+              Constrained Forward Synthesis
+                            │
+                ┌───────────┴───────────┐
+                ▼                       ▼
+          T1 Event-level        T2 Attribute-level
+                │                       │
+                └───────────┬───────────┘
+                            ▼
+              Synthetic Lazada-like
+               Business Database              (ERD.md)
+                            │
+                            ▼
+                     Raw / Events             (BUSINESS_EVENT_MODEL.md)
+                            │
+                            ▼
+                 Feature Engineering
+                            │
+                            ▼
+               Reconstructed Features
+                            │
+                            ▼
+                     Feature Store
+                            │
+                            ▼
+                         Model
+                            │
+                            ▼
+                   Online Inference
+                            │
+                            ▼
+                   Business Decision
+                            │
+                            ▼
+                 New Business Event
+                            │
+                            ▼
+                Feature Store Update
+                            │
+                            ▼
+                     New Decision
 ```
 
-Nhưng audit đã xác nhận (C1, C11): **`f0..f82` không có transformation nào trong repo,
-và Lazada không công bố semantic của bất kỳ cột nào.** Không có raw để quay về.
+> ⚠️ Kiến trúc **"opaque f0–f82 → Redis seed"** không còn là kiến trúc mục tiêu.
+> Nó chỉ còn là **baseline / fallback** — dùng khi một feature không thoả điều kiện
+> reconstruction (Track A2), hoặc khi cần một đường chạy nhanh để so sánh.
 
-⇒ Mũi tên `FEATURE ENGINEERING → f0..f82` **không thể tồn tại một cách trung thực.**
-Vẽ nó ra là vi phạm điều cấm số 4 ("reverse `f*` thành raw rồi tuyên bố đó là dữ liệu gốc").
+---
 
-### 2.2 · Giải pháp: tách track, không tách hệ thống
+## 3. Constrained Forward Synthesis — khái niệm trung tâm
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     SYNTHETIC BUSINESS SYSTEM                       │
-│   CUSTOMER · SKU · CART · ORDER · VOUCHER · CAMPAIGN · DECISION      │
-└───────────────────────────────┬─────────────────────────────────────┘
-                                │ business action
-                                ▼
-                          DOMAIN EVENT ──► Kafka ──► lake
-                                │
-                    ┌───────────┴────────────┐
-                    ▼                        ▼
-        ┌───────────────────┐    ┌────────────────────────┐
-        │ TRACK B           │    │ TRACK C                │
-        │ 11 feature hiện có│    │ feature mới, lineage   │
-        │ lineage đầy đủ    │    │ đầy đủ từ Layer 1      │
-        │ CONFIRMED         │    │ SYNTHETIC              │
-        └─────────┬─────────┘    └────────────┬───────────┘
-                  └────────────┬──────────────┘
-                               ▼
-                    ┌──────────────────────┐
-                    │    FEATURE STORE     │◄──────────────┐
-                    └──────────┬───────────┘               │
-                               │                           │
-                               ▼                    ┌──────┴───────┐
-                          UPLIFT MODEL              │  TRACK A     │
-                               │                    │  f0..f82     │
-                               ▼                    │  seed tĩnh   │
-                            POLICY                  │  UNKNOWN     │
-                               │                    │  KHÔNG có    │
-                               ▼                    │  lineage     │
-                        VOUCHER DECISION            └──────▲───────┘
-                               │                           │
-                               └───► DECISION_MADE ────────┘  ← chỉ nạp 1 lần
-                                     VOUCHER_ISSUED             từ CSV,
-                                          │                     không bao giờ
-                                          └──► Kafka ──► loop    tính lại
-```
+### 3.1 · Tên gọi
 
-| | Track A | Track B | Track C |
-|---|---|---|---|
-| Cột | `f0`–`f82` (83) | 11 event-derived hiện có | đề xuất, chưa có |
-| Lineage | ❌ không tồn tại | ✅ đầy đủ | ✅ đầy đủ |
-| Cập nhật theo event | ❌ không bao giờ | ✅ có | ✅ có |
-| Vai trò | vector trạng thái lịch sử mờ | live signal (đã kiểm chứng được) | live signal (nghiệp vụ giàu hơn) |
-| Confidence | UNKNOWN | CONFIRMED | SYNTHETIC |
-| Test parity áp dụng? | chỉ **parity truyền tải** | ✅ parity tính toán | ✅ parity tính toán |
+Quá trình này **không được gọi** là *"reverse engineering Lazada semantic"*.
+Tên chính xác:
 
-### 2.3 · Điều này thoả yêu cầu §18 như thế nào
+> **Constrained Forward Synthesis (CFS)**
 
-Vòng đời §18 **vẫn đóng trọn vẹn** — chỉ là nó đóng qua Track B/C, còn Track A tham
-gia với tư cách **điều kiện ban đầu tĩnh**:
+### 3.2 · Sáu bước
 
 ```
-CUSTOMER → BUSINESS ACTION → DOMAIN EVENT → FEATURE ENGINEERING → FEATURE STORE
-                                                                        │
-                                            f0..f82 (seed) ─────────────┤
-                                                                        ▼
-                                                                  UPLIFT MODEL
-                                                                        ▼
-                                                            UPLIFT SCORE → POLICY
-                                                                        ▼
-                                                            VOUCHER / NO VOUCHER
-                                                                        ▼
-                                                            CUSTOMER RESPONSE
-                                                                        ▼
-                                                                  NEW EVENT ──┐
-                                                                              │
-                                            FEATURE UPDATE ◄──────────────────┘
-                                                    ▼
-                                              NEW DECISION
+   1. Observed Feature
+            │  quan sát cấu trúc: cardinality, miền giá trị, tính nguyên,
+            │  quan hệ giữa các cột, dạng biến đổi
+            ▼
+   2. Infer encoding / transformation constraints
+            │  vd: 10^f30 ∈ ℤ ∩ [1,30]  ⇒ f30 = log10(counter)
+            │  KHÔNG suy ra counter đó đếm cái gì
+            ▼
+   3. Choose synthetic business semantic          ◄── SYNTHETIC_ASSUMPTION
+            │  vd: "counter này là số ngày active trong 30 ngày"
+            ▼
+   4. Generate synthetic raw/event source
+            │  sinh đúng n = round(10^f30) ngày active bằng event `EVT_SESSION_STARTED`
+            ▼
+   5. Forward feature engineering
+            │  count(*) → log10()
+            ▼
+   6. Reproduce observed feature
+            │  reconstructed_f30 == original_f30      ✓
+            ▼
+      Reconstruction contract satisfied
 ```
 
-Đây là cách trung thực duy nhất để có closed loop mà không bịa lineage cho `f*`.
+### 3.3 · Điều gì làm CFS khả thi
 
-### 2.4 · ⚠️ Cần bạn quyết
+> **Tính rời rạc cho phép đảo ngược *cách mã hoá*, không cần biết *semantic*.**
 
-| Lựa chọn | Nội dung | Hệ quả |
+Với một cột rời rạc, ánh xạ `giá trị quan sát → level id / số nguyên / count` là
+**1-1 và đảo ngược được**. Ta không cần biết cột đó *nghĩa là gì* để tái tạo nó
+*chính xác từng dòng*. Ta chỉ cần:
+
+1. giải mã giá trị về level/count,
+2. gán nó cho một thuộc tính nghiệp vụ synthetic **(đây là assumption)**,
+3. để thuộc tính đó **thật sự điều khiển hành vi mô phỏng**,
+4. chạy feature engineering xuôi chiều.
+
+**60/83 cột của dataset LZD là rời rạc** (xem §5) ⇒ CFS áp dụng được cho phần lớn.
+
+### 3.4 · Điều kiện để CFS không trở thành trò lừa mình
+
+CFS chỉ có giá trị khi thuộc tính được gán **thật sự tham gia vào mô hình hành vi**.
+Nếu chỉ lưu giá trị rồi phát lại nguyên xi thì đó là **copy trá hình**, không phải
+feature engineering — và điều đó bị cấm tường minh:
+
+```
+❌ CẤM:  LZD feature ──► copy trực tiếp ──► database ──► gọi là "feature engineering"
+
+✅ ĐÚNG: LZD feature ──► decode ──► business attribute
+                                        │
+                                        ├──► điều khiển hành vi mô phỏng
+                                        ▼
+                                  business events
+                                        │
+                                        ▼
+                              feature engineering
+                                        │
+                                        ▼
+                            reconstructed feature
+```
+
+---
+
+## 4. Reconstruction ≠ Semantic Recovery
+
+| | Reconstruction | Semantic Recovery |
 |---|---|---|
-| **(a)** Giữ 94 feature hiện tại, chỉ thêm Track C | Model đọc A + B + C | Track A vẫn chi phối importance (rủi ro G2 còn nguyên) |
-| **(b)** Model song song: `model_full` (A+B+C) và `model_live` (B+C) | So sánh trực tiếp | Trả lời được G2 bằng thực nghiệm; tốn gấp đôi train |
-| **(c)** Bỏ hẳn Track A khỏi model, chỉ dùng làm seed | Model chỉ đọc B+C | Mất tín hiệu từ 83 cột thật; nhưng lineage 100% sạch |
+| Câu hỏi | *"Ta có dựng được một hệ thống sinh ra đúng giá trị này không?"* | *"Giá trị này thật sự nghĩa là gì trong Lazada?"* |
+| Khả thi? | ✅ **Có** — cho 60/83 cột | ❌ **Không** — không có dictionary, paper không công bố |
+| Bằng chứng cần | ràng buộc cấu trúc đo được | feature dictionary nội bộ của Lazada |
+| Kết quả | hệ thống **nhất quán** | sự thật **lịch sử** |
+| Nhãn confidence | `SYNTHETIC_ASSUMPTION` | vẫn là `UNKNOWN` |
 
-**Khuyến nghị: (b).** Nó là cách duy nhất *đo* được rủi ro G2 thay vì phỏng đoán, và
-kết quả của nó quyết định luôn nên chọn (a) hay (c). Chi phí thấp vì hạ tầng train
-dùng chung.
+**Cách viết đúng trong mọi tài liệu và code:**
+
+```
+❌ SAI:
+   f30 IS order_count_30d
+
+✅ ĐÚNG:
+   f30
+     structural constraint:      10^f30 ∈ ℤ ∩ [1,30]   (CONFIRMED, 100% rows)
+     candidate synthetic semantic: order_count_30d
+     confidence:                 SYNTHETIC_ASSUMPTION
+     true semantic:              UNKNOWN
+```
 
 ---
 
-## 3. Lineage Track A — `f0`..`f82`
+## 5. Cardinality profile & reconstruction tier
+
+### 5.1 · Profile đo trên toàn bộ 926,669 dòng train
+
+| Cardinality | Số cột | Cột | Ý nghĩa cấu trúc |
+|---|---|---|---|
+| **≤ 2** | **39** | `f40`–`f78` | khối one-hot |
+| **3–30** | **3** | `f0`, `f7`, `f30` | số nguyên nhỏ / counter đã log |
+| **31–400** | **8** | `f1`, `f2`, `f18`, `f19`, `f27`, `f34`, `f37`, `f38` | recency / counter / encoding |
+| **401–1000** | **10** | `f5`, `f6`, `f11`, `f14`, `f15`, `f39`, `f79`–`f82` | categorical cardinality cao |
+| **> 1000** | **23** | `f3`, `f4`, `f8`–`f10`, `f12`, `f13`, `f16`, `f17`, `f20`–`f24`, … | liên tục / cardinality rất cao |
 
 ```
-   ┌─────────────────────────────────────────────┐
-   │  Hệ thống nội bộ Lazada                     │
-   │  (ngoài repo, không quan sát được)          │
-   └────────────────────┬────────────────────────┘
-                        │  ✖ transformation KHÔNG BIẾT
-                        ▼
-   data/full_trainset.csv   ← điểm sớm nhất ta quan sát được
-   data/full_testset.csv
-                        │
-                        │  seed_loader.load_csv_to_lake()
-                        │  CHỈ: data_id → user_id, gắn split/dt/feature_ts
-                        ▼
-   s3://lakehouse/raw/user_snapshot/dt=…/{train,test}.parquet
-                        │
-                        │  stg_user_snapshot.sql
-                        │  CHỈ: cast(f{i} as double) + dedup
-                        ▼
-   feat_user_serving.sql   ← copy nguyên trạng, không biến đổi
-                        │
-          ┌─────────────┴──────────────┐
-          │ sync.py                     │ training_dataset.sql
-          ▼                             ▼
-   Redis fs:{ver}:u:{uid}        marts.training_dataset
-          │                             │
-          └─────────────┬───────────────┘
-                        ▼
-                      MODEL
+Tổng:      83 cột
+Rời rạc:   60 / 83   (72%)   → ứng viên CFS
+Liên tục:  23 / 83   (28%)   → T3 / UNKNOWN
 ```
 
-**Kết luận lineage:** đường đi tồn tại **từ CSV trở đi** và hoàn toàn minh bạch —
-mọi bước đều là copy/cast. Nhưng đường đi **phía trước CSV không tồn tại trong repo
-và không được công bố**.
+### 5.2 · Định nghĩa tier
 
-⇒ Với `f*`, thứ duy nhất kiểm chứng được là **parity truyền tải**:
+| Tier | Định nghĩa | Cơ chế tái tạo |
+|---|---|---|
+| **T1 — EVENT-LEVEL** | Feature **nảy sinh từ business event** được sinh ra | sinh `n` event → aggregate → transform |
+| **T2 — ATTRIBUTE-LEVEL** | Feature là **encoding của thuộc tính entity** | gán level cho thuộc tính → encode |
+| **T3 — PASS-THROUGH** | Liên tục / cardinality cao, chưa đủ bằng chứng về semantic | mang theo có kiểm soát, **chỉ nếu selection cho thấy model cần** |
+| **UNKNOWN** | Chưa đo đủ để phân loại | không gán tier |
+
+> **Không được ép semantic cho T3 chỉ để tài liệu trông đẹp.**
+
+### 5.3 · Phân loại hiện tại — chỉ ghi cái đã đo
+
+| Cột | Bằng chứng cấu trúc (CONFIRMED) | Tier |
+|---|---|---|
+| `f30` | `10^f30 ∈ ℤ ∩ [1,30]`, **100%** dòng; lưu 6 chữ số thập phân | **T1** |
+| `f18` | `10^f18 ∈ ℤ`, **100%** dòng; 144 mức; **95.5% dòng = 0.0**; alphabet = `log10(1), log10(2), log10(3)…`; max `3.354108` ⇒ `n_max = 2260` | **T1** |
+| `f19` | `10^f19 ∈ ℤ`, **100%** dòng; 156 mức; **93.0% dòng = 0.0**; max `3.673205` ⇒ `n_max ≈ 4712` | **T1** |
+| `f1`, `f2` | nguyên `[0,365]`, 366 mức, `f1 ≥ f2` **luôn đúng** | **T1** |
+| `f27` | nguyên `[0,100]`, 32 mức | **T1 \| T2** — xem §5.4 |
+| `f34` | nguyên `[0,100]`, 31 mức | **T1 \| T2** — xem §5.4 |
+| `f0` | nguyên `{0,1,2,3,4,5}`, 6 mức | **T1 \| T2** — xem §5.4 |
+| `f7` | nguyên `{0,1,2,3,4,5}`, 6 mức; khác `f0` ở **50.8%** dòng ⇒ **biến khác** | **T1 \| T2** — xem §5.4 |
+| `f40`–`f78` | 11 nhóm one-hot loại trừ, `row_sum = 11.0` ở **100%** dòng; sau khử trùng ⇒ **7 biến categorical** | **T2** |
+| `f79`–`f82` | cardinality từng cột = **515**; cardinality tuple `(f79,f80,f81,f82)` = **515** ⇒ **song ánh hoàn hảo**, **MỘT** biến 515 mức, 4 cách mã hoá | **T2** |
+| `f37` | 64 mức, `[0, 0.715096]`; **không** có mẫu số hữu tỉ nhỏ (test `x·q ∈ ℤ` phẳng 17.8% = đúng số dòng bằng 0) ⇒ **không phải tỉ lệ đếm** | **T2** |
+| `f38` | 241 mức, `[0, 0.843222]`; cùng đặc điểm | **T2** |
+| `f5`, `f6`, `f11`, `f14`, `f15`, `f39` | cardinality 401–1000, **chưa đo chi tiết** | **UNKNOWN** |
+| 23 cột `>1000` | liên tục / cardinality rất cao | **T3** |
+
+### 5.4 · Khi tier **tự nó** là một assumption
+
+`f0`, `f7`, `f27`, `f34` là số nguyên nhỏ trong miền chặn. Cùng một dữ liệu khớp
+với **cả hai** cách đọc:
 
 ```
-   marts.training_dataset.f{i}   ==   Redis fs:{ver}:u:{uid}[f{i}]
-   (bằng nhau từng bit, cho cùng user_id)
+T1:  một counter bị cap        →  sinh n event, COUNT
+T2:  một mức ordinal / tier     →  gán thuộc tính, encode
 ```
 
-Không phải parity tính toán — vì không có phép tính nào để lặp lại.
+Cả hai đều cho **tái tạo chính xác từng dòng**. Việc chọn cái nào **không** được
+suy ra từ dữ liệu — nó là `SYNTHETIC_ASSUMPTION` phải ghi rõ, không phải kết luận đo được.
+
+### 5.5 · Hai cấu trúc trông giống nhau nhưng **phải mô hình hoá khác nhau**
+
+Đây là điểm dễ sai nhất trong toàn bộ tài liệu.
+
+| | `f79`–`f82` | `f37`, `f38` |
+|---|---|---|
+| Cardinality từng cột | 515, 515, 515, 515 | 64, 241 |
+| Cardinality tuple | **515** | **1133** |
+| Kết luận | `tuple = per-column` ⇒ **song ánh** ⇒ **MỘT** biến, 4 encoding | `tuple > max(per-column)` ⇒ **HAI** biến độc lập |
+| Alphabet | — | alphabet của `f37` **⊂ hoàn toàn** alphabet của `f38` (64/64) ⇒ **dùng chung một bảng mã hoá** |
+| Mô hình hoá | 1 thuộc tính `synthetic_category_515` → 4 biểu diễn | 2 thuộc tính riêng (64 mức và 241 mức) → cùng **một** hàm encode |
+
+> ❌ **Không được** tạo bốn business attribute riêng cho `f79`–`f82`.
+> ❌ **Không được** gộp `f37` và `f38` thành một biến chỉ vì chúng chung alphabet.
 
 ---
 
-## 4. Lineage Track B — event-derived hiện có
+## 6. Track A1 — Reconstructable
 
-### 4.1 · Nhóm realtime `rt_*` — lineage tốt nhất trong repo
+Feature có đủ cấu trúc để xây CFS. Gồm T1 và T2 đã được audit chứng minh.
 
-```
-   EventProducer._make_session()        ⚠ chưa có business entity phía sau
-            │
-            ▼
-   AppEvent{event_id,user_id,event_type,event_ts,session_id,platform,
-            item_id,category_id,price,quantity}
-            │
-            │ Kafka  key=user_id  (giữ thứ tự trong phạm vi 1 user)
-            ▼
-   topic app.user.events.v1
-            │
-            ▼
-   stream_consumer.run()
-       ├─ validate_event()  ──✖──► DLQ (theo reason)
-       │
-       ├─(1)─► parquet s3://lakehouse/raw/app_events/dt=/hour=
-       │              │
-       │              ▼
-       │       stg_app_events.sql   dedup theo event_id, gmv = price×quantity
-       │              │
-       │              ▼
-       │       feat_user_realtime_pit.sql
-       │           cửa sổ = [bucket_start(feature_ts) − 11×300s , feature_ts)
-       │              │
-       │              ▼           ═══ OFFLINE ═══
-       │       marts.training_dataset.rt_*
-       │
-       └─(2)─► _update_realtime()
-                  incr_realtime_counters(user, {rt_*: Δ})
-                  update_realtime_bulk({rt_last_event_ts})
-                       │
-                       ▼
-                  Redis rt:u:{uid}   HASH ô 5 phút, TTL 3600s
-                       │
-                       ▼
-                  online_store.aggregate_realtime()
-                       cộng các ô có bucket_start ≥ bucket_start(now) − 11×300
-                       │
-                       ▼           ═══ ONLINE ═══
-                  spec.merge(batch ← realtime ← context)
-                       │
-                       ▼
-                     MODEL
-```
-
-**Điểm parity:** hai nhánh (1) và (2) **cùng làm tròn về ô 5 phút**. Comment trong
-`feat_user_realtime_pit.sql` ghi rõ: nếu offline dùng `feature_ts - interval '1 hour'`
-thì hai bên lệch tới 5 phút dữ liệu. Đây là thiết kế đúng và cần được **cắm test tự
-động canh giữ** — hiện chưa có (gap **G7**).
-
-**Chỗ đứt:** `rt_session_len_sec` chỉ có nhánh (1), **không** có nhánh (2). Xem
-`FEATURE_DICTIONARY.md` §4.5.
-
-### 4.2 · Nhóm batch `hist_*`
+### 6.1 · Lineage T1 — ví dụ `f30`
 
 ```
-   stg_app_events.sql
-            │
-            │  ⚠ lọc: event_ts >= now() − 30 days      ← now(), KHÔNG phải feature_ts
-            ▼
-   feat_user_behaviour.sql
-       user_tenure_days   = date_diff('day', min(event_ts), now())   ⚠ chặn ở 30
-       hist_order_cnt_30d = count(*) filter (event_type='order')
-       hist_gmv_30d       = sum(gmv) filter (event_type='order')
-       voucher_used_30d   = count(*) filter (event_type='voucher_claim')  ⚠ tên sai
-            │
-            │ left join using (user_id)      ⚠ KHÔNG join theo dt/feature_ts
-            ▼
-   feat_user_serving.sql   (cùng bảng được sync lên Redis)
-            │
-      ┌─────┴─────┐
-      ▼           ▼
-   Redis      training_dataset
-   (batch)         │
-      └──────┬─────┘
+LAYER 1   CUSTOMER  ──1:n──►  ACTIVITY DAY
+             │
+             │  SYNTHETIC_ASSUMPTION S-03:
+             │  "counter đứng sau f30 là số ngày active trong 30 ngày"
+             │  true semantic: UNKNOWN
              ▼
-           MODEL
+          sinh đúng  n = round(10^f30_observed)  ngày active
+          trong cửa sổ 30 ngày trước feature_ts
+                          │
+LAYER 2                   ▼
+                    EVT_SESSION_STARTED × n ngày
+                          │
+LAYER 3                   ▼
+              active_days_last_30d = COUNT(DISTINCT date(event_ts))
+                          │
+                          ▼
+                      log10(orders_last_30d)
+                          │
+                          ▼
+                    reconstructed f30   ==   original f30    ✓
+                          │
+LAYER 3c                  ▼
+                    FEATURE STORE
+                          │
+LAYER 4                   ▼
+                    UPLIFT MODEL
 ```
 
-**Ba chỗ đứt lineage, đều đã ghi ở `FEATURE_DICTIONARY.md` §6:** D2 (tenure bị chặn),
-D3 (tên sai), D4 (không point-in-time).
+Cùng cơ chế áp dụng cho `f18` (`n_max = 2260`) và `f19` (`n_max ≈ 4712`) —
+**cùng họ biến đổi `log10(counter)`**, chỉ khác trần và độ thưa
+(`f18`: 95.5% dòng bằng 0; `f19`: 93.0%).
 
-### 4.3 · Chỗ đứt lớn nhất: **phía trên EventProducer không có gì**
+### 6.2 · Lineage T1 — ví dụ `f1`, `f2`
 
 ```
-   ???  ← KHÔNG CÓ BUSINESS ENTITY, KHÔNG CÓ OPERATIONAL DB
-    │
-    ▼
-   EventProducer._make_session()
-       for event_type, prob in SESSION_FLOW:
-            if random() > prob: continue
-            price    = lognormvariate(3.2, 0.8)    ← giá bịa cho từng event
-            item_id  = "item_" + randint(1,500000) ← không có catalog
-            category = choice(CATEGORIES)          ← không liên quan item_id
+LAYER 1   CUSTOMER.attr_date_A , CUSTOMER.attr_date_B
+             │  ràng buộc CONFIRMED:  f1 ≥ f2  luôn đúng
+             │  ⇒ attr_date_A xảy ra SỚM HƠN HOẶC BẰNG attr_date_B
+             │  SYNTHETIC_ASSUMPTION: hai mốc nghiệp vụ có thứ tự
+             ▼
+LAYER 2   (mốc thời gian trên entity, không cần event riêng)
+             ▼
+LAYER 3   f1 = date_diff('day', attr_date_A, feature_ts)
+          f2 = date_diff('day', attr_date_B, feature_ts)
+             ▼
+          reconstructed (f1,f2) == original (f1,f2)   ✓  và ràng buộc f1 ≥ f2 tự thoả
 ```
 
-Đây là **lỗ hổng kiến trúc trung tâm** so với mental model của project:
+### 6.3 · Lineage T2 — one-hot `f40`–`f78`
 
-| Yêu cầu | Thực tế repo |
-|---|---|
-| `Business Entity → Transaction → Event` | `random() → Event` |
-| "Customer views product" ⇒ `PRODUCT_VIEWED` | Không có Customer, không có Product |
-| "Customer places order" ⇒ `ORDER_CREATED, PAYMENT_COMPLETED, ORDER_PAID` | Một event `order` duy nhất, không có order nào tồn tại |
+```
+LAYER 1   CUSTOMER.synthetic_segment_G1 .. G7      (7 biến categorical)
+             │  bằng chứng: 11 nhóm loại trừ, row_sum = 11.0 ở 100% dòng
+             │  sau khử trùng (f68≡f71≡f77; f74 lệch 2 dòng; f70 hằng số)
+             │  ⇒ CHỈ CÒN 7 biến thật
+             ▼
+LAYER 2   (thuộc tính entity — điều khiển hành vi mô phỏng)
+             ▼
+LAYER 3   one-hot encoding
+             ▼
+          f40 … f78     ==   original    ✓
+```
 
-Layer 1 **hoàn toàn vắng mặt**. Repo hiện tại nhảy thẳng từ generator ngẫu nhiên
-(giả danh Layer 2) sang Layer 3.
+### 6.4 · Lineage T2 — `f79`–`f82` (**một** biến, bốn biểu diễn)
 
-> **Nói cho công bằng:** đây không phải lỗi thiết kế của repo. Repo được xây làm
-> *hạ tầng data pipeline*, và ở vai trò đó nó **rất tốt** — versioned feature store
-> với atomic swap, PIT join, dedup, at-least-once, spec làm hợp đồng ba bên. Cái
-> thiếu là một tầng nghiệp vụ ở trên, đúng thứ bộ tài liệu này thiết kế.
+```
+LAYER 1   CUSTOMER.synthetic_category_515          ◄── MỘT thuộc tính duy nhất
+             │  bằng chứng: cardinality tuple = cardinality từng cột = 515
+             │  ⇒ ánh xạ value ↔ level id là SONG ÁNH
+             ▼
+LAYER 3   level id
+             │
+             ├──► encoding_1  ──►  f79
+             ├──► encoding_2  ──►  f80
+             ├──► encoding_3  ──►  f81
+             └──► encoding_4  ──►  f82
+                                     │
+                                     ▼
+                        FEATURE STORE  (4 cột, 1 nguồn)
+```
+
+Bảng mã hoá được **suy ra từ chính dataset** (515 cặp `level ↔ value`), không phải bịa.
+
+### 6.5 · Lineage T2 — `f37`, `f38` (**hai** biến, chung bảng mã hoá)
+
+```
+LAYER 1   CUSTOMER.synthetic_attr_64      (64 mức)
+          CUSTOMER.synthetic_attr_241     (241 mức)
+             │  bằng chứng: tuple cardinality 1133 > 241 ⇒ hai biến độc lập
+             │             alphabet(f37) ⊂ alphabet(f38), 64/64 ⇒ chung hàm encode
+             ▼
+LAYER 3   shared_encoding(level)
+             ├──►  f37
+             └──►  f38
+```
 
 ---
 
-## 5. Lineage Track C — synthetic business system
+## 7. Track A2 — Pass-through
 
-### 5.1 · Ví dụ đầy đủ — `cart_value_current`
+23 cột liên tục / cardinality > 1000: `f3`, `f4`, `f8`–`f10`, `f12`, `f13`, `f16`,
+`f17`, `f20`–`f24`, …
 
-```
-LAYER 1  ┌────────────────────────────────────────────────┐
-         │ CART_ITEM.insert(cart_id, sku_id, qty)         │
-         │ SKU.list_price                                 │
-         └───────────────────┬────────────────────────────┘
-                             │ transition
-LAYER 2                      ▼
-         ITEM_ADDED_TO_CART{customer_id, sku_id, quantity,
-                            unit_price, event_ts}
-                             │ Kafka → stream + lake
-LAYER 3                      ▼
-         offline:  SUM(unit_price × quantity)
-                   trên CART_ITEM còn sống tại feature_ts
-         online:   Redis HASH cart:u:{uid} cộng/trừ khi
-                   ITEM_ADDED / ITEM_REMOVED / ORDER_PAID
-                             │
-                             ▼
-         FEATURE STORE  cart_value_current
-                             │
-LAYER 4                      ▼
-                          MODEL
+```yaml
+reconstruction_tier: T3
+business_definition: UNKNOWN
+confidence:          UNKNOWN
 ```
 
-⚠️ Đây là feature **trạng thái** (không phải counter cửa sổ). Nó không cộng dồn được
-qua ô 5 phút ⇒ **cơ chế parity hiện tại không áp dụng trực tiếp**. Cần thiết kế
-riêng: online giữ giá trị tuyệt đối, offline tái dựng trạng thái tại `feature_ts`
-bằng cách replay event. **Đây là công việc thật, không miễn phí** — ghi nhận trước
-khi cam kết.
+**Quy tắc xử lý — chỉ áp dụng SAU feature selection:**
 
-### 5.2 · Ví dụ — `voucher_redeemed_30d` (đóng closed loop)
+```
+if feature ∈ selected_set:
+        → định nghĩa controlled pass-through strategy
+          (mang theo như thuộc tính mờ của CUSTOMER, ghi rõ đây KHÔNG phải
+           feature engineering, và đánh dấu là baseline/fallback)
+else:
+        → loại khỏi production feature pipeline
+```
+
+> **Không tự động gán business semantic cho 23 cột này.** Giữ `T3 / UNKNOWN` cho
+> tới khi có bằng chứng cấu trúc mới.
+
+Lưu ý: `f23` và `f25` nằm trong nhóm này và **trùng nhau 99.78%** (`corr = 0.999957`)
+⇒ phải xử lý ở mức **feature group**, không phải hai nguồn thông tin độc lập (§11).
+
+---
+
+## 8. Track B — event-derived hiện có
+
+11 feature đã có lineage đầy đủ trong repo. **Không đổi khái niệm** — chỉ nhắc lại
+để bản đồ lineage trọn vẹn.
+
+### 8.1 · Nhóm realtime `rt_*`
+
+```
+   Business transaction  (SẼ có sau M3 — hiện đang là random generator)
+            │
+            ▼
+   Domain event ──► Kafka ──► stream_consumer (key = customer_id)
+                         │
+                         ├─(1)─► _write_parquet() ──► parquet lake
+                         │              ──► stg_app_events (dedup event_id)
+                         │              ──► feat_user_realtime_pit.sql
+                         │                  cửa sổ = [bucket_start(feature_ts) − 11×300s , feature_ts)
+                         │                          ═══ OFFLINE ═══
+                         │
+                         └─(2)─► _update_realtime() sau khi (1) thành công
+                                    ──► downstream realtime state (representation ngoài scope)
+                                    ──► online_store.aggregate_realtime()
+                                               ═══ ONLINE ═══
+```
+
+**Parity:** hai nhánh **cùng làm tròn về ô 5 phút** — thiết kế có chủ đích, cần test
+tự động canh giữ (gap G7, chưa có).
+
+**Chỗ đứt:** `rt_session_len_sec` chỉ có nhánh (1). Online không bao giờ ghi ⇒
+training/serving skew có thật (audit C16).
+
+### 8.2 · Nhóm batch `hist_*`
+
+Ba chỗ đứt lineage đã ghi ở `FEATURE_DICTIONARY.md` §6: D2 (`user_tenure_days` bị
+chặn ở 30), D3 (`voucher_used_30d` đếm claim nhưng tên nói used), D4 (không point-in-time).
+Các lỗi này thuộc legacy/full mart, không thuộc selected Redis sync 36 cột hiện tại.
+
+---
+
+## 9. Track C — feature nghiệp vụ mới
+
+Feature **không** tồn tại trong LZD, do synthetic business system sinh ra để phục vụ
+quyết định voucher. Lineage đầy đủ từ Layer 1. Chi tiết: `FEATURE_DICTIONARY.md` §5.
+
+Ví dụ đóng closed loop — `voucher_redeemed_30d`:
 
 ```
 LAYER 1   DECISION.insert ──► VOUCHER_ISSUANCE.insert
-                                      │
-LAYER 2                        VOUCHER_ISSUED ──► Kafka biz.voucher.v1
-                                      │
-                              (user phản ứng)
-                                      ▼
-                              VOUCHER_CLAIMED
-                                      ▼
-                    VOUCHER_REDEMPTION.insert khi ORDER_PAID
-                                      ▼
-                              VOUCHER_REDEEMED{issuance_id, order_id, amount}
-                                      │
-LAYER 3            COUNT trên cửa sổ 30 ngày, point-in-time tại feature_ts
-                                      ▼
-                          voucher_redeemed_30d
-                                      │
-LAYER 4                            MODEL ──► score ──► POLICY ──► DECISION
-                                      │                              │
-                                      └──────────────────────────────┘
-                                            ★ VÒNG LẶP ĐÓNG
+LAYER 2   VOUCHER_ISSUED ──► Kafka ──► VOUCHER_CLAIMED ──► VOUCHER_REDEEMED
+LAYER 3   COUNT trên cửa sổ 30 ngày, point-in-time tại feature_ts
+LAYER 4   MODEL ──► score ──► POLICY ──► DECISION
+                │                            │
+                └────────────────────────────┘   ★ VÒNG LẶP ĐÓNG
 ```
 
-Đây là feature **duy nhất** trong toàn bộ tài liệu mà lineage của nó **đi qua chính
-đầu ra của model**. Nó là bằng chứng closed loop hoạt động — và cũng là chỗ nguy hiểm
-nhất về nhân quả (xem cảnh báo `FEATURE_DICTIONARY.md` §5.4).
-
-### 5.3 · Cảnh báo: đừng để Track C thành `f*` thứ hai
-
-Track C dễ phình. Kỷ luật cần giữ:
-
-1. Thêm feature ⇒ **phải** viết đủ 13 trường lineage **trước** khi code
-2. Thêm feature ⇒ **phải** có cả `offline_definition` và `online_definition`; nếu
-   chỉ có một ⇒ đó là skew được lên lịch sẵn (chính là bài học `rt_session_len_sec`)
-3. Thêm feature ⇒ bump `feature_spec.version`, không sửa tại chỗ
-4. Feature vào model ⇒ **phải** có ablation chứng minh nó đóng góp
+⚠️ **Cảnh báo nhân quả:** đây là *lịch sử treatment*. Nếu chính sách phát voucher
+trong quá khứ đã targeted (như train set LZD), feature này mã hoá luôn *chính sách cũ*.
+Cần ablation trước khi đưa vào production.
 
 ---
 
-## 6. Ranh giới point-in-time
+## 10. Feature Selection đặt ở đâu
 
-Ranh giới PIT là thứ giữ cho mọi lineage ở trên trung thực.
+### 10.1 · Luồng đúng
 
 ```
-                    quá khứ  ◄────────── feature_ts ──────────►  tương lai
-                                              │
-   ✅ được dùng để tính feature               │   ❌ TUYỆT ĐỐI KHÔNG
-   event_ts < feature_ts                      │   event_ts >= feature_ts
-                                              │
-   ────────────────────────────────────────── │ ────────────────────────────
-                                              │
-                                              │   ✅ label lấy ở đây
-                                              │   trong cửa sổ attribution
+   LZD Dataset
+        ▼
+   Feature Profiling                    ← đã làm (§5)
+        ▼
+   Train / Evaluate Baseline Model      ← BẮT BUỘC
+        ▼
+   Feature Selection
+        ▼
+   Selected Features
+        ▼
+   Constrained Forward Synthesis
+```
+
+### 10.2 · Vì sao model phải đứng trước
+
+❌ **Sai:** `Dataset → Feature Selection → Business Reconstruction` (không nói tới model).
+
+Đây là bài toán **uplift / treatment effect**. Không thể quyết định feature chỉ bằng
+tương quan với outcome. Phải cân nhắc **tám** tiêu chí:
+
+| Tiêu chí | Vì sao cần |
+|---|---|
+| `predictive value` | dự báo outcome |
+| `treatment interaction` | feature có tương tác với treatment không |
+| `heterogeneous treatment effect` | uplift có khác nhau theo feature không |
+| `uplift contribution` | đóng góp vào AUUC/Qini, **không phải** vào AUC |
+| `redundancy` | xem §11 |
+| `stability` | ổn định qua các seed / fold |
+| `leakage` | có rò rỉ tương lai không |
+| `online availability` | lúc serve có tính được không |
+
+Một feature có `predictive value` cao nhưng `treatment interaction` bằng 0 sẽ giúp
+dự đoán `P(mua)` mà **không** giúp xếp hạng uplift — tức là vô dụng cho bài toán này,
+thậm chí có hại vì nó đẩy *sure thing* lên đầu.
+
+### 10.3 · Hệ quả cho lộ trình
+
+CFS **không thể bắt đầu** trước khi có model. Đây là lý do `MIGRATION_PLAN.md` đặt
+model ở M1 và CFS ở PHASE X sau đó.
+
+---
+
+## 11. Redundancy & feature-group selection
+
+### 11.1 · Trùng lặp đã đo được
+
+| Nhóm | Bằng chứng | Số biến thật |
+|---|---|---|
+| `f23`, `f25` | trùng 99.78% dòng, `corr = 0.999957` | **1** |
+| `f68`, `f71`, `f77` | `sum(abs(a−b)) = 0` — trùng tuyệt đối; `f74` lệch 2/926,669 dòng | **1 bit** |
+| `f79`, `f80`, `f81`, `f82` | tuple cardinality = per-column cardinality = 515 | **1** biến 515 mức |
+| `f70` | `min = max = 1` | **0** — zero information |
+| `f40`–`f78` (39 cột) | 11 nhóm one-hot, sau khử trùng | **7** biến |
+
+### 11.2 · Quy tắc
+
+```
+❌ SAI:   6 feature  =  6 nguồn thông tin độc lập
+✅ ĐÚNG:  group các feature có cùng underlying information TRƯỚC khi selection
+```
+
+Feature selection phải chạy ở **hai** mức:
+
+```
+   feature level        → chọn/loại từng cột
+   feature-group level  → tránh đếm MỘT tín hiệu nhiều lần
+```
+
+Hệ quả đã đo: **~21% "gain" ở đỉnh bảng importance thực chất thuộc về 2 biến,
+không phải 6.** Mọi quyết định chọn feature dựa trên bảng importance chưa group
+đều bị bóp méo.
+
+### 11.3 · Ràng buộc
+
+Không xoá/gộp cột chỉ vì correlation cao **mà chưa có baseline/ablation evidence**.
+Grouping ở §11.1 là để **selection đọc đúng**, không phải lệnh xoá cột.
+Ngoại lệ hiển nhiên duy nhất: `f70` (hằng số ⇒ zero information theo định nghĩa) —
+và vẫn phải bump `feature_spec.version` chứ không sửa lén.
+
+---
+
+## 12. Tautology vs Validation
+
+**Đây là section quan trọng nhất của tài liệu này.**
+
+### 12.1 · Vấn đề
+
+```
+   f30
+    ↓  n = round(10^f30)
+   synthetic order_count
+    ↓  log10(order_count)
+   f30
+```
+
+rồi kết luận:
+
+```
+   generated f30 == original f30
+```
+
+Điều này **gần như là một tautology** nếu ta cố tình dựng ngược transformation.
+
+### 12.2 · Nó chứng minh gì và không chứng minh gì
+
+| | |
+|---|---|
+| ✅ **Chứng minh** | `transformation pipeline works` — đường ống decode → sinh → aggregate → encode chạy đúng, không mất mát, không lệch |
+| ❌ **KHÔNG chứng minh** | `f30 thật sự là order_count trong Lazada` |
+
+Semantic vẫn là:
+
+```
+SYNTHETIC_ASSUMPTION
+```
+
+### 12.3 · Vì sao vẫn phải làm
+
+Dù là tautology về mặt logic, reconstruction validation vẫn bắt được lỗi thật:
+
+- sai bảng mã hoá (encoding map lệch)
+- sai cửa sổ thời gian
+- sai thứ tự cột
+- mất chính xác dấu phẩy động (vd `f30` lưu 6 chữ số ⇒ `10^f30 = 29.999982`, phải
+  dùng dung sai tương đối chứ không phải so bằng tuyệt đối)
+- point-in-time boundary bị vi phạm
+
+Nó là **điều kiện cần**, không phải điều kiện đủ.
+
+---
+
+## 13. Hai tầng validation
+
+### 13.1 · Tầng A — Reconstruction Validation
+
+```
+   generated_feature  ==  original_feature
+```
+
+**Mục đích:** kiểm tra pipeline có tái tạo đúng *representation* hay không.
+**Không** chứng minh semantic thật. Xem §12.
+
+**Phạm vi áp dụng:** Track A1 (T1 + T2), Track B, Track C.
+**Dung sai:** `quality.online_offline_tolerance = 0.0001` (đã khai báo trong spec) —
+**tương đối**, không tuyệt đối.
+
+### 13.2 · Tầng B — Model-Level Validation ← **đây mới là validation quan trọng**
+
+```
+   Original LZD Dataset          Reconstructed Dataset
+            ▼                              ▼
+          Model                    Equivalent Model
+            ▼                              ▼
+   AUUC / Qini / uplift    ⟷    AUUC / Qini / uplift
+```
+
+**So sánh đầy đủ:**
+
+| # | Chiều so sánh | Ý nghĩa nếu lệch |
+|---|---|---|
+| 1 | `uplift curve` | hình dạng xếp hạng khác ⇒ hệ tái tạo không giữ được cấu trúc |
+| 2 | `Qini` | |
+| 3 | `AUUC` | |
+| 4 | `treatment heterogeneity` | mất tính không đồng nhất ⇒ mất chính thứ uplift model cần |
+| 5 | `prediction distribution` | model nhìn thấy phân bố khác ⇒ ngưỡng policy vô nghĩa |
+| 6 | `feature importance` | trọng số dịch chuyển ⇒ reconstruction đổi vai trò feature |
+| 7 | `decision / policy distribution` | tỉ lệ `SEND_VOUCHER` khác ⇒ hệ quả kinh tế khác |
+
+**Mục tiêu:**
+
+> Xác định hệ feature tái tạo có **bảo toàn cấu trúc ML hữu ích** của bài toán
+> training hay không.
+
+### 13.3 · Quan hệ giữa hai tầng
+
+```
+   Tầng A đạt, Tầng B đạt      →  reconstruction dùng được
+   Tầng A đạt, Tầng B KHÔNG    →  tái tạo đúng con số nhưng mất cấu trúc
+                                   (vd: thuộc tính được gán nhưng KHÔNG điều khiển
+                                    hành vi ⇒ tương quan giữa các feature bị phá)
+   Tầng A KHÔNG                →  pipeline sai, chưa cần xét tầng B
+```
+
+Trường hợp giữa là **cái bẫy nguy hiểm nhất** và là lý do §3.4 tồn tại.
+
+---
+
+## 14. Ranh giới point-in-time
+
+```
+              quá khứ  ◄────────── feature_ts ──────────►  tương lai
+                                        │
+   ✅ dùng để tính feature               │   ❌ TUYỆT ĐỐI KHÔNG
+   event_ts < feature_ts                 │   event_ts >= feature_ts
+                                        │
+                                        │   ✅ label lấy ở đây,
+                                        │      trong cửa sổ attribution
 ```
 
 | Thành phần | Tôn trọng biên PIT? | Bằng chứng |
@@ -427,74 +707,85 @@ Ranh giới PIT là thứ giữ cho mọi lineage ở trên trung thực.
 | `feat_user_realtime_pit.sql` | ✅ | `e.event_ts < s.feature_ts` |
 | `online_store.aggregate_realtime()` | ✅ | cutoff theo `now()` lúc serve |
 | `feat_user_behaviour.sql` | ❌ | dùng `now()` lúc dbt build — **D4** |
-| `feat_user_serving.sql` | ⚠️ | join behaviour `using (user_id)`, không theo `dt` |
-| `training_dataset.sql` | ✅ | join theo `(user_id, dt)`; label từ snapshot |
-| `offline_store.iter_shard()` | ✅ | chỉ đọc `entity_key + batch_names` ⇒ **label không bao giờ tới Redis** |
+| `feat_user_serving.sql` | ⚠️ | baseline/full mart join behaviour `using (user_id)`, không theo `dt` |
+| `feat_user_selected_serving.sql` | ✅ | selected 36-column sync source; không chứa label/is_treat |
+| `training_dataset.sql` | ✅ | join `(user_id, dt)`; label từ snapshot |
+| `offline_store.iter_shard()` | ✅ | chỉ đọc `entity_key + batch_names` ⇒ **label không rời training dataset** |
 
-Dòng cuối đáng nhấn mạnh: **ranh giới label đang đúng** và nhiều team làm sai chỗ này.
-Đừng phá nó khi migrate.
+Dòng cuối: **ranh giới label đang đúng** — nhiều team làm sai chỗ này. Đừng phá khi migrate.
+
+**Với CFS:** event sinh ra ở bước 4 phải nằm **trước** `feature_ts`. Nếu sinh event
+ở thời điểm sau rồi tính ngược, reconstruction sẽ "đạt" trong khi vi phạm PIT —
+một dạng tautology nguy hiểm hơn §12.
 
 ---
 
-## 7. Vai trò của dataset LZD: seed vs reference
+## 15. Vai trò của dataset LZD
 
-Yêu cầu §5 nói: coi dataset LZD là **feature target / reference**. Cụ thể hoá:
-
-### 7.1 · Vai 1 — SEED (đang hoạt động)
+### 15.1 · Dataset gốc là bất khả xâm phạm
 
 ```
-full_trainset.csv ──► lake ──► stg ──► feat_user_serving ──► Redis fs:{ver}:u:{uid}
+   LZD Dataset  =  REFERENCE / TRAINING DATASET
 ```
 
-1,108,338 user (train + test) đã được nạp vào Redis, không lọc split (audit C14).
-Đây là **trạng thái lịch sử [A]** — điểm xuất phát của mọi scenario.
-Không diễn giải. Không mô phỏng. Không tái tạo.
+**Không modify source dataset để ép validation pass.**
 
-### 7.2 · Vai 2 — REFERENCE để hiệu chỉnh (chưa làm)
+Dữ liệu sinh ra phải đi đúng chiều:
 
-Sau khi synthetic business system chạy, so **đặc trưng thống kê** của feature Track C
-với LZD:
+```
+   ✅ Business DB → Raw/Event → Feature Engineering → Generated Features
+                                                            │
+                                                            ▼
+                                                   compare với reference
 
-| Chiều so sánh | So cái gì | Ngưỡng chấp nhận |
+   ❌ LZD feature → copy trực tiếp → database → gọi là "feature engineering"
+```
+
+### 15.2 · Seed user & closed loop
+
+Synthetic system **được phép** khởi đầu từ user/dòng có thật trong LZD dataset.
+Mục tiêu trước mắt:
+
+```
+   existing users → business events → feature updates → inference → decisions
+```
+
+Bài toán **sinh user hoàn toàn mới** là một bài toán generative modeling riêng
+(cần fit joint distribution trên 83 chiều) và **chưa cần** cho closed-loop simulator.
+Ghi nhận là việc tương lai, không phải thiếu sót.
+
+> **Lợi ích phụ quan trọng:** vì mỗi synthetic customer được dựng bằng cách decode
+> **một dòng thật**, phân bố đồng thời giữa các thuộc tính chính là empirical joint
+> của dataset ⇒ cấu trúc tương quan giữa các feature được bảo toàn **miễn phí**.
+> Đây là điều mà một generator độc lập từng thuộc tính không bao giờ đạt được.
+
+### 15.3 · Ràng buộc bảo toàn test set
+
+```
+   full_testset.csv  =  RCT  =  tài sản đánh giá không thiên lệch DUY NHẤT
+```
+
+Uplift thật chỉ **+0.37pp** trên nền 3.3%. Đủ 181,669 dòng ⇒ SE ≈ 0.087pp, z ≈ 4.3.
+Cắt xuống 50k ⇒ SE ≈ 0.16pp, z ≈ 2.3 — **mất độ tin cậy**.
+
+⇒ Scenario chỉ dùng user `lzd_split = 'train'` (926,669 user, dư thừa).
+
+### 15.4 · Ràng buộc thống kê để đối chiếu
+
+| Chiều | Train (observational) | Test (RCT) |
 |---|---|---|
-| Range | min/max của feature liên tục | cùng bậc độ lớn |
-| Distribution | KS statistic / quantile | 🟨 cần chốt |
-| Cardinality | số mức của categorical | cùng bậc |
-| Sparsity | tỉ lệ 0 / null | ±10pp |
-| One-hot structure | có nhóm loại trừ không | có/không |
-| Treatment distribution | % treated | TARGETED ≈ 22%, RCT ≈ 52% |
-| Outcome distribution | positive rate | train ≈ 2.0%, test ≈ 3.5% |
-| Uplift thô | CR(treat) − CR(control) | TARGETED ≈ +4.7pp, RCT ≈ +0.37pp |
+| % treated | **22.2%** | **52.1%** |
+| positive rate | **1.99%** | **3.52%** |
+| CR treated | 5.66% | 3.70% |
+| CR control | 0.94% | 3.33% |
+| chênh lệch thô | **+4.72pp** | **+0.37pp** |
 
-Bốn dòng cuối là ràng buộc **mạnh nhất và cụ thể nhất** mà dataset áp lên synthetic
-system — chúng đo được, đã biết con số đích, và ép synthetic generator phải mô hình
-hoá cả **targeting bias** lẫn **RCT** (đó là lý do `EXPERIMENT.mode` tồn tại trong ERD §7.2).
-
-### 7.3 · Điều KHÔNG phải mục tiêu
-
-```
-❌ synthetic_f30 == LZD_f30
-❌ "cột X của synthetic system tương ứng f79"
-❌ khôi phục raw data đứng sau f0..f82
-```
-
-Yêu cầu §5 nói rõ: không cần chứng minh đẳng thức khi semantic chưa được xác nhận.
-Thứ cần chứng minh là **mapping/hypothesis hợp lý và thống kê phù hợp**.
-
-### 7.4 · Ràng buộc bảo toàn test set
-
-```
-full_testset.csv  =  RCT  =  tài sản đánh giá không thiên lệch DUY NHẤT
-```
-
-Uplift thật chỉ **+0.37pp** trên nền 3.3%. Với đủ 181,669 dòng: SE ≈ 0.087pp ⇒ z ≈ 4.3.
-Cắt xuống 50k: SE ≈ 0.16pp ⇒ z ≈ 2.3 — **mất độ tin cậy**.
-
-⇒ **Cấm dùng test set làm nguồn event stream** (điều cấm số 9). Scenario lấy user từ
-**train** (926,669 user, dư thừa) qua `CUSTOMER_IDENTITY_MAP` với `lzd_split='train'`.
+Bốn dòng cuối là ràng buộc **mạnh nhất và cụ thể nhất** dataset áp lên synthetic
+system — và là lý do `EXPERIMENT.mode ∈ {TARGETED, RCT}` tồn tại trong `ERD.md` §7.2.
 
 ---
 
-## Tiếp theo
+## Liên quan
 
-- `MIGRATION_PLAN.md` — chuyển từ kiến trúc hiện tại sang kiến trúc này theo thứ tự nào
+`LAZADA_BUSINESS_DOMAIN.md` · `ERD.md` · `BUSINESS_EVENT_MODEL.md` ·
+`FEATURE_DICTIONARY.md` · `MIGRATION_PLAN.md` · `AUDIT_KIEN_TRUC_VA_FEATURE.md`

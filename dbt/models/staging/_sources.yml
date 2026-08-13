@@ -32,3 +32,29 @@ sources:
           - name: user_id
           - name: event_ts
             description: "Epoch giay - thoi diem xay ra o client"
+
+      - name: events_v2
+        description: "Event Track A/B co provenance, tach khoi app_events v1"
+        meta:
+          external_location: "s3://lakehouse/raw/events_v2/**/*.parquet"
+        columns:
+          - name: event_id
+            tests: [not_null]
+          - name: customer_id
+            tests: [not_null]
+          - name: target_id
+          - name: generation_run_id
+
+  # DuckDB production must attach/materialize these Postgres biz relations
+  # before running the reconstruction models. The local E2E runner seeds the
+  # same contracts in an isolated in-memory DuckDB database.
+  - name: biz
+    description: "Reconstruction control plane and decoded customer state"
+    schema: biz
+    tables:
+      - name: reconstruction_boundary
+        identifier: v_reconstruction_boundary
+      - name: customer_attribute
+      - name: encoding_map
+      - name: onehot_layout
+      - name: passthrough_source

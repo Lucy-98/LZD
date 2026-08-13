@@ -1,0 +1,16 @@
+version: reconstruction_runtime_v1
+
+# Epistemic status and operational branch are deliberately separate.
+semantic_status: UNIDENTIFIED
+semantic_branch: H1
+
+reference_ts: "2026-08-01T23:59:59+00:00"
+future_days: 2
+generation_seed: 42
+
+constraint_model_version: constraints_v1
+encoding_version: encoding_2026_08_v1
+objective_version: objective_v1
+selection_policy_version: seeded_optimal_pool_v1
+solver_version: prototype_v1
+behaviour_policy_version: rule_v1

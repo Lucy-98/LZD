@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # ==========================================================================
 # Image dung chung cho: event-producer, stream-consumer, inference-api
 #
@@ -57,10 +56,8 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
 
 WORKDIR /opt/project
 
-# Code copy vao image de container chay duoc doc lap.
-# Khi dev, docker-compose bind mount de len -> sua code khong can build lai.
-COPY --chown=appuser:appuser src /opt/project/src
-COPY --chown=appuser:appuser config /opt/project/config
+# Code/config duoc bind mount trong docker-compose de tranh bake OneDrive
+# reparse-point files vao build context. Standalone image chi chua runtime deps.
 
 USER appuser
 

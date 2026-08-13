@@ -1,0 +1,156 @@
+# ==========================================================================
+# FEATURE SEMANTIC AUDIT — analytical metadata
+#
+# RECONSTRUCTION_SPEC.md §13.3
+#
+# 🚫 SOLVER KHÔNG ĐỌC FILE NÀY.
+#
+# Tách khỏi `fs_2026_08_v1.yaml` để câu hỏi ngỏ (f9/f16) KHÔNG chặn solver.
+# File này chỉ ảnh hưởng R2 metadata + cách đọc feature importance.
+# ==========================================================================
+id: feature_semantics_2026_08
+applies_to: fs_2026_08_v1
+
+# --------------------------------------------------------------------------
+# ⬜ CHƯA CHỐT — RECONSTRUCTION_SPEC.md §2.6
+#
+#   36 − 3 (f80,f81,f82 cùng nhóm f79)  = 33
+#      − 1 nếu f23/f25 gộp               = 32
+#      − 1 nếu f9/f16 gộp                = 31
+# --------------------------------------------------------------------------
+semantic_signal_count: UNRESOLVED
+
+# --------------------------------------------------------------------------
+# 🚫 PHƯƠNG PHÁP BẮT BUỘC — §2.3
+#
+# CẤM dùng correlation để phát hiện encoding group.
+# Bằng chứng: trong nhóm f79–f82 (ĐÃ CHỨNG MINH là MỘT biến 515 mức),
+# tương quan cặp trải từ −0.99 đến +0.72; 3/6 cặp có |corr| < 0.5.
+# Bộ lọc correlation chỉ bắt được 1/6 cặp.
+# --------------------------------------------------------------------------
+grouping_method: functional_dependency
+grouping_rule: |
+  card(tuple(A,B)) == card(A) == card(B)  ⇒ song ánh, MỘT tín hiệu
+  card(tuple(A,B)) == card(A)             ⇒ B là hàm của A
+  correlation                             ⇒ KHÔNG dùng
+
+resolved_groups:
+  - id: G_category_515
+    columns: [f79, f80, f81, f82]
+    signals: 1
+    evidence: "card(tuple)=card(mỗi cột)=515 train; =504 test. Song ánh 2 split."
+
+open_questions:
+  - pair: [f9, f16]
+    status: UNRESOLVED
+    tier: T3                # ⇒ solver KHÔNG chạm
+    measured:
+      equal_rows: 684207    # 73.84% / 926,669
+      card_f9: 25659
+      card_f16: 44314
+      card_tuple: 158669    # ≫ card(f9) ⇒ KHÔNG phải hàm của nhau
+      range_both: [0.0, 8.1696]   # MAX trùng khít
+      avg_diff: 0.1034
+    reading: >
+      Theo functional-dependency test thì là HAI tín hiệu. Nhưng max trùng khít
+      và bằng nhau 73.84% gợi ý cùng đại lượng nền, khác cửa sổ/độ mịn. UNKNOWN.
+
+  - pair: [f23, f25]
+    status: LIKELY_ONE_SIGNAL
+    tier: T3
+    measured:
+      corr: 0.999957
+      equal_rate: 0.9978
+    reading: "Cần chạy functional-dependency test để chốt, không dựa vào corr."
+
+# ==========================================================================
+# SEMANTIC IDENTIFICATION RECORD — RECONSTRUCTION_SPEC.md §10
+#
+# `UNIDENTIFIED` LA MOT GIA TRI HOP LE, khong phai o trong.
+# Record nay ton tai => o §13.1 dong duoc ve mat SCHEMA.
+# Viec chay X1-X5 de PHAN DINH la mot cong viec RIENG, van con mo.
+#
+# 🚫 Solver KHONG doc file nay. Kenh runtime la SolverConfig.semantic_status.
+# ==========================================================================
+semantic_identification:
+  - feature: f30
+    status: UNIDENTIFIED           # TRANG THAI NHAN THUC
+    branch_in_use: H1              # OPERATIONAL PREFERENCE, khong phai semantic truth
+    decided_at: "2026-08-12"
+    rationale: >
+      X4 cho thay f30 la counter DUY NHAT trong nhom log-counter co bien
+      censoring cung tai 30 (gai 1.77x), trong khi n5/n11/n18/n19 co max la
+      SINGLETON (count=1, bin ke rong) => duoi tu nhien, khong phai cap.
+      30 cung la max TRON duy nhat (cac max kia: 2260/4712/14245/2144).
+      => BAC gia thuyet "30 la quy uoc cap chung cua he thong".
+
+      X1 cho thay mot structural break tai n30=15 lap lai duoc: count -42.4%
+      VA avg n5 +40.8% (dao chieu) tai cung mot bac. => co hai quan the.
+      X1 cung BAC gia thuyet "mot subgroup categorical bi hard-cap o 14":
+      moi level deu cham max(n30)=30.
+
+      Hai ket qua nay lam H1 tro thanh KICH BAN VAN HANH duoc ua chuong hon,
+      NHUNG chung KHONG truc tiep phan dinh:
+          H1: f30 = active_days
+          H2: f30 = mot counter khac co cap 30
+      H2 van chua bi bac. Ta chua co event taxonomy goc de loai tru no.
+
+      ⚠️ MOT LAP LUAN DA BI RUT LAI: ban truoc viet "H2 can ba trung hop khong
+      giai thich duoc" va dung no de nang len H1_SUPPORTED. Lap luan do KHONG
+      HOP LE — ta khong biet H2 counter dem cai gi, nen mot semantic chua biet
+      hoan toan co the giai thich ca ba hien tuong khi tim ra lineage.
+          UNKNOWN explanation  ≠  arbitrary coincidence
+      Day dung la buoc suy dien ma kien truc nay duoc dung de chan.
+    interpretation_rule: >
+      H1 la OPERATIONAL PREFERENCE dua tren X1/X4.
+      Dieu nay KHONG thiet lap rang f30 co nghia la active_days.
+      Duoc phep noi:  "H1 la kich ban van hanh dang chay va duoc ua chuong hon".
+      🚫 KHONG duoc noi: "f30 nghia la active_days".
+    evidence_refs:
+      - "capacity bound: 440,713/926,669 = 47.56%"
+      - "structural conflict f2<->f30: 8/926,669 = 0.001%"
+      - "X4: f30 la counter DUY NHAT co gai censoring (1.77x). n18/n19/n5/n11 max la singleton"
+      - "X4: 30 la max TRON duy nhat; cac max kia = 2260/4712/14245/2144"
+      - "X1: cliff 14->15 = -42.4% count VA +40.8% avg n5 (dao chieu) => hai quan the"
+      - "X1: KHONG level nao bi chan o 14 — moi level deu cham max 30 => BAC gia thuyet cua so 14 ngay"
+      - "X1: 15 = 30/2 dung mot nua cua so"
+      - "corr(n30, n5+n11+n18) = 0.161 (rat yeu)"
+    # 🚫 NGUYEN TAC CHO X2/X3/X5: KHONG chay de "co chung minh H1".
+    #    Moi experiment phai co KHA NANG LAM H1 YEU DI. Neu mot experiment
+    #    duoc thiet ke sao cho moi ket qua deu cung co H1 thi no vo gia tri.
+    falsifiability_requirement: >
+      Voi moi experiment phai ghi TRUOC khi chay: ket qua nao se lam H1 YEU DI.
+      Khong ghi duoc dieu do => experiment khong duoc chay.
+    open_experiments:                # X1-X5, §13.4 PIPELINE_ARCHITECTURE
+      - {id: X1, desc: "Giai thich cliff 14->15", status: DONE_PARTIAL,
+         result: "Xac nhan hai quan the (count VA avg n5 cung gay tai 14/15).
+                  BAC gia thuyet cua so 14 ngay: khong level nao chan o 14.
+                  CO CHE van UNKNOWN.",
+         weakens_h1_if: "tim ra co che khong lien quan gi toi cua so thoi gian"}
+      - {id: X2, desc: "Shape cua n30: truncated-count hay mixture", status: NOT_RUN,
+         weakens_h1_if: "mixture ro net hon truncated-count => cau truc khong den
+                         tu mot cua so 30 ngay don gian"}
+      - {id: X3, desc: "n30 co bi rang buoc CHUC NANG boi counter khac khong", status: NOT_RUN,
+         weakens_h1_if: "n30 la ham cua cac counter khac => no la aggregate/derived,
+                         khong phai window count doc lap"}
+      - {id: X4, desc: "Tran 30 la quy uoc he thong hay dac thu f30", status: DONE,
+         result: "DUT KHOAT: dac thu f30. Bac gia thuyet quy uoc he thong.
+                  KHONG chung minh f30 = active_days.",
+         weakens_h1_if: "counter khac cung co cap 30 => 30 la quy uoc, khong phai cua so"}
+      - {id: X5, desc: "Lap lai X1/X4 tren full_testset.csv (CHI DOC)", status: PARTIAL,
+         weakens_h1_if: "chu ky cau truc KHAC giua train va test => la artifact
+                         cua mot split, khong phai tinh chat cua feature"}
+    # 🚫 LUAT DIEN GIAI (§10.1)
+    interpretation_rule: >
+      status=UNIDENTIFIED + branch_in_use=H1 CHI cho phep noi
+      "H1 la kich ban van hanh dang chay".
+      TUYET DOI KHONG duoc noi "f30 nghia la active_days".
+
+# --------------------------------------------------------------------------
+# Ngoài 36 cột — ghi lại để không đo lại
+# --------------------------------------------------------------------------
+outside_selected_set:
+  - pair: [f6, f15]
+    status: EXACT_DUPLICATE     # sum(abs(diff)) = 0, 0 dòng lệch
+  - pair: [f14, f39]
+    status: EXACT_DUPLICATE

@@ -17,3 +17,4 @@ lzd_uplift:
         s3_use_ssl: false
         s3_url_style: "path"
         enable_progress_bar: false
+        TimeZone: "UTC"

@@ -1,179 +1,141 @@
-# Runbook — xử lý sự cố & diễn tập
+# Runbook
 
-## Bảng tra nhanh
+> **Scope:** Kafka, MinIO, dbt/DuckDB, reconstruction và data-quality operations.
+> API cùng downstream state operations do downstream owner vận hành.
 
-| Triệu chứng | Nhìn ở đâu trước | Nguyên nhân hay gặp | Xử lý |
-|---|---|---|---|
-| API trả 503 "chưa có active_version" | `curl :8000/store/info` | chưa chạy DAG 40 lần nào | chạy DAG 20 → 40 |
-| Cache miss cao | Grafana 00 → *Cache hit rate* | user không có trong snapshot, hoặc vừa GC nhầm | so `ops.feature_sync_audit.written_rows` với row count mart |
-| Alert `FeatureStoreStale` | Grafana 01 → *Tuổi feature online* | DAG 40 fail hoặc bị pause | xem `ops.feature_sync_shard` |
-| Alert `OnlineOfflineMismatch` | Grafana 01 → *Báo cáo validate* | dbt build lại giữa lúc sync | rollback + resync |
-| Kafka lag tăng đều | Grafana 02 → *Lag theo partition* | consumer chết / chậm | `docker compose logs stream-consumer` |
-| DLQ tăng | Kafka UI → topic `.dlq.v1` → header `reason` | producer đổi schema | sửa producer hoặc `validate_event` |
-| DAG 20 fail ở `assert_spec_contract` | task log | mart lệch `feature_spec.yml` | sửa dbt model **hoặc** spec, rồi chạy lại |
-| DuckDB "Could not set lock" | task log | 2 task cùng ghi | kiểm tra pool `duckdb_writer` phải = 1 slot |
-
----
-
-## SC-1 · Sync chết giữa chừng
-
-**Triệu chứng:** DAG 40 fail ở một vài task `sync_shard`.
-
-**Tình trạng thực tế:** `active_version` **chưa hề đổi** → serving vẫn chạy bản
-cũ bình thường. Không có sự cố với người dùng. Không cần vội.
-
-```sql
--- shard nào hỏng
-SELECT shard_id, status, rows_written, attempt, error_message
-FROM ops.feature_sync_shard
-WHERE feature_version = 'v20260805' AND status <> 'DONE'
-ORDER BY shard_id;
-```
-
-**Xử lý:** chạy lại DAG 40 (hoặc *Clear* các task fail). Shard đã `DONE` bị bỏ
-qua nhờ `fs:meta:{v}:shards`, chỉ shard hỏng được ghi lại.
-
-Cách khác — chỉ vá shard thiếu, không đụng DAG:
-`99_ops_toolbox` → `action=resync_pending`, `target_date=2026-08-05`.
-
----
-
-## SC-2 · Feature sai sau khi đã activate
-
-**Triệu chứng:** alert `OnlineOfflineMismatch`, hoặc business báo voucher phát sai.
-
-**Xử lý tức thì (< 5 giây):** `99_ops_toolbox` → `action=rollback`
-→ `SET fs:meta:active_version` về bản trước. Không phải ghi lại dữ liệu vì
-version cũ vẫn còn nguyên trong Redis (đây là lý do giữ 2 version).
+## Khởi động
 
 ```powershell
-docker compose exec redis redis-cli GET fs:meta:active_version
+.\scripts\stack.ps1 up-all
+.\scripts\stack.ps1 health
+.\scripts\stack.ps1 status
 ```
 
-**Sau đó điều tra:**
-```sql
-SELECT feature_version, status, checksum, validation_report
-FROM ops.feature_sync_audit ORDER BY started_at DESC LIMIT 5;
-```
-`validation_report.examples` liệt kê user + feature bị lệch.
+Airflow: http://localhost:8080 (`admin/admin`).
 
----
-
-## SC-3 · Streaming đứt
-
-**Triệu chứng:** `NoEventsIngested`, overlay `rt:u:*` hết hạn dần.
-
-**Ảnh hưởng:** feature realtime rơi về default; feature batch **vẫn còn** →
-model vẫn quyết định được, chỉ kém nhạy. Đây là chủ đích thiết kế: overlay chỉ
-là lớp phụ, mất nó không sập serving.
+Reconstruction dry-run chi can core stack. Neu observability image bi loi pull,
+dung:
 
 ```powershell
-docker compose logs --tail=200 stream-consumer
-docker compose restart stream-consumer
+.\scripts\stack.ps1 up-core
 ```
-Consumer đọc lại từ offset đã commit → không mất dữ liệu.
 
----
+## Bootstrap không có dữ liệu
 
-## SC-4 · Redis đầy bộ nhớ
+Triệu chứng: raw snapshot rỗng hoặc dbt source không tìm thấy parquet.
 
-`maxmemory-policy` đang là `noeviction` — **cố ý**. Nếu để `allkeys-lru`, Redis
-sẽ tự xoá feature của user ít truy cập → cache miss âm thầm, model quyết định
-bằng toàn giá trị default mà không ai biết. Thà ghi fail và báo động.
+1. Trigger `00_bootstrap_lake`.
+2. Kiểm log task `load_csv_to_lake`.
+3. Xác nhận object xuất hiện dưới `raw/user_snapshot/` trong MinIO.
+4. Trigger `20_build_features_dbt`.
+
+Không sửa trực tiếp CSV hoặc parquet để làm test pass.
+
+## Stream không có event
 
 ```powershell
-docker compose exec redis redis-cli INFO memory
-```
-Xử lý: giảm `FEATURE_VERSIONS_TO_KEEP` → chạy `99_ops_toolbox` `action=gc_versions`,
-hoặc tăng `REDIS_MAXMEMORY` trong `.env`.
-
----
-
-# Bài diễn tập cho intern
-
-## Bài 1 · Chứng minh idempotency
-
-```
-1. Chạy DAG 40 tới khi xanh hết
-2. Ghi lại: SELECT written_rows FROM ops.feature_sync_audit WHERE feature_version='v...'
-3. Trigger DAG 40 lần nữa (cùng ngày logic)
-4. Xem log:  {job="docker"} | json | event="shard_skipped"
-```
-**Kỳ vọng:** lần 2 xong trong vài giây, `written_rows` **không tăng**, mọi shard
-đều `skipped`. Đó là idempotency — rerun không double-write.
-
-## Bài 2 · Phục hồi khi hỏng một phần
-
-```
-1. 99_ops_toolbox → action=chaos_partial_fail, fail_shards=5
-2. Xem Grafana 01 → bảng shard: 5 dòng chuyển FAILED
-3. Chạy lại DAG 40
-4. Xem log: chỉ 5 shard đó có event="shard_written", 27 shard còn lại "shard_skipped"
+.\scripts\stack.ps1 logs event-producer
+.\scripts\stack.ps1 logs stream-consumer
+docker compose exec kafka kafka-consumer-groups `
+  --bootstrap-server kafka:29092 `
+  --group lzd-feature-consumer `
+  --describe
 ```
 
-## Bài 3 · Atomic swap
+Kiểm theo thứ tự:
 
-```
-1. Mở 2 cửa sổ:
-     A: while($true){ curl -s localhost:8000/features/U0000123 | ConvertFrom-Json | % feature_version; sleep 1 }
-     B: chạy DAG 40
-2. Quan sát cửa sổ A
-```
-**Kỳ vọng:** feature_version nhảy từ `v...04` sang `v...05` **một phát**, không
-có khoảnh khắc nào trả về dữ liệu nửa cũ nửa mới.
+1. Producer có publish vào `app.user.events.v1`.
+2. Consumer không đẩy event hợp lệ vào DLQ.
+3. MinIO có object mới dưới `raw/app_events/`.
+4. Offset chỉ tăng sau khi object MinIO đã ghi thành công.
 
-## Bài 4 · Nhìn thấy training/serving skew
+Nếu consumer chết sau khi ghi MinIO nhưng trước commit, event sẽ được đọc lại. Đây
+là at-least-once bình thường; dbt phải dedup theo `event_id`.
 
-```
-1. Sửa dbt/models/marts/feat_user_serving.sql — bỏ dòng `s.f42,`
-2. Chạy DAG 20
-```
-**Kỳ vọng:** task `assert_spec_contract` **fail** với thông báo thiếu `f42`.
-Đó là hàng rào — nếu không có, `f42` sẽ âm thầm rơi về default lúc serve trong
-khi model đã học trên giá trị thật.
-
-## Bài 5 · Đo SLA thật
+## dbt thất bại
 
 ```powershell
-python scripts/load_test.py --rps 50 --duration 120
+docker compose exec airflow-scheduler bash -lc `
+  "cd /opt/project/dbt && dbt debug --no-version-check"
+docker compose exec airflow-scheduler bash -lc `
+  "cd /opt/project/dbt && dbt run --no-version-check"
+docker compose exec airflow-scheduler bash -lc `
+  "cd /opt/project/dbt && dbt test --no-version-check"
 ```
-Đối chiếu p99 in ra với Grafana 00 → *p99 Redis feature lookup* (mục tiêu <10ms)
-và *p99 decision latency* (SLA <100ms).
 
-## Bài 6 · Mất overlay realtime
+Kiểm MinIO credential, source path, timezone UTC và DuckDB writer lock. Không mở
+DuckDB write từ notebook trong khi DAG dbt đang chạy.
 
+## Feature sync Redis
+
+DAG `40_sync_features_to_redis` đọc `marts.feat_user_selected_serving`, không đọc
+full `feat_user_serving`. Redis batch key:
+
+```text
+fs:{version}:u:{user_id}
 ```
-1. 99_ops_toolbox → action=chaos_flush_realtime
-2. curl localhost:8000/features/U0000123 → rt_* đều = 0 (default)
-3. Đợi 1-2 phút → gọi lại → rt_* có giá trị trở lại
+
+Hash này chỉ chứa 36 selected features của `fs_2026_08_v1` và metadata `_v`, `_ts`,
+`_feature_set_id`. Con trỏ publish:
+
+```text
+fs:meta:active_version
 ```
-Hiểu: overlay tự phục hồi từ stream, còn feature batch thì không — nó phụ thuộc
-job hằng ngày.
 
----
+Realtime overlay từ stream consumer dùng:
 
-## Lệnh hay dùng
+```text
+rt:u:{user_id}
+```
+
+Nếu thấy Redis batch có `f0` hoặc đủ `f0..f82`, đó là contract cũ hoặc version cũ;
+không dùng làm nguồn reconstruction.
+
+## Reconstruction dry-run
 
 ```powershell
-# Redis
-docker compose exec redis redis-cli GET fs:meta:active_version
-docker compose exec redis redis-cli SMEMBERS fs:meta:v20260805:shards
-docker compose exec redis redis-cli HGETALL fs:v20260805:u:U0000123
-docker compose exec redis redis-cli HGETALL rt:u:U0000123
-docker compose exec redis redis-cli --scan --pattern "fs:v20260805:u:*" | Measure-Object -Line
+$env:PYTHONPATH="src"
+python -m lzd_pipeline.reconstruction.e2e
+python -m lzd_pipeline.reconstruction.e2e --branch H2
 
-# DuckDB
-docker compose exec airflow-scheduler python -c "from lzd_pipeline.common.clients import duckdb_conn; con=duckdb_conn(read_only=True).__enter__(); print(con.execute('SELECT COUNT(*) FROM marts.feat_user_serving').fetchall())"
-
-# Postgres audit
-docker compose exec postgres psql -U lzd -d pipeline -c "SELECT * FROM ops.v_latest_sync LIMIT 5;"
-docker compose exec postgres psql -U lzd -d pipeline -c "SELECT * FROM ops.v_dq_last_24h;"
-
-# Kafka
-docker compose exec kafka kafka-consumer-groups --bootstrap-server localhost:9092 --describe --group feature-stream-consumer
-docker compose exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic app.user.events.dlq.v1 --from-beginning --max-messages 5
-
-# Airflow
-docker compose exec airflow-scheduler airflow dags list
-docker compose exec airflow-scheduler airflow tasks test 40_sync_features_to_redis prepare 2026-08-05
+# Trong Docker
+.\scripts\stack.ps1 reconstruction
+.\scripts\stack.ps1 reconstruction H2
 ```
+
+Kết quả hợp lệ phải có:
+
+- `semantic_status = UNIDENTIFIED`;
+- branch đúng với config/CLI;
+- Track A `SOLVED`;
+- Gate A, A-T3, B, C, D, E, F đều `true`;
+- Track B có future events và generation lineage riêng.
+
+Nếu Gate A fail, xem column diff. Không nới tolerance và không sửa target.
+
+Chi tiết kết nối/quan sát: `docs/RECONSTRUCTION_README.md`.
+
+## Reconstruction trên Postgres cũ
+
+DDL nằm tại `sql/postgres/02_biz_reconstruction.sql`. Init script chỉ tự chạy khi
+Postgres volume mới được tạo. Với volume cũ, chạy migration DDL có kiểm soát trước
+khi materialize target hoặc provenance.
+
+## Test host
+
+```powershell
+pip install -r requirements-dev.txt
+$env:PYTHONPATH="src"
+$env:TEMP=(Resolve-Path .tmp).Path
+$env:TMP=$env:TEMP
+python -m pytest tests -q -p no:cacheprovider
+```
+
+## Không làm
+
+- Không commit Kafka offset trước khi ghi MinIO.
+- Không dùng split `test` làm nguồn reconstruction.
+- Không đưa `label` hoặc `is_treat` vào solver/Track B.
+- Không sửa immutable target để Gate A pass.
+- Không diễn giải witness là lịch sử thật.
+- Không thiết kế API hoặc Redis representation trong runbook này.

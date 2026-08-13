@@ -1,12 +1,12 @@
 -- ============================================================================
--- BUSINESS READY - day CHINH LA bang duoc sync len Redis.
+-- BUSINESS READY BASELINE - full mart, KHONG phai selected Redis sync source.
 --
--- Danh sach cot phai khop 1-1 voi `batch_features` trong
--- config/features/feature_spec.yml. Sync job kiem tra dieu do truoc khi chay
--- (prepare_sync -> validate_columns) va se fail neu lech.
+-- Bang duoc sync len Redis la `feat_user_selected_serving`: chi gom 36 selected
+-- features trong config/features/feature_spec.yml. Mart nay giu full f0..f82 +
+-- legacy hist_* de doi chieu/phan tich, khong phai contract online v2.
 --
--- Khong dua feature realtime vao day: chung do stream-consumer ghi thang vao
--- Redis (rt:u:*), API merge luc doc.
+-- Khong dua feature realtime vao day: stream-consumer persist raw event xuong
+-- lake/MinIO truoc, roi moi cap nhat Redis (rt:u:*). API merge luc doc.
 -- ============================================================================
 {{ config(
     materialized='table',

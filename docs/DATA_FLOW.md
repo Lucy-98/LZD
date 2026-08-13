@@ -1,265 +1,140 @@
-# Dữ liệu đi như thế nào — đi theo từng bước
+# Data Flow
 
-Tài liệu này bám đúng thứ tự dữ liệu chạy trong hệ thống. Mỗi bước có:
-**làm gì → file code nào → nhìn ở đâu để kiểm chứng**.
+> **Scope:** ingest, lake, dbt feature engineering và reconstruction. API,
+> policy contract và cách tổ chức key/value trong Redis không thuộc tài liệu này.
 
----
+## 1. Batch
 
-## Bước 0 · Dataset gốc
-
-`data/full_trainset.csv` (476 MB) và `full_testset.csv` — dataset DESCN
-(Lazada voucher distribution, [paper](2207.09920v3.pdf)).
-
-```
-data_id, label, is_treat, f0, f1, ..., f82
-train_0, 0,     0,        0,  365, ...
-```
-
-- `label` = 1 nếu user có conversion
-- `is_treat` = 1 nếu user **được phát voucher** (treatment)
-- `f0..f82` = feature ẩn danh
-
-Không có `user_id` → ta sinh ra: `train_123` → `U0000123`. Nhờ vậy user trong
-dataset và user trong stream event **là cùng một tập** → feature batch và
-feature realtime của cùng một người gặp nhau được trên Redis.
-
----
-
-## Bước 1 · CSV → Data Lake (MinIO)
-
-**DAG `00_bootstrap_lake`** → `src/lzd_pipeline/ingestion/seed_loader.py`
-
-DuckDB đọc CSV rồi `COPY ... TO 's3://...' (FORMAT PARQUET)` — không nạp hết
-vào RAM. Kết quả:
-
-```
-s3://lakehouse/raw/user_snapshot/dt=2026-08-05/train.parquet
-s3://lakehouse/raw/user_snapshot/dt=2026-08-05/test.parquet
+```text
+data/full_trainset.csv + data/full_testset.csv
+        |
+        | DAG 00: seed_loader
+        v
+MinIO raw/user_snapshot/dt=.../*.parquet
+        |
+        | DAG 20: dbt
+        v
+stg_user_snapshot
+        |
+        +--> feat_user_behaviour
+        +--> feat_user_realtime_pit
+        +--> feat_user_serving              (baseline/full mart)
+        +--> feat_user_selected_serving     (36-column Redis sync source)
+        `--> training_dataset
 ```
 
-**Kiểm chứng:** MinIO Console → bucket `lakehouse` → duyệt thư mục.
+`stg_user_snapshot` cast `f0..f82`, chuẩn hóa entity/time và dedup. Label cùng
+`is_treat` chỉ được giữ trong training dataset; chúng không đi vào feature export
+hoặc reconstruction solver.
 
-> Trong production thật, bước này không tồn tại — bảng nguồn đã nằm sẵn trên
-> BigQuery do team khác ghi. Ta chỉ đọc.
+Feature export hiện dùng `feat_user_selected_serving`: chỉ `user_id`, `dt`,
+`feature_ts` và 36 cột trong `config/features/fs_2026_08_v1.yaml`. Redis batch
+key là `fs:{version}:u:{user_id}`; mỗi hash có 36 selected features + metadata
+`_v`, `_ts`, `_feature_set_id`.
 
----
+## 2. Stream
 
-## Bước 2 · App → Kafka (luồng realtime)
-
-**`src/lzd_pipeline/ingestion/event_producer.py`** (container `event-producer`)
-
-Sinh event theo **phiên**: `app_open → page_view → search → add_to_cart →
-voucher_claim → order`, phân bố lệch 80/20 giống thực tế.
-
-```json
-{"event_id":"...", "user_id":"U0000123", "event_type":"add_to_cart",
- "event_ts":1780000000.5, "session_id":"...", "platform":"android",
- "price":24.5, "quantity":2}
+```text
+event_producer
+    |
+    v
+Kafka app.user.events.v1
+    |
+    v
+stream_consumer
+    |
+    +--> validate fail --> DLQ
+    |
+    +--> [1] MinIO raw/app_events/*.parquet
+    +--> [2] Redis realtime overlay rt:u:{user_id}
+    `--> [3] commit Kafka offset
 ```
 
-Hai chi tiết quan trọng:
+Thứ tự `[1] -> [2] -> [3]` là invariant. Nếu ghi lake hoặc cập nhật downstream
+state thất bại thì offset không được commit và batch sẽ được đọc lại.
 
-- **Key = `user_id`** → mọi event của một user vào cùng partition → đảm bảo thứ tự.
-- `PRODUCER_CORRUPT_RATE=0.01` → 1% event bị làm hỏng có chủ đích, để bạn thấy
-  DLQ và alert hoạt động thật.
+Lake là source of truth. Replay có thể làm downstream realtime counter cộng dư,
+nhưng `stg_app_events` dedup theo `event_id` trước khi tính feature offline.
 
-**Kiểm chứng:** Kafka UI → topic `app.user.events.v1` → tab *Messages*.
+## 3. Reconstruction Track A
 
----
-
-## Bước 3 · Kafka → Lake + Redis overlay
-
-**`src/lzd_pipeline/ingestion/stream_consumer.py`** (container `stream-consumer`)
-
-Một micro-batch (2000 record hoặc 30 giây, cái nào đến trước):
-
-```
-poll → validate → ghi parquet lên MinIO → cập nhật Redis rt:u:* → COMMIT OFFSET
-                                                                   └─ bước cuối
-```
-
-**Vì sao commit cuối cùng:** nếu container chết giữa chừng, offset chưa commit
-→ batch đó được đọc lại → **at-least-once**, không mất dữ liệu.
-Đổi lại có thể trùng, xử lý ở bước sau:
-
-| Nơi | Cách khử trùng |
-|---|---|
-| Lake | `stg_app_events.sql` dedup theo `event_id` |
-| Redis overlay | counter có thể cộng dư → overlay chỉ là **tín hiệu gần đúng**; con số chính xác lấy từ batch feature (nguồn sự thật) |
-
-Event hỏng schema → topic `app.user.events.dlq.v1` kèm header `reason`.
-
-### `rt_events_1h` phải thật sự là "1 giờ vừa rồi"
-
-Cách làm ngây thơ — `HINCRBY` vào một field rồi `EXPIRE` lại key sau mỗi lần
-ghi — **sai**: với user hoạt động liên tục, TTL bị đẩy lùi mãi nên key không
-bao giờ hết hạn và counter cộng dồn cả ngày. Lúc train dbt tính đúng 1 giờ
-(thấy 12), lúc serve đọc counter tích luỹ (thấy 400). Đó chính là
-training/serving skew, chỉ khác là nằm ở nhánh realtime.
-
-Cách đang dùng: chia giờ thành **12 ô 5 phút**, mỗi ô là một field riêng
-`rt_events_1h|<mốc ô>`. Ghi = cộng vào ô hiện tại + xoá ô đã rớt khỏi cửa sổ
-(cùng một script Lua, atomic). Đọc = cộng các ô còn trong cửa sổ.
-
-`feat_user_realtime_pit.sql` làm tròn `feature_ts` về đầu ô 5 phút **y hệt**
-`rt_bucket_start()` bên Python — nếu dùng `feature_ts - interval '1 hour'` thì
-hai bên vẫn lệch nhau tới 5 phút dữ liệu.
-
-> Đây cũng là lý do batch và realtime **không thể** cộng trùng: `merge()` ghi
-> đè theo tên field chứ không cộng, và `hist_order_cnt_30d` (batch, 30 ngày)
-> với `rt_order_1h` (realtime, 1 giờ) là hai cột khác nhau. Model nhận cả hai
-> như hai feature độc lập — và nhận đúng như vậy cả lúc train.
-
-**Kiểm chứng:**
-- Kafka UI → consumer group `feature-stream-consumer` → cột *Lag*
-- MinIO → `lakehouse/raw/app_events/dt=.../hour=.../part-*.parquet`
-- `docker compose exec redis redis-cli HGETALL rt:u:U0000123`
-- Grafana dashboard **02**
-
----
-
-## Bước 4 · Lake → DuckDB → dbt (RAW → CLEANED → BUSINESS READY)
-
-**DAG `20_build_features_dbt`** → `dbt/models/`
-
-```
-source raw.user_snapshot ──► stg_user_snapshot ──┐
-source raw.app_events    ──► stg_app_events ──┬──┼─► feat_user_behaviour ──┐
-                                              │  │                          ├─► feat_user_serving   ⭐ (=> Redis)
-                                              └──┴─► feat_user_realtime_pit ┘            │
-                                                                                          └─► training_dataset
+```text
+immutable 36-column target (train only)
+        |
+        | decode T1/T2/T3
+        v
+constraint solver H1 hoặc H2
+        |
+        v
+RECONSTRUCTED event witness, event_ts < REFERENCE_TS
+        |
+        v
+dbt SQL thật
+  feat_cfs_counter
+  feat_cfs_recency
+  feat_cfs_categorical
+  feat_passthrough
+        |
+        v
+Gate A-F
+        |
+        v
+CustomerState(T0)
 ```
 
-| Model | Vai trò |
-|---|---|
-| `stg_user_snapshot` | ép kiểu, khử trùng theo `(user_id, dt)` |
-| `stg_app_events` | khử trùng theo `event_id` — biến at-least-once thành exactly-once |
-| `feat_user_behaviour` | feature 30 ngày: `hist_order_cnt_30d`, `hist_gmv_30d`, ... |
-| `feat_user_serving` | **BUSINESS READY** — chính là bảng được sync lên Redis |
-| `feat_user_realtime_pit` | feature realtime tính **point-in-time** (mục dưới) |
-| `training_dataset` | serving features + realtime PIT + `label` + `is_treat` |
+`semantic_status=UNIDENTIFIED` là trạng thái nhận thức. `semantic_branch=H1|H2`
+chỉ chọn scenario vận hành; nó không chứng minh semantic thật của `f30`.
 
-### Point-in-time — chống rò rỉ nhãn
+## 4. Future Simulation Track B
 
-Lúc **serve**, `rt_events_1h` = "1 giờ trước thời điểm request".
-Nếu lúc **train** ta tính trên toàn bộ lịch sử, model học trên phân bố khác hẳn.
-
-`feat_user_realtime_pit.sql` join event với điều kiện:
-
-```sql
-and e.event_ts <  s.feature_ts                               -- chỉ event TRƯỚC snapshot
-and e.event_ts >= s.feature_ts - interval '3600 seconds'      -- trong cửa sổ trượt
+```text
+CustomerState(T0)
+        |
+        | rule-based behaviour model
+        v
+SYNTHETIC future events, event_ts >= REFERENCE_TS
+        |
+        v
+Kafka app.user.events.v2 -> consumer -> MinIO raw/events_v2
 ```
 
-Công thức trong SQL này **phải khớp** với `EVENT_TO_COUNTER` trong
-`stream_consumer.py` và `realtime_features` trong `feature_spec.yml`.
+Track B không nhận `ReconstructionTarget`, feature payload, label hay treatment.
+Nó chỉ nhận state đã qua gate, counters, T2 level và provenance.
 
-### Hàng rào chống skew
+Track B event vocabulary là business v2. Không publish Track B vào consumer v1 hiện tại;
+v1 chỉ nhận `app_open`, `page_view`, `search`, `add_to_cart`, `checkout`, `order`,
+`voucher_view`, `voucher_claim`. Production Track B cần topic/schema/consumer v2 trước.
 
-Task `assert_spec_contract` so cột của mart với `feature_spec.yml`.
-Thiếu cột → **fail ngay**, không để sync đẩy lên Redis một bộ feature khác với
-lúc train.
+## 5. Storage Ownership
 
-**Kiểm chứng:** Airflow → task log của `dbt_run`; Grafana dashboard **04**.
-
----
-
-## Bước 5 · DuckDB → Redis ⭐ (trái tim hệ thống)
-
-**DAG `40_sync_features_to_redis`** → `src/lzd_pipeline/features/sync.py`
-
-```
-prepare_sync            khoá row_count + checksum, mở phiên version v20260805
-      ▼
-sync_shard[0..31]       32 task song song, mỗi shard = hash(user_id) % 32
-      ▼                 shard đã DONE → bỏ qua (idempotent)
-validate_sync           so mẫu Redis vs DuckDB + row count + checksum
-      ▼                 FAIL → dừng, active_version KHÔNG đổi
-activate_version        SET fs:meta:active_version = v20260805   ← 1 lệnh, atomic
-      ▼
-cleanup_old_versions    xoá version quá cũ (giữ 2 bản)
-```
-
-### Key layout trên Redis
-
-| Key | Kiểu | Ý nghĩa |
+| Layer | Owner | Vai trò |
 |---|---|---|
-| `fs:{version}:u:{user_id}` | HASH | feature batch của 1 user |
-| `rt:u:{user_id}` | HASH | overlay realtime — field dạng `rt_events_1h\|<mốc ô 5 phút>` |
-| `fs:meta:active_version` | STRING | **con trỏ** tới version đang phục vụ |
-| `fs:meta:{v}:status` | HASH | trạng thái + số liệu của lần sync |
-| `fs:meta:{v}:shards` | SET | shard đã ghi xong (đánh dấu idempotency) |
-| `fs:meta:versions` | ZSET | version → timestamp, dùng để GC |
+| CSV | source dataset | read-only reference |
+| MinIO raw | ingestion | immutable event/snapshot history |
+| DuckDB/dbt | transformation | staging, feature marts, training dataset |
+| PostgreSQL `biz` | reconstruction control plane | target, run, provenance, diff, state |
+| Downstream state sink | downstream owner | representation và access contract ngoài scope |
 
-### Vì sao phải có `active_version`
+## 6. Chạy
 
-Ghi đè trực tiếp lên key đang phục vụ → giữa lúc sync, một phần user dùng
-feature mới, một phần dùng cũ → **serving không nhất quán**.
+Pipeline chính:
 
-Ghi vào namespace mới rồi `SET` một key con trỏ → toàn bộ traffic chuyển sang
-phiên bản mới trong **một lệnh atomic**. Lỗi thì trỏ ngược lại — rollback tức
-thì, không cần ghi lại dữ liệu.
-
-**Kiểm chứng:**
-- Grafana dashboard **01** (tiến độ shard, bảng audit, báo cáo validate)
-- `SELECT * FROM ops.feature_sync_shard WHERE feature_version='v20260805'`
-- `redis-cli GET fs:meta:active_version`
-
----
-
-## Bước 6 · Redis → FastAPI → quyết định
-
-**`src/lzd_pipeline/serving/app.py`** — `POST /decide {"user_id": "U0000123"}`
-
-```
-EVALSHA read_merged  ──►  GET active_version
-                          HGETALL fs:{v}:u:{uid}     1 RTT, atomic, ~1-3ms
-                          HGETALL rt:u:{uid}
-gộp ô 5 phút → giá trị cửa sổ 1h
-merge theo feature_spec.yml, thiếu → default
-model.predict_uplift()                              ← TODO teammate
-score >= 0.02 ? SEND_VOUCHER : NO_VOUCHER
-```
-
-**Vì sao phải dùng Lua chứ không gọi 2 lệnh.** Bản đầu làm 2 bước: `GET
-active_version` rồi mới `HGETALL`. Vừa tốn gấp đôi RTT, vừa có khe hở — giữa 2
-bước, DAG sync có thể activate version mới rồi GC version cũ, request đang dở
-đọc trúng namespace vừa bị xoá và báo cache miss oan. Lua chạy nguyên khối trên
-Redis nên không chèn được gì vào giữa.
-
-Thứ tự ưu tiên khi merge: **context client > realtime overlay > batch > default**.
-
-Mỗi request ghi 1 dòng `ops.inference_log` (feature_version + model_version +
-latency + cache_hit) → về sau đo được skew thật giữa lúc train và lúc serve.
-
-**Kiểm chứng:**
 ```powershell
-curl http://localhost:8000/features/U0000123      # xem đúng feature model nhận
-python scripts/load_test.py --rps 20 --duration 60
+.\scripts\stack.ps1 up-all
+.\scripts\stack.ps1 health
 ```
-Grafana dashboard **00**, hàng *SERVING*.
 
----
+Trigger Airflow theo thứ tự:
 
-## Bước 7 · Training (khung cho teammate)
+1. `00_bootstrap_lake`
+2. `20_build_features_dbt`
+3. `40_sync_features_to_redis` nếu downstream sink được bật
+4. `50_data_quality`
 
-**DAG `30_train_uplift_model`** → `src/lzd_pipeline/training/`
+Reconstruction dry-run:
 
-`dataset.py` đã xong: `load_training_frame()` trả về đúng bộ feature theo
-`feature_spec.yml` — **cùng thứ tự** với lúc serve.
-
-`train.py` cần điền `build_model()` / `fit_model()` / `evaluate()`.
-Đường ống MLflow (log param, metric, `feature_list.json`, đăng ký model) đã nối sẵn.
-
----
-
-## Bản đồ metric → dashboard
-
-| Nguồn | Cách vào Prometheus | Dashboard |
-|---|---|---|
-| producer / consumer / API | tự expose `/metrics` | 00, 02 |
-| Task Airflow (batch) | push lên Pushgateway | 00, 01, 04 |
-| Airflow nội bộ | statsd → statsd-exporter | 03 |
-| Redis / Postgres / Kafka / MinIO | exporter riêng | 01, 02, 03 |
-| Bảng `ops.*` | postgres-exporter custom queries + datasource Postgres | 00, 01, 04 |
-| Log mọi container | Promtail → Loki | tất cả (panel Logs) |
+```powershell
+$env:PYTHONPATH="src"
+python -m lzd_pipeline.reconstruction.e2e
+python -m lzd_pipeline.reconstruction.e2e --branch H2
+```

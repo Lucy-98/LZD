@@ -21,13 +21,17 @@ def spec():
     return load_feature_spec(SPEC_PATH)
 
 
-def test_expand_range_features(spec):
-    """range f0..f82 phai no ra du 83 feature."""
+def test_batch_features_are_selected_36(spec):
+    """Redis batch contract chi duoc sync 36 selected features."""
     names = spec.batch_names
-    assert "f0" in names
+    assert "f1" in names
     assert "f82" in names
-    assert "f83" not in names
-    assert len([n for n in names if n.startswith("f") and n[1:].isdigit()]) == 83
+    assert "f0" not in names
+    assert "label" not in names
+    assert "is_treat" not in names
+    assert len([n for n in names if n.startswith("f") and n[1:].isdigit()]) == 36
+    assert spec.offline["serving_table"] == "marts.feat_user_selected_serving"
+    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v1"
 
 
 def test_no_duplicate_feature_names(spec):
@@ -43,10 +47,10 @@ def test_key_templates(spec):
 
 def test_merge_realtime_overrides_batch(spec):
     """Overlay realtime phai thang feature batch cung ten."""
-    batch = {"f0": "1.5", "rt_events_1h": "0"}
+    batch = {"f1": "1.5", "rt_events_1h": "0"}
     realtime = {"rt_events_1h": "42"}
     merged, missing = spec.merge(batch, realtime)
-    assert merged["f0"] == 1.5
+    assert merged["f1"] == 1.5
     assert merged["rt_events_1h"] == 42
     assert missing > 0        # cac feature khac dung default
 
@@ -56,12 +60,12 @@ def test_merge_fills_defaults_when_cache_miss(spec):
     merged, missing = spec.merge({}, {})
     assert len(merged) == len(spec.all_features)
     assert missing == len(spec.all_features)
-    assert merged["f0"] == 0.0
+    assert merged["f1"] == 0.0
     assert merged["rt_events_1h"] == 0
 
 
 def test_cast_handles_garbage(spec):
-    f = spec.by_name("f0")
+    f = spec.by_name("f1")
     assert f.cast("abc") == f.default
     assert f.cast(None) == f.default
     assert f.cast("") == f.default
@@ -69,9 +73,9 @@ def test_cast_handles_garbage(spec):
 
 
 def test_validate_columns_detects_missing(spec):
-    missing = spec.validate_columns(["user_id", "f0", "f1"], scope="batch")
+    missing = spec.validate_columns(["user_id", "f1"], scope="batch")
     assert "f2" in missing
-    assert "f0" not in missing
+    assert "f1" not in missing
 
 
 def test_all_features_have_defaults(spec):

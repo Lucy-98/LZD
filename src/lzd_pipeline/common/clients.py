@@ -187,7 +187,7 @@ def get_kafka_consumer(group_id: str | None = None, **overrides: Any):
         "bootstrap.servers": cfg.bootstrap_servers,
         "group.id": group_id or cfg.consumer_group,
         "auto.offset.reset": "earliest",
-        # TU commit offset -> chi commit SAU khi da ghi thanh cong xuong lake/Redis
+        # TU commit offset -> chi commit SAU khi da ghi lake roi cap nhat Redis
         # (at-least-once). Day la diem mau chot cua fault tolerance.
         "enable.auto.commit": False,
         "max.poll.interval.ms": 300000,

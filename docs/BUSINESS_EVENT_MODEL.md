@@ -122,6 +122,12 @@
 > Repo hiện tại chỉ có một event `order` — không phân biệt được đơn đã trả tiền
 > hay chưa. Với COD phổ biến ở SEA, khoảng cách đó không hề nhỏ.
 
+> ⚠️ Track B đang sinh event theo vocabulary business v2 (`SESSION_STARTED`,
+> `PRODUCT_VIEWED`, `ITEM_ADDED_TO_CART`). Không publish các event này vào consumer v1
+> hiện tại nếu chưa có schema/consumer v2; v1 sẽ reject vì `EVENT_TYPES` chỉ nhận
+> `app_open`, `page_view`, `search`, `add_to_cart`, `checkout`, `order`,
+> `voucher_view`, `voucher_claim`.
+
 ### 3.4 · Nhóm VOUCHER  *(đường sinh treatment)*
 
 | Event | Sinh bởi | Field thêm | Ý nghĩa nhân quả |
@@ -134,7 +140,7 @@
 
 > ⚠️ **`VOUCHER_ISSUED` hiện KHÔNG tồn tại trong repo.** `EVENT_TYPES` chỉ có
 > `voucher_view` và `voucher_claim`. Nghĩa là **event mang treatment đang thiếu** —
-> đây là gap chặn toàn bộ §12 (closed loop). Xem `MIGRATION_PLAN.md` §3.3.
+> đây là gap của domain-event model; API/policy tạo treatment nằm ngoài scope.
 
 ### 3.5 · Nhóm DECISION  *(event hệ thống)*
 
@@ -213,7 +219,7 @@ Bảng dưới ánh xạ 1–1 với `ERD.md` §11.
  ├─ CHECKOUT_STARTED  amount=458000
  │        │
  │        └──►  ★ ĐIỂM QUYẾT ĐỊNH
- │                 /decide → uplift_score → policy
+ │                 downstream decision/policy component (ngoài scope)
  │
  ├─ DECISION_MADE   decision=SEND_VOUCHER  score=0.031
  ├─ VOUCHER_ISSUED  voucher=V_88_50K  issuance=I0091   ◄── TREATMENT
@@ -260,7 +266,7 @@ khi xây driver, không phải sau.**
 ### 6.2 · Kịch bản S2 — "cooling down" (kỳ vọng score giảm)
 
 Bắt đầu từ trạng thái cuối của S1, **không** sinh event nào trong 65 phút, gọi
-`/decide` lại. Các `rt_*` phải rơi về 0 do cửa sổ trượt 1h + TTL 3600s.
+đánh giá state lại ở downstream. Các `rt_*` phải rơi về 0 theo cửa sổ trượt 1h.
 
 **Assert:** `score_sau ≈ score₀`. Đây là bài test **cửa sổ trượt hoạt động đúng** —
 và cần điều khiển được thời gian (gap **G6**).
@@ -273,7 +279,7 @@ T1  user thêm giỏ 3 món           → score tăng   → SEND_VOUCHER
                                                  → VOUCHER_ISSUED ──┐
 T2  event VOUCHER_ISSUED quay về Kafka ◄──────────────────────────┘
 T3  feature `rt_voucher_active` = 1  (feature MỚI, xem FEATURE_DICTIONARY §5)
-T4  /decide lại → policy thấy user đang có voucher chưa dùng
+T4  downstream policy đánh giá lại state
                 → reason_code = COOLDOWN → NO_VOUCHER
 T5  user claim + mua              → ORDER_PAID
 T6  feature cập nhật, campaign budget_spent tăng
@@ -352,17 +358,17 @@ bản ghi treatment). 🟦 Đây là INFERENCE về vận hành, không phải f
 ### 8.2 · Ràng buộc bắt buộc — điều cấm số 6 của project
 
 ```
-❌ SAI:  simulator ──────────────► Redis
-✅ ĐÚNG: simulator ──► Kafka ──► stream processor ──► Redis
+❌ SAI:  simulator ──────────────► sửa trực tiếp downstream state
+✅ ĐÚNG: simulator ──► Kafka ──► stream processor ──► lake/MinIO ──► downstream state
 ```
 
 Áp dụng **cả cho đường quay ngược của decision**:
 
 ```
-❌ SAI:  /decide ──► ghi thẳng VOUCHER_ISSUANCE + cập nhật Redis
-✅ ĐÚNG: /decide ──► DECISION.insert
+❌ SAI:  decision component ──► sửa trực tiếp event history
+✅ ĐÚNG: decision component ──► phát domain event có provenance
                   ──► publish DECISION_MADE + VOUCHER_ISSUED vào Kafka
-                         ──► stream processor ──► Redis + lake
+                         ──► stream processor ──► lake/MinIO ──► downstream state
 ```
 
 Chỉ đường thứ hai mới cho parity offline/online, vì lúc train ta cũng đọc chính
@@ -373,4 +379,4 @@ những event đó từ lake.
 ## Tiếp theo
 
 - `FEATURE_DICTIONARY.md` — event nào sinh feature nào, với confidence
-- `MIGRATION_PLAN.md` §3.3 — thứ tự đổi `schemas.py` mà không làm hỏng pipeline đang chạy
+- `MIGRATION_PLAN.md` M3 — publish event v2 mà không làm hỏng pipeline đang chạy

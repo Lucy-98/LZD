@@ -1,5 +1,10 @@
 # Lazada / E-commerce Business Domain
 
+> Business alias note: `config/features/business_aliases.yml` maps selected `f*`
+> columns to synthetic voucher-uplift business names. Those aliases are for this
+> project's story only; they are not confirmed Lazada/DESCN semantics and should
+> not be treated as facts about Lazada internal data.
+
 > **Vai trò của tài liệu:** Layer 1 (Business / Operational) trong mental model
 > `Business → Raw/Event → Feature → Model`.
 >
@@ -131,7 +136,7 @@ SELLER  1 ──< STORE  1 ──< PRODUCT  1 ──< SKU
 > `item_id = "item_" + random(1..500000)` và `price = lognormal(3.2, 0.8)` **độc lập
 > cho từng event**. Nghĩa là cùng một `item_id` có thể có giá khác nhau ở hai event,
 > và `category_id` được bốc ngẫu nhiên không liên quan tới item. Không có catalog nào
-> tồn tại phía sau. Xem `MIGRATION_PLAN.md` §3.
+> tồn tại phía sau. Đây là gap Layer 1 trong `MIGRATION_PLAN.md` §3.
 
 ---
 
@@ -290,7 +295,7 @@ Nguồn: [ringgitplus](https://ringgitplus.com/en/blog/online-shopping/lazada-re
 
 > ⚠️ **Điểm cực kỳ quan trọng, repo hiện tại đang nhầm.**
 >
-> `feature_spec.yml` khai báo `voucher_used_30d` = *"Số voucher đã dùng 30 ngày"*,
+> Legacy/full mart từng khai báo `voucher_used_30d` = *"Số voucher đã dùng 30 ngày"*,
 > nhưng `feat_user_behaviour.sql` tính nó bằng
 > `count(*) filter (where event_type = 'voucher_claim')`.
 >
@@ -398,9 +403,10 @@ Synthetic business system sinh ra **feature riêng của nó, có lineage đầy
 Dataset LZD đóng hai vai hoàn toàn khác:
 
 ```
-   Vai 1 — SEED / VECTOR LỊCH SỬ MỜ
-   f0..f82 nạp nguyên trạng vào feature store làm trạng thái quá khứ của user.
-   Không diễn giải. Không mô phỏng. Không tái tạo.
+   Vai 1 — OBSERVED REFERENCE / TARGET SPACE
+   f0..f82 là vector quan sát trong CSV. Feature store selected chỉ lấy 36 cột
+   đã chốt trong fs_2026_08_v1; không nạp nguyên trạng toàn bộ f0..f82 lên Redis.
+   Không diễn giải phần ngoài selected set.
 
    Vai 2 — REFERENCE ĐỂ HIỆU CHỈNH
    Phân bố / cardinality / sparsity của LZD dùng để kiểm tra rằng feature do
@@ -454,7 +460,7 @@ tức là **thiếu chính event mang treatment**. Đây là gap chặn closed-l
 
 ### A-03 · Đơn vị quyết định = (customer, decision_ts), không phải (customer, voucher)
 
-**ASSUMPTION** — Mỗi lần gọi `/decide` là một quyết định cho **một customer tại một
+**ASSUMPTION** — Mỗi downstream decision record áp dụng cho **một customer tại một
 thời điểm**: phát hay không phát *một* voucher đã chọn sẵn từ campaign đang chạy.
 Không phải bài toán chọn voucher nào trong nhiều voucher.
 

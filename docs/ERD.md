@@ -2,14 +2,19 @@
 
 > **Vai trò:** Layer 1 (Operational Database) — nguồn sinh ra mọi raw event.
 >
-> **Trạng thái:** đề xuất thiết kế. **Chưa tạo bảng nào.**
+> **Trạng thái:** DDL reconstruction đã có trong `sql/postgres/02_biz_reconstruction.sql`;
+> volume Postgres cũ cần được migrate/recreate để nhận các bảng mới.
 >
 > ⚠️ Đây là **synthetic reconstruction**, không phải schema nội bộ của Lazada.
 > Xem `LAZADA_BUSINESS_DOMAIN.md` cho nhãn FACT / INFERENCE / SYNTHETIC của từng
 > giả định nghiệp vụ đứng sau các entity dưới đây.
 >
 > 🚫 **Không có cột `f0`..`f82` nào trong ERD này.** Chúng thuộc Layer 3 (feature),
-> không phải Layer 1. Xem `FEATURE_LINEAGE.md` §2.
+> không phải Layer 1.
+>
+> Thay vào đó, ERD chứa các **thuộc tính nghiệp vụ synthetic** (§3.1a) mà feature
+> engineering **xuôi chiều** sẽ tái tạo `f*` từ đó — cơ chế **Constrained Forward
+> Synthesis**, xem `FEATURE_LINEAGE.md` §3.
 
 ---
 
@@ -141,6 +146,33 @@ erDiagram
 nên bị chặn trên ở 30). `country`/`city_tier`/`member_tier` là nguồn categorical
 tự nhiên — đối chiếu với ràng buộc §9.1-4 của business domain (dataset có ≥7 categorical).
 
+#### 3.1a · Thuộc tính CFS trên `CUSTOMER`
+
+Đây là các thuộc tính do **Constrained Forward Synthesis** đưa vào
+(`FEATURE_LINEAGE.md` §6). Chúng **không phải** cột `f*` — chúng là **nguồn nghiệp vụ
+synthetic** mà feature engineering xuôi chiều sẽ tái tạo `f*` từ đó.
+
+| Cột | Kiểu | Tái tạo cột nào | Tier | Ghi chú |
+|---|---|---|---|---|
+| `synthetic_segment_g1` … `g7` | TEXT | `f40`–`f78` | T2 | **7** biến, không phải 39. Sau khử trùng (`f68≡f71≡f77`, `f70` hằng số) |
+| `synthetic_category_515` | TEXT | `f79`, `f80`, `f81`, `f82` | T2 | ★ **MỘT** thuộc tính → **bốn** encoding. Song ánh (C19) |
+| `synthetic_attr_64` | TEXT | `f37` | T2 | 64 mức |
+| `synthetic_attr_241` | TEXT | `f38` | T2 | 241 mức. **Tách khỏi `f37`** — tuple cardinality 1133 > 241 (C21) |
+| `attr_date_a`, `attr_date_b` | DATE | `f1`, `f2` | T1 | ràng buộc `attr_date_a ≤ attr_date_b` ⇒ `f1 ≥ f2` tự thoả |
+| `synthetic_ordinal_a`, `_b` | SMALLINT | `f0`, `f7` | T1\|T2 | 6 mức `{0..5}`. Hai biến khác nhau (C22) |
+| `synthetic_score_a`, `_b` | SMALLINT | `f27`, `f34` | T1\|T2 | `[0,100]` |
+
+**Cột T1 dạng counter** (`f18`, `f19`, `f30`) **không** nằm ở đây — chúng được tái tạo
+bằng cách **sinh đúng `n = round(10^f)` event**, không phải bằng thuộc tính. Đó chính
+là điểm khác nhau giữa T1 và T2.
+
+> ⚠️ **Ràng buộc X1 (`MIGRATION_PLAN.md` MX):** các thuộc tính trên **phải thực sự
+> điều khiển hành vi mô phỏng** (xác suất mua, giá trị giỏ, phản ứng voucher). Nếu chỉ
+> lưu rồi phát lại nguyên xi thì đó là **copy trá hình**, không phải feature engineering.
+>
+> 🚫 Semantic thật của các thuộc tính này là **UNKNOWN**. Tên `synthetic_*` là cố ý —
+> nó nhắc rằng đây là `SYNTHETIC_ASSUMPTION`, không phải thuộc tính Lazada có thật.
+
 ### 3.2 · `CUSTOMER_IDENTITY_MAP`
 
 | Cột | Kiểu | Khoá |
@@ -259,8 +291,8 @@ Có entity SESSION với `started_at` rõ ràng thì độ dài phiên trở th�
 
 > **Ba cột FK in đậm là thay đổi quan trọng nhất so với `schemas.AppEvent` hiện tại.**
 > Không có `order_id` thì `ORDER_CREATED` không nối được về đơn nào; không có
-> `issuance_id` thì `VOUCHER_CLAIMED` không nối được về treatment nào ⇒ **không đóng
-> được closed loop §12**. Chi tiết: `MIGRATION_PLAN.md` §3.2.
+> `issuance_id` thì `VOUCHER_CLAIMED` không nối được về treatment nào. Đây là ràng
+> buộc lineage của domain event, độc lập với API/policy downstream.
 
 ### 4.3 · `CART` / `CART_ITEM`
 
@@ -428,7 +460,7 @@ Nhãn 🟩 tra ngược về `LAZADA_BUSINESS_DOMAIN.md` §7.1.
 > Nó là hiện thân của `is_treat` (ASSUMPTION A-02), và `decision_id` là **sợi dây
 > đóng closed loop**: model → DECISION → ISSUANCE → event → feature → model.
 >
-> Repo hiện tại **không có gì tương ứng**. `/decide` trả về `SEND_VOUCHER` rồi ghi
+> Repo hiện tại **không có gì tương ứng**. Downstream decision component ghi
 > một dòng vào `ops.inference_log` — không có voucher nào thực sự được phát, không
 > event nào quay lại Kafka. Loop đang **hở**.
 
@@ -637,10 +669,7 @@ CART_ITEM.delete (những dòng đã đặt)
 ### T3 · Decision → Issuance  *(đường sinh treatment — closed loop)*
 
 ```
-[trigger: event của user làm feature đổi]
-   → inference API đọc feature store
-   → model.predict_uplift()
-   → policy(score, budget, cooldown, arm)
+[trigger: decision record từ downstream owner]
    → DECISION.insert
 
    nếu decision = SEND_VOUCHER:

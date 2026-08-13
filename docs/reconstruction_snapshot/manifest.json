@@ -1,0 +1,79 @@
+{
+  "schema_version": "reconstruction_snapshot_v1",
+  "snapshot_id": "reconstruction_runtime_v1:H1:demo-target-001:seed42",
+  "description": "Small committed fixture for reviewing deterministic reconstruction outputs without running the production stack.",
+  "target_id": "demo-target-001",
+  "customer_id": "demo-customer-001",
+  "selected_feature_set_id": "fs_2026_08_v1",
+  "selected_feature_count": 36,
+  "business_alias_version": "business_aliases_2026_08_v1",
+  "business_alias_semantic_status": "SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT",
+  "runtime": {
+    "config_version": "reconstruction_runtime_v1",
+    "semantic_status": "UNIDENTIFIED",
+    "semantic_branch": "H1",
+    "reference_ts": "2026-08-01T23:59:59+00:00",
+    "future_days": 2,
+    "generation_seed": 42,
+    "constraint_model_version": "constraints_v1",
+    "encoding_version": "encoding_2026_08_v1",
+    "objective_version": "objective_v1",
+    "selection_policy_version": "seeded_optimal_pool_v1",
+    "solver_version": "prototype_v1",
+    "behaviour_policy_version": "rule_v1"
+  },
+  "summary": {
+    "target_id": "demo-target-001",
+    "semantic_status": "UNIDENTIFIED",
+    "semantic_branch": "H1",
+    "track_a_status": "SOLVED",
+    "track_a_events": 5,
+    "track_b_events": 8,
+    "gates": {
+      "A": true,
+      "A-T3": true,
+      "B": true,
+      "C": true,
+      "D": true,
+      "E": true,
+      "F": true
+    },
+    "all_passed": true,
+    "track_b_generation_run_id": "597bde8b-f313-52b6-b883-91e094e7914b"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 1181,
+      "sha256": "1f33970d2d183ebcc70120927f882449f5a9cb3ea9b37905715f2fa38429bb50"
+    },
+    "feature_pass.svg": {
+      "bytes": 1098,
+      "sha256": "1bf451fe86a0b263cec3466b7e5196265fa55cad17d30947b3b7212190fe7bbc"
+    },
+    "features_expected_actual.csv": {
+      "bytes": 9978,
+      "sha256": "1a373151e4b56742e9a0968dc5823019f83eafbe892fd5fa7b823da7c81dc2ac"
+    },
+    "report.html": {
+      "bytes": 20614,
+      "sha256": "d95bf554b99226b7603af6e364ab918cf76f2d0ffaa0fd7694482089fce081ba"
+    },
+    "summary.json": {
+      "bytes": 878,
+      "sha256": "2e26fe037f6b4e09e5c953ee38f52ef1c98378803cc5919539f64cf893029f6f"
+    },
+    "timeline.svg": {
+      "bytes": 2022,
+      "sha256": "6936bd5ca0d8729205e2f08811bc0ba9b28cf611557c6f1a943a0308c58a42c0"
+    },
+    "track_a_events.csv": {
+      "bytes": 1489,
+      "sha256": "1a6f0cdcf157ce24db86f9b0df16e2984a664ed8372bf9398a208ba2a2cf4900"
+    },
+    "track_b_events.csv": {
+      "bytes": 3279,
+      "sha256": "1deb2ed6412f43519d110afa9728e63c6656c960d0a0f00199e679106d308cd2"
+    }
+  },
+  "output_dir": "docs\\reconstruction_snapshot"
+}

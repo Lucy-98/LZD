@@ -2,8 +2,8 @@
 
 Layout key (dinh nghia trong config/features/feature_spec.yml):
 
-    fs:{version}:u:{user_id}   HASH   feature batch cua 1 user
-    rt:u:{user_id}             HASH   overlay realtime (TTL ngan) tu Kafka
+    fs:{version}:u:{user_id}   HASH   36 selected feature batch cua 1 user
+    rt:u:{user_id}             HASH   overlay realtime (TTL ngan), ghi sau raw lake
     fs:meta:active_version     STRING con tro toi version dang phuc vu  <-- ATOMIC SWAP
     fs:meta:{version}:status   HASH   trang thai + so lieu cua lan sync
     fs:meta:{version}:shards   SET    shard da ghi xong (idempotency marker)
@@ -269,6 +269,8 @@ class OnlineFeatureStore:
                 continue
             mapping["_v"] = version                # de debug tren redis-cli
             mapping["_ts"] = int(time.time())
+            if feature_set_id := self.spec.offline.get("selected_feature_set_id"):
+                mapping["_feature_set_id"] = feature_set_id
             pipe.hset(self.spec.batch_key(version, str(user_id)), mapping=mapping)
             pending += 1
             written += 1
