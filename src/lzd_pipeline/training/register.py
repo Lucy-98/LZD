@@ -8,8 +8,9 @@ mot lan train. Module nay dua artifact do vao registry de:
     - moi lan doi model deu co version, co run, co the roll back
     - metric cua ban goc di kem model chu khong nam roi trong mot file JSON
 
-🚫 KHONG phai `train.py`. `train.py` la cho huan luyen TRONG repo va van con
-   bon `TODO(model)` — hai viec khac nhau, khong duoc gop.
+🚫 KHONG phai `train.py`. `train.py` HUAN LUYEN ban moi trong repo (dung
+   `training/uplift.py`); module nay DANG KY ban da chot tu ngoai vao. Gop hai
+   viec lai se lam khong ai biet model dang chay den tu dau.
 
 ★ BOOSTER VA HOP DONG PHAI DI CUNG MOT RUN
 --------------------------------------------------------------------------
