@@ -8,6 +8,11 @@ fakeredis==2.25.1
 # BAT BUOC: khong co lupa thi fakeredis khong chay duoc EVAL/EVALSHA, test se
 # am tham roi vao duong du phong va Lua script KHONG duoc kiem tra lan nao.
 lupa==2.8
-PyYAML==6.0.2
+# Ghim trung voi docker/: redis>=6 gui HELLO khi connect, fakeredis 2.25.1
+# khong ho tro -> toan bo test Redis chet voi ResponseError.
+redis==5.1.1
+# 6.0.3 (khong phai 6.0.2 nhu docker/): 6.0.2 khong co wheel cho Python 3.14
+# -> pip build tu source va chet vi duong dan co dau tieng Viet (cp932).
+PyYAML==6.0.3
 prometheus-client==0.21.0
 python-json-logger==2.0.7
