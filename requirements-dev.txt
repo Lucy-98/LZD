@@ -16,3 +16,7 @@ redis==5.1.1
 PyYAML==6.0.3
 prometheus-client==0.21.0
 python-json-logger==2.0.7
+# Model uplift (DRLearner ban giao dang booster text). Can de test duong
+# serving that thay vi chi test StubModel.
+lightgbm==4.7.0
+numpy==2.5.2

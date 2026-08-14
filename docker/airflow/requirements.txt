@@ -23,10 +23,17 @@ python-json-logger==2.0.7
 
 # --- ML tracking -----------------------------------------------------------
 # skinny = client thoi. DAG 30 chi log param/metric va goi Registry API.
-# TEAMMATE: khi lam den phan train, doi dong nay thanh `mlflow==2.16.2` va
-# them thu vien model (vd lightgbm==4.5.0 / scikit-learn==1.5.2 / torch),
-# vi `mlflow.sklearn.log_model` khong co trong ban skinny.
+# `mlflow-skinny` la DU cho `training/register.py`: no chi dung
+# `log_artifact` / `log_dict` / `register_model` / `MlflowClient`, khong dung
+# `mlflow.<flavor>.log_model` (thu duy nhat can ban day du).
+#
+# Neu sau nay `train.py` huan luyen TRONG repo (bon TODO(model) con lai) thi
+# moi phai doi sang `mlflow==2.16.2` + econml/optuna.
 mlflow-skinny==2.16.2
+
+# Model uplift: DRLearner ban giao duoi dang booster text. Airflow can
+# lightgbm de VERIFY artifact truoc khi dang ky (so cot, doc duoc hay khong).
+lightgbm==4.7.0
 
 # --- tien ich --------------------------------------------------------------
 PyYAML==6.0.2

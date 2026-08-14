@@ -72,7 +72,7 @@ Postgres.
 
 Dang hoan thanh:
 
-- Local unit/contract tests: `280 passed` (2026-08-14). Xem
+- Local unit/contract tests: `305 passed` (2026-08-14). Xem
   [Tech reference](docs/TECH_REFERENCE.md) §11.
 - Reconstruction snapshot da commit trong `docs/reconstruction_snapshot/`.
 - Track A batch tu `data/full_trainset.csv` da chay pilot 1,000 va 10,000 row.

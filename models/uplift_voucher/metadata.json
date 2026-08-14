@@ -1,0 +1,498 @@
+{
+  "ten_mo_hinh": "DRLearner",
+  "ngay_huan_luyen": "2026-08-13 11:50:40",
+  "run_mode": "full",
+  "seed": 42,
+  "sieu_tham_so": {
+    "n_estimators": 350,
+    "learning_rate": 0.01777174904859463,
+    "max_depth": 4,
+    "min_child_samples": 30
+  },
+  "dac_trung": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "f12",
+    "f13",
+    "f14",
+    "f16",
+    "f17",
+    "f18",
+    "f19",
+    "f20",
+    "f21",
+    "f22",
+    "f23",
+    "f24",
+    "f25",
+    "f26",
+    "f27",
+    "f28",
+    "f29",
+    "f30",
+    "f31",
+    "f34",
+    "f35",
+    "f36",
+    "f37",
+    "f38",
+    "f40",
+    "f41",
+    "f42",
+    "f43",
+    "f44",
+    "f45",
+    "f46",
+    "f47",
+    "f48",
+    "f49",
+    "f50",
+    "f51",
+    "f52",
+    "f53",
+    "f54",
+    "f55",
+    "f56",
+    "f57",
+    "f58",
+    "f59",
+    "f60",
+    "f61",
+    "f62",
+    "f63",
+    "f64",
+    "f65",
+    "f66",
+    "f68",
+    "f75",
+    "f79",
+    "f80",
+    "f81",
+    "f82",
+    "fe_ratio_f1_f2",
+    "fe_ratio_f14_f16",
+    "fe_ratio_f9_f27",
+    "fe_inter_f9_f26",
+    "fe_inter_f14_f27",
+    "fe_nonzero_top10",
+    "fe_flag_sum"
+  ],
+  "so_dac_trung": 76,
+  "dac_trung_ban_full": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "f12",
+    "f13",
+    "f14",
+    "f16",
+    "f17",
+    "f18",
+    "f19",
+    "f20",
+    "f21",
+    "f22",
+    "f23",
+    "f24",
+    "f25",
+    "f26",
+    "f27",
+    "f28",
+    "f29",
+    "f30",
+    "f31",
+    "f34",
+    "f35",
+    "f36",
+    "f37",
+    "f38",
+    "f40",
+    "f41",
+    "f42",
+    "f43",
+    "f44",
+    "f45",
+    "f46",
+    "f47",
+    "f48",
+    "f49",
+    "f50",
+    "f51",
+    "f52",
+    "f53",
+    "f54",
+    "f55",
+    "f56",
+    "f57",
+    "f58",
+    "f59",
+    "f60",
+    "f61",
+    "f62",
+    "f63",
+    "f64",
+    "f65",
+    "f66",
+    "f68",
+    "f75",
+    "f79",
+    "f80",
+    "f81",
+    "f82",
+    "fe_ratio_f1_f2",
+    "fe_ratio_f14_f16",
+    "fe_ratio_f9_f27",
+    "fe_inter_f9_f26",
+    "fe_inter_f14_f27",
+    "fe_nonzero_top10",
+    "fe_flag_sum"
+  ],
+  "chon_so_dac_trung": {
+    "k_chot": 76,
+    "ly_do": "k nhỏ nhất thỏa mãn cả ba điều kiện (có tính bền)",
+    "luoi_quet": [
+      8,
+      16,
+      23,
+      31,
+      39,
+      47,
+      54,
+      62,
+      76
+    ],
+    "cach_dung_luoi": "cận dưới = k đạt 50% gain, cận trên = số đặc trưng có gain > 0",
+    "dieu_kien": [
+      "KTC Qini không chứa 0",
+      "điều kiện trên đúng ở mọi k lớn hơn (tính bền)",
+      "KTC hiệu so với bản đầy đủ chứa 0"
+    ],
+    "tap_dung_de_chot": "rct_select",
+    "bang_quet": [
+      {
+        "k": 8,
+        "Qini": 0.01611,
+        "Qini_lo": -0.00682,
+        "Qini_hi": 0.04045,
+        "Hiệu so với đầy đủ": 0.01128,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 16,
+        "Qini": 0.02505,
+        "Qini_lo": 0.00139,
+        "Qini_hi": 0.04863,
+        "Hiệu so với đầy đủ": 0.00227,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 23,
+        "Qini": 0.03033,
+        "Qini_lo": 0.00633,
+        "Qini_hi": 0.05381,
+        "Hiệu so với đầy đủ": -0.0031,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 31,
+        "Qini": 0.02405,
+        "Qini_lo": 0.00016,
+        "Qini_hi": 0.04812,
+        "Hiệu so với đầy đủ": 0.00313,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 39,
+        "Qini": 0.03074,
+        "Qini_lo": 0.00696,
+        "Qini_hi": 0.05523,
+        "Hiệu so với đầy đủ": -0.00358,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 47,
+        "Qini": 0.02479,
+        "Qini_lo": 0.00101,
+        "Qini_hi": 0.0494,
+        "Hiệu so với đầy đủ": 0.00236,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 54,
+        "Qini": 0.03247,
+        "Qini_lo": 0.00954,
+        "Qini_hi": 0.05833,
+        "Hiệu so với đầy đủ": -0.00527,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 62,
+        "Qini": 0.02366,
+        "Qini_lo": -0.00045,
+        "Qini_hi": 0.04786,
+        "Hiệu so với đầy đủ": 0.00353,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 76,
+        "Qini": 0.02705,
+        "Qini_lo": 0.00281,
+        "Qini_hi": 0.05347,
+        "Hiệu so với đầy đủ": 0.0,
+        "Bền": true,
+        "Đạt": true
+      }
+    ]
+  },
+  "chon_dac_trung_redis": {
+    "k_redis": 62,
+    "k_toi_thieu_thong_ke": 54,
+    "k_an_toan_tuyet_doi": 62,
+    "ly_do": "mốc an toàn tuyệt đối — sai lệch dự đoán đo được bằng 0",
+    "so_cot_dien_mac_dinh": 14,
+    "cach_do": "giữ nguyên mô hình, thay đặc trưng ngoài top-k bằng trung vị Train+Val, đo Qini trên rct_select",
+    "bang_quet": [
+      {
+        "k": 8,
+        "Qini": -0.008042,
+        "Qini_lo": -0.029424,
+        "Qini_hi": 0.020362,
+        "Lệch dự đoán": 0.734563,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 16,
+        "Qini": -0.003275,
+        "Qini_lo": -0.028335,
+        "Qini_hi": 0.022814,
+        "Lệch dự đoán": 0.578682,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 23,
+        "Qini": 0.002779,
+        "Qini_lo": -0.022599,
+        "Qini_hi": 0.028378,
+        "Lệch dự đoán": 0.22717,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 31,
+        "Qini": 0.007574,
+        "Qini_lo": -0.018128,
+        "Qini_hi": 0.033121,
+        "Lệch dự đoán": 0.209428,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 39,
+        "Qini": 0.016538,
+        "Qini_lo": -0.00751,
+        "Qini_hi": 0.042791,
+        "Lệch dự đoán": 0.211251,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 47,
+        "Qini": 0.016721,
+        "Qini_lo": -0.007619,
+        "Qini_hi": 0.042483,
+        "Lệch dự đoán": 0.173388,
+        "Bền": false,
+        "Đạt": false
+      },
+      {
+        "k": 54,
+        "Qini": 0.026157,
+        "Qini_lo": 0.001714,
+        "Qini_hi": 0.052607,
+        "Lệch dự đoán": 0.057723,
+        "Bền": true,
+        "Đạt": true
+      },
+      {
+        "k": 62,
+        "Qini": 0.027046,
+        "Qini_lo": 0.00281,
+        "Qini_hi": 0.053475,
+        "Lệch dự đoán": 0.0,
+        "Bền": true,
+        "Đạt": true
+      },
+      {
+        "k": 76,
+        "Qini": 0.027046,
+        "Qini_lo": 0.00281,
+        "Qini_hi": 0.053475,
+        "Lệch dự đoán": 0.0,
+        "Bền": true,
+        "Đạt": true
+      }
+    ],
+    "mentor_goi_y": 25
+  },
+  "file_mo_hinh": {
+    "model.pkl": "76 đặc trưng — bản bàn giao, khớp feature_contract.json",
+    "model_full.pkl": "76 đặc trưng — bản có con số holdout một lần",
+    "model_booster.txt": "cây LightGBM dạng text — đọc bằng lgb.Booster(model_file=...), chạy được trên mọi bản Python. Dùng bản này nếu môi trường phục vụ khác môi trường huấn luyện."
+  },
+  "serialization": {
+    "writer": "cloudpickle==3.1.2",
+    "reader": "pickle.load",
+    "python_dong_goi": "3.10.9",
+    "python_yeu_cau_khi_nap": "phải khớp python_dong_goi — cloudpickle không tương thích chéo bản Python",
+    "ghi_chu": "Notebook 04 chạy trên Kaggle (Python 3.12). cloudpickle đóng gói class kèm code object, mà code object không tương thích ngược giữa các bản Python, nên bản Kaggle không nạp được bằng môi trường khoá 3.10.9. Cây LightGBM đã được rút ra dạng text (độc lập phiên bản) rồi đóng gói lại bằng 3.10.9. KHÔNG huấn luyện lại: dự đoán trùng khít tuyệt đối với bản Kaggle (lệch 0.0 trên 3.000 mẫu), độ quan trọng đặc trưng cũng trùng khít.",
+    "ban_khong_phu_thuoc_python": "model_booster.txt (định dạng text của LightGBM)"
+  },
+  "du_lieu_huan_luyen": {
+    "nguon": "train.parquet + val.parquet",
+    "so_dong": 926669,
+    "giay_huan_luyen": 234.6
+  },
+  "metric_rct_holdout": {
+    "DRLearner": {
+      "qini": 0.02324,
+      "qini_ci": [
+        -0.00066,
+        0.04831
+      ],
+      "auuc": 0.02541,
+      "auuc_ci": [
+        -0.00061,
+        0.05236
+      ],
+      "uplift_at_10": 0.014182,
+      "uplift_at_20": 0.013104,
+      "uplift_at_30": 0.009649
+    },
+    "SLearner": {
+      "qini": 0.02253,
+      "qini_ci": [
+        -4e-05,
+        0.04706
+      ],
+      "auuc": 0.0242,
+      "auuc_ci": [
+        -6e-05,
+        0.05028
+      ],
+      "uplift_at_10": 0.012018,
+      "uplift_at_20": 0.007269,
+      "uplift_at_30": 0.008063
+    },
+    "CausalForestDML": {
+      "qini": 0.01901,
+      "qini_ci": [
+        -0.00362,
+        0.04321
+      ],
+      "auuc": 0.02048,
+      "auuc_ci": [
+        -0.00385,
+        0.04636
+      ],
+      "uplift_at_10": 0.014608,
+      "uplift_at_20": 0.010443,
+      "uplift_at_30": 0.007159
+    },
+    "NonParamDML": {
+      "qini": 0.01732,
+      "qini_ci": [
+        -0.00637,
+        0.04055
+      ],
+      "auuc": 0.01892,
+      "auuc_ci": [
+        -0.00667,
+        0.04385
+      ],
+      "uplift_at_10": 0.014705,
+      "uplift_at_20": 0.011739,
+      "uplift_at_30": 0.00762
+    },
+    "LinearDML": {
+      "qini": 0.01534,
+      "qini_ci": [
+        -0.0056,
+        0.0372
+      ],
+      "auuc": 0.01667,
+      "auuc_ci": [
+        -0.00588,
+        0.04051
+      ],
+      "uplift_at_10": 0.008516,
+      "uplift_at_20": 0.006479,
+      "uplift_at_30": 0.006347
+    },
+    "TLearner": {
+      "qini": 0.01482,
+      "qini_ci": [
+        -0.00936,
+        0.04235
+      ],
+      "auuc": 0.016,
+      "auuc_ci": [
+        -0.01001,
+        0.04567
+      ],
+      "uplift_at_10": 0.012871,
+      "uplift_at_20": 0.007223,
+      "uplift_at_30": 0.006525
+    }
+  },
+  "ate_rct_holdout": {
+    "ate": 0.003760579162227648,
+    "se": 0.001221382033089461,
+    "ci_thap": 0.0013667143660079958,
+    "ci_cao": 0.0061544439584473,
+    "n_treat": 47342,
+    "n_control": 43493
+  },
+  "chon_quan_quan": {
+    "tap_dung": "rct_select",
+    "so_doi_thu_bi_vuot_co_y_nghia": 2,
+    "tong_doi_thu": 5,
+    "tuong_quan_hang_select_vs_holdout": 0.2571
+  },
+  "kiem_chung_metric": {
+    "1. Xếp hạng ngẫu nhiên → Qini ≈ 0": true,
+    "2. ATE khớp phép tính tay": true,
+    "3. Biết trước ≫ ngẫu nhiên": true,
+    "4. Qini giảm đơn điệu theo nhiễu": true
+  },
+  "n_bootstrap": 1000,
+  "ghi_chu": "CausalForestDML huấn luyện trên mẫu con nhỏ hơn các mô hình khác, không so sánh ngang hàng được về mặt cỡ dữ liệu. Qini của bản rút gọn đo trên rct_select — chính tập đã dùng để chọn k — nên lạc quan hơn thực tế; bảng benchmark báo cáo dùng bản đầy đủ."
+}

@@ -17,10 +17,17 @@ pyarrow==17.0.0
 boto3==1.35.36
 
 # --- suy luan model --------------------------------------------------------
-# numpy/pandas de model_loader dung; teammate them thu vien model tuong ung
-# (lightgbm / scikit-learn / torch) khi lam den phan do.
+# Model uplift la DRLearner + LightGBM, ban giao duoi dang booster text
+# (`models/uplift_voucher/model_booster.txt`, 350 cay, 76 dac trung).
+#
+# 🚫 KHONG can cloudpickle / scikit-learn / econml. Ban `.pkl` cua model can
+#    Python 3.10.9 CHINH XAC (cloudpickle nhung code object), trong khi booster
+#    text doc duoc o moi ban Python. Da do: hai ban cho ket qua TRUNG KHIT
+#    bit-for-bit (max|lech| = 0.0 tren 3,000 mau), nen khong co ly do de khoa
+#    ca image xuong 3.10.
 numpy==1.26.4
 pandas==2.2.3
+lightgbm==4.7.0
 # skinny = chi client cua MLflow, khong keo theo server + scipy + alembic.
 # Doi sang `mlflow` day du neu can log_model tu trong API (thuong khong can).
 mlflow-skinny==2.16.2

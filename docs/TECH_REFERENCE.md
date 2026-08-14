@@ -11,7 +11,7 @@
 > không đổi thì tài liệu sai — không phải code sai.
 >
 > **Trạng thái xác minh (2026-08-14):** `python -m pytest tests/ -q` →
-> `280 passed`. Scope hiện hành: `fs_2026_08_v2` (**55 cột**). Xem §11.
+> `305 passed`. Scope hiện hành: `fs_2026_08_v2` (**55 cột**). Xem §11.
 
 ---
 
@@ -75,7 +75,7 @@ nó thì Gate A không kiểm chứng gì cả (tautology, `RECONSTRUCTION_SPEC.
 | [scripts/](../scripts/) | `stack.ps1` (Windows), `init_kafka.sh`, `init_minio.sh`, `load_test.py` | §10 |
 | [sql/postgres/](../sql/postgres/) | `ops.*` audit schema, `biz.*` reconstruction schema | §8.5 |
 | [src/lzd_pipeline/](../src/lzd_pipeline/) | ~6.5k dòng Python, 5 subpackage | §5 |
-| [tests/](../tests/) | 280 test, 17 file | §11 |
+| [tests/](../tests/) | 305 test, 18 file | §11 |
 | [data/](../data/) | `full_trainset.csv` (926,669 dòng), `full_testset.csv` | committed |
 | `.tmp/` | output Track A batch, **git-ignored** | có thể rất lớn |
 
@@ -735,7 +735,7 @@ và [`Makefile`](../Makefile) (bash/WSL, tập lệnh tương đương).
 
 ## 11. Test map & trạng thái xác minh
 
-**Chạy ngày 2026-08-14:** `python -m pytest tests/ -q` → **280 passed**.
+**Chạy ngày 2026-08-14:** `python -m pytest tests/ -q` → **305 passed**.
 
 | File | Test | Kiểm gì |
 |---|---|---|
@@ -753,6 +753,7 @@ và [`Makefile`](../Makefile) (bash/WSL, tập lệnh tương đương).
 | `test_business_aliases.py` | 3 | alias loading |
 | `test_track_a_batch.py` | 2 | batch materialization |
 | `test_sink.py` | 20 | land Postgres/DuckDB/lake; ★ Gate A qua đường production-shaped |
+| `test_uplift_model.py` | 25 | hợp đồng 76 cột, thứ tự, mặc định; ★ golden bit-for-bit vs `model.pkl` gốc |
 | `test_warehouse_bootstrap.py` | 9 | shell `biz.*` đúng cấu trúc VÀ rỗng một cách ồn ào |
 | `test_dbt_reconstruction_tags.py` | 5 | tag `reconstruction` khớp đúng tập model dùng source đó |
 | `test_snapshot.py` | 1 | snapshot writer sinh đủ artifact + manifest |
@@ -808,8 +809,8 @@ Những thứ **chưa** có trong code, để không ai đọc doc rồi tưởn
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Model uplift thật | chưa — `StubModel` + khung `train.py` |
-| MLflow model loading | `MlflowUpliftModel` là TODO |
+| Model uplift thật | ✅ **đã lắp** — DRLearner + LightGBM, xem `UPLIFT_MODEL.md`. `train.py` (huấn luyện TRONG repo) vẫn còn `TODO(model)` |
+| MLflow model loading | ✅ `MlflowUpliftModel` + `training/register.py`; ⚠️ chưa chạy với MLflow server thật |
 | Materialize target từ toàn bộ train split | chưa |
 | Writer production cho `raw/events_v2` vào MinIO | chưa — Track A chỉ ghi `.tmp/` |
 | Kafka v2 schema/consumer/publisher cho Track B | chưa |
