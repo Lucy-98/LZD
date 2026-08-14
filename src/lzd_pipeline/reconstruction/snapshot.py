@@ -415,6 +415,15 @@ powershell -ExecutionPolicy Bypass -File .\\scripts\\stack.ps1 snapshot
     path.write_text(text, encoding="utf-8")
 
 
+def _display_path(path: Path) -> Path:
+    """Repo-relative khi output_dir nam trong repo, tuyet doi khi o ngoai
+    (vd. --output-dir tro ra ngoai, hay tmp_path trong test)."""
+    try:
+        return path.relative_to(ROOT)
+    except ValueError:
+        return path
+
+
 def build_manifest(
     *,
     result: EndToEndResult,
@@ -462,7 +471,7 @@ def build_manifest(
         },
         "summary": result.summary(),
         "files": file_entries,
-        "output_dir": str(output_dir.relative_to(ROOT)),
+        "output_dir": str(_display_path(output_dir)),
     }
 
 

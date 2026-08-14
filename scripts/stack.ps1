@@ -387,9 +387,12 @@ with duckdb_conn(read_only=True) as con:
 
     "test" {
         Write-Section "Unit test (khong can Docker)"
-        if (-not (Test-Path ".tmp")) { New-Item -ItemType Directory -Force ".tmp" | Out-Null }
-        $env:TEMP = (Resolve-Path ".tmp").Path
-        $env:TMP = $env:TEMP
+        # KHONG tro TEMP vao .tmp cho test: pytest tao basetemp bang
+        # mkdir(mode=0o700), va tu Python 3.13 Windows moi that su ap dung mode do
+        # -> DACL chi con SYSTEM + Administrators + OWNER RIGHTS. Neu thu muc
+        # pytest-of-<user> da bi mot tai khoan khac tao truoc, user hien tai mat
+        # sach quyen va moi test dung tmp_path chet voi WinError 5.
+        # Test khong sinh file lon nen dung TEMP he thong la du.
         Invoke-NativeChecked "python" @("-m", "pytest", "tests", "-q", "-p", "no:cacheprovider")
     }
 }
