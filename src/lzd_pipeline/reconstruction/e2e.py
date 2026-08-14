@@ -266,7 +266,7 @@ def _demo_contract(
     dict[str, float],
 ]:
     decoded = DecodedTarget(
-        n5=2, n11=1, n18=1, n30=2, d1=1, d2=1, window_days=4
+        n5=2, n11=1, n18=1, n19=1, n30=2, d1=1, d2=1, window_days=4
     )
     attributes = {
         "synthetic_category_515": 0,
@@ -274,6 +274,7 @@ def _demo_contract(
         "synthetic_attr_241": 0,
         "synthetic_segment_g1": 0,
         "synthetic_segment_g2": 1,
+        "synthetic_segment_g3": 0,
         "synthetic_segment_g4": 1,
         "synthetic_segment_g6": 0,
     }
@@ -291,6 +292,8 @@ def _demo_contract(
         "f18": round(math.log10(decoded.n18), 6),
         "f30": round(math.log10(decoded.n30), 6),
     }
+    if decoded.n19 is not None:
+        values["f19"] = round(math.log10(decoded.n19), 6)
     encoding_rows: list[tuple[str, int, str, float]] = []
     onehot_rows: list[tuple[str, int, str]] = []
 

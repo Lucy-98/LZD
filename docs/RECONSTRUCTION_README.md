@@ -5,7 +5,7 @@ downstream Redis representation khong nam trong scope.
 
 ## Business alias layer
 
-36 cot selected van giu ten ky thuat `f*` trong dbt/Redis. De bai Lazada voucher
+55 cot selected van giu ten ky thuat `f*` trong dbt/Redis. De bai Lazada voucher
 uplift doc co logic nghiep vu, repo them lop alias synthetic tai:
 
 ```text
@@ -20,6 +20,7 @@ Vi du:
 | `f5` | `product_browse_intensity_365d_ln` | CFS counter, khong phai Lazada fact |
 | `f11` | `cart_checkout_intent_365d_ln` | CFS counter, khong phai Lazada fact |
 | `f18` | `promo_touch_intensity_365d_log10` | CFS counter, khong phai Lazada fact |
+| `f19` | `promo_redemption_intensity_365d_log10` | CFS counter, khong phai Lazada fact |
 | `f30` | `active_days_30d_log10` | H1 active days / H2 marker scenario |
 | `f37` | `price_sensitivity_segment_64_encoded` | T2 attribute alias |
 | `f38` | `promo_affinity_segment_241_encoded` | T2 attribute alias |
@@ -33,7 +34,7 @@ trong artifact, doc no la `CFS_RECENCY_MARKER`, khong phai bang chung rang
 
 Chay dry-run E2E. Dry-run nay kiem:
 
-- build demo `ReconstructionTarget` dung 36 selected features;
+- build demo `ReconstructionTarget` dung 55 selected features;
 - Track A solver sinh CFS witness events;
 - chay chinh SQL dbt reconstruction trong DuckDB in-memory;
 - Gate A/A-T3/B/C/D/E/F;
@@ -140,7 +141,7 @@ va doc cac file:
 
 - `track_a_events.csv`: event Track A duoc sinh nguoc tu target feature.
 - `track_b_events.csv`: event realtime/future synthetic tu `CustomerState(T0)`.
-- `features_expected_actual.csv`: bang expected vs actual cho 36 selected features.
+- `features_expected_actual.csv`: bang expected vs actual cho 55 selected features.
 - `feature_pass.svg`: bieu do pass-count theo tier, render truc tiep tren GitHub.
 - `timeline.svg`: timeline Track A/Track B, render truc tiep tren GitHub.
 - `summary.json`: ket qua gates A/A-T3/B/C/D/E/F.
@@ -164,7 +165,7 @@ dung:
 powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 track-a 1000
 ```
 
-Lenh nay doc `data/full_trainset.csv`, decode 36 selected features, fit T2
+Lenh nay doc `data/full_trainset.csv`, decode 55 selected features, fit T2
 encoding map tren tap dang chay, sinh Track A raw events va verify sample qua
 chinh dbt SQL runner.
 

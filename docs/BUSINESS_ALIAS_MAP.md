@@ -1,6 +1,6 @@
 # Business Alias Map For Selected Features
 
-Tai lieu nay giai thich lop ten nghiep vu synthetic cho 36 feature selected.
+Tai lieu nay giai thich lop ten nghiep vu synthetic cho 55 feature selected.
 
 Muc dich: lam bai toan Lazada voucher uplift doc co logic hon. Reviewer co the
 nhin `f30` va hieu no dang dong vai `active_days_30d_log10` trong synthetic
@@ -48,6 +48,7 @@ business, khong gan theo fact.
 | `f5` | `product_browse_intensity_365d_ln` | browse intensity | `round(exp(f5))` witness count |
 | `f11` | `cart_checkout_intent_365d_ln` | cart/checkout intent | `round(exp(f11))` witness count |
 | `f18` | `promo_touch_intensity_365d_log10` | promo exposure/sensitivity | `round(10 ** f18)` witness count |
+| `f19` | `promo_redemption_intensity_365d_log10` | repeat redemption, tach promo looker vs taker | `round(10 ** f19)` witness count |
 | `f30` | `active_days_30d_log10` | recent activity frequency | H1 distinct active days or H2 marker count |
 
 Important: `EVT_ORDER_PAID` in Track A is not a proven Lazada `ORDER_PAID`.
@@ -106,6 +107,7 @@ and are not converted to Track A events.
 | `EVT_F5` | `CFS_PRODUCT_BROWSE_INTENSITY` | witness event for `f5` |
 | `EVT_F11` | `CFS_CART_CHECKOUT_INTENT` | witness event for `f11` |
 | `EVT_F18` | `CFS_PROMO_TOUCH` | witness event for `f18` |
+| `EVT_F19` | `CFS_PROMO_REDEMPTION` | witness event for `f19` |
 | `EVT_F30` | `CFS_ACTIVE_DAY_MARKER` | H2 witness event for `f30` |
 | `EVT_ORDER_PAID` | `CFS_RECENCY_MARKER` | witness event for `f1/f2`, not real order proof |
 | `EVT_SESSION_STARTED` | `CFS_ACTIVE_DAY_FILLER` | H1 active-day filler |

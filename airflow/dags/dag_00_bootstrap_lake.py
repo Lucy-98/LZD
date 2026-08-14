@@ -38,16 +38,42 @@ def bootstrap_lake():
 
     @task(pool="duckdb_writer")
     def create_schemas() -> list[str]:
-        """Tao schema trong DuckDB truoc khi dbt build."""
+        """Tao schema trong DuckDB truoc khi dbt build.
+
+        `biz` la control plane cua duong reconstruction. Nguon su that cua no la
+        Postgres (`sql/postgres/02_biz_reconstruction.sql`); o day ta dung phan
+        SHELL de model reconstruction co relation ma resolve.
+
+        ⚠️ Shell RONG la trang thai KET THUC DUNG cua bootstrap, khong phai
+           thanh cong nua vai. Track A chua land du lieu thi mart reconstruction
+           se rong — xem `warehouse.assert_reconstruction_sources_ready()`.
+        """
         from lzd_pipeline.common.clients import duckdb_writer
         from lzd_pipeline.common.logging_setup import get_logger
+        from lzd_pipeline.reconstruction.warehouse import (
+            BIZ_SCHEMA,
+            create_biz_shell,
+            reconstruction_source_counts,
+        )
 
         log = get_logger(__name__)
-        schemas = ["raw", "staging", "marts", "dq_failures"]
+        schemas = ["raw", "staging", "marts", "dq_failures", BIZ_SCHEMA]
         with duckdb_writer() as con:      # pool=duckdb_writer dam bao doc quyen
             for schema in schemas:
                 con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+            relations = create_biz_shell(con)
+            counts = reconstruction_source_counts(con)
+
         log.info("tao schema xong", extra={"event": "schema_created", "schemas": schemas})
+        log.info(
+            "dung shell biz.* cho duong reconstruction",
+            extra={
+                "event": "biz_shell_created",
+                "relations": relations,
+                "row_counts": counts,
+                "note": "shell rong la dung — Track A chua land du lieu",
+            },
+        )
         return schemas
 
     @task(pool="duckdb_writer", execution_timeout=pendulum.duration(hours=1))

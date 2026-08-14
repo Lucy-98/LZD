@@ -1,4 +1,4 @@
-version: reconstruction_runtime_v1
+version: reconstruction_runtime_v2
 
 # Epistemic status and operational branch are deliberately separate.
 semantic_status: UNIDENTIFIED
@@ -8,9 +8,22 @@ reference_ts: "2026-08-01T23:59:59+00:00"
 future_days: 2
 generation_seed: 42
 
-constraint_model_version: constraints_v1
-encoding_version: encoding_2026_08_v1
+# §11 — moi truong duoi day deu vao `reproducibility_fingerprint`.
+# Doi ma khong bump = hai ket qua khac nhau mang CUNG fingerprint => Gate G
+# mat hieu luc. Bump o day la bat buoc, khong phai lich su.
+#
+#   constraint_model_version  v1 -> v2  them rang buoc counter f19 (scope v2)
+#   encoding_version          v1 -> v2  them one-hot layout cua group g3
+#   selection_policy_version  ...       ngay active gio do SEED chon, truoc
+#                                       day luon la 0,1,2,... => cung seed cho
+#                                       witness KHAC => BAT BUOC doi
+#   solver_version            ...       greedy round-robin -> constructive
+#                                       argmin (constructive.py)
+#   objective_version         v1        KHONG doi: dinh nghia objective van la
+#                                       (unexplained_events, sessions) §4.2b
+constraint_model_version: constraints_v2
+encoding_version: encoding_2026_08_v2
 objective_version: objective_v1
-selection_policy_version: seeded_optimal_pool_v1
-solver_version: prototype_v1
+selection_policy_version: seeded_day_choice_v1
+solver_version: constructive_argmin_v1
 behaviour_policy_version: rule_v1

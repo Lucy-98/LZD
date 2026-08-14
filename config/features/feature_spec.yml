@@ -8,16 +8,16 @@
 #
 # Doi feature => sua DUY NHAT file nay => bump `version` => pipeline tu align.
 # ==========================================================================
-version: 2
+version: 3
 entity: user
 entity_key: user_id
 
 offline:
-  # Bang mart trong DuckDB dung lam nguon sync. Scope nay chi gom 36 selected
-  # features cua fs_2026_08_v1, khong sync f0..f82 day du len Redis.
+  # Bang mart trong DuckDB dung lam nguon sync. Scope nay chi gom 55 selected
+  # features cua fs_2026_08_v2, khong sync f0..f82 day du len Redis.
   serving_table: marts.feat_user_selected_serving
   training_table: marts.training_dataset
-  selected_feature_set_id: fs_2026_08_v1
+  selected_feature_set_id: fs_2026_08_v2
   # Cot moc thoi gian de kiem tra freshness
   event_time_column: feature_ts
   partition_column: dt
@@ -38,7 +38,7 @@ online:
   realtime_ttl_seconds: 3600
 
 # --------------------------------------------------------------------------
-# 1) BATCH FEATURES - 36 selected features, tinh hang ngay tu warehouse,
+# 1) BATCH FEATURES - 55 selected features, tinh hang ngay tu warehouse,
 #    sync len Redis tai key fs:{version}:u:{user_id}
 # --------------------------------------------------------------------------
 batch_features:
@@ -60,6 +60,10 @@ batch_features:
     default: 0.0
     group: cfs_t1
   - name: f18
+    dtype: float
+    default: 0.0
+    group: cfs_t1
+  - name: f19
     dtype: float
     default: 0.0
     group: cfs_t1
@@ -93,10 +97,20 @@ batch_features:
     dtype: float
     default: 0.0
     group: cfs_t2
+  # one-hot g1 (3/3 muc — group duy nhat duoc chon day du)
   - name: f40
     dtype: float
     default: 0.0
     group: cfs_t2
+  - name: f41
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f42
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  # one-hot g2 (6/10 muc)
   - name: f43
     dtype: float
     default: 0.0
@@ -109,21 +123,72 @@ batch_features:
     dtype: float
     default: 0.0
     group: cfs_t2
+  - name: f46
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f47
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f52
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  # one-hot g3 (6/10 muc) — group MOI o scope v2
+  - name: f53
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f54
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f57
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f58
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f59
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  - name: f62
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  # one-hot g4 (2/3 muc)
   - name: f64
     dtype: float
     default: 0.0
     group: cfs_t2
+  - name: f65
+    dtype: float
+    default: 0.0
+    group: cfs_t2
+  # one-hot g6 (1/2 muc)
   - name: f68
     dtype: float
     default: 0.0
     group: cfs_t2
 
   # T3 - pass-through, khong tham gia Gate A cua reconstruction
+  - name: f0
+    dtype: float
+    default: 0.0
+    group: cfs_t3
   - name: f3
     dtype: float
     default: 0.0
     group: cfs_t3
   - name: f4
+    dtype: float
+    default: 0.0
+    group: cfs_t3
+  - name: f6
     dtype: float
     default: 0.0
     group: cfs_t3
@@ -151,6 +216,10 @@ batch_features:
     dtype: float
     default: 0.0
     group: cfs_t3
+  - name: f17
+    dtype: float
+    default: 0.0
+    group: cfs_t3
   - name: f20
     dtype: float
     default: 0.0
@@ -167,11 +236,19 @@ batch_features:
     dtype: float
     default: 0.0
     group: cfs_t3
+  - name: f24
+    dtype: float
+    default: 0.0
+    group: cfs_t3
   - name: f25
     dtype: float
     default: 0.0
     group: cfs_t3
   - name: f26
+    dtype: float
+    default: 0.0
+    group: cfs_t3
+  - name: f27
     dtype: float
     default: 0.0
     group: cfs_t3
@@ -184,6 +261,10 @@ batch_features:
     default: 0.0
     group: cfs_t3
   - name: f31
+    dtype: float
+    default: 0.0
+    group: cfs_t3
+  - name: f34
     dtype: float
     default: 0.0
     group: cfs_t3

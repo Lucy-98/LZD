@@ -44,7 +44,7 @@ INPUT := raw.customer_snapshot
 | Điều khoản | Quy định |
 |---|---|
 | **I-1** | Chỉ `split = 'train'`. Truy cập `split = 'test'` ⇒ **FAIL cứng** |
-| **I-2** | Cột được đọc: 36 cột đã chọn + `user_id` + `feature_ts` + `dt` |
+| **I-2** | Cột được đọc: 55 cột đã chọn + `user_id` + `feature_ts` + `dt` |
 | **I-3** | `label`, `is_treat` **KHÔNG** được đọc bởi bất kỳ thành phần generation nào |
 | **I-4** | Dataset gốc **read-only**. Mọi ghi vào `data/*.csv` ⇒ FAIL cứng |
 | **I-5** | Mỗi `user_id` xuất hiện đúng **một** lần sau dedup theo `(user_id, dt)` |
@@ -84,7 +84,7 @@ OUTPUT := (biz.customer, biz.customer_opaque, raw.events, biz.encoding_map_*)
 
 ## 3. Feature ownership
 
-Mỗi cột trong 36 cột thuộc **đúng một** owner. Không cột nào có hai nguồn.
+Mỗi cột trong 55 cột thuộc **đúng một** owner. Không cột nào có hai nguồn.
 
 | Owner | Cột | Số |
 |---|---|---|
@@ -93,7 +93,7 @@ Mỗi cột trong 36 cột thuộc **đúng một** owner. Không cột nào có
 | `feat_cfs_categorical` | `f37`, `f38`, `f79`, `f80`, `f81`, `f82`, `f40`, `f43`, `f44`, `f45`, `f64`, `f68` | 12 |
 | `feat_passthrough` | `f3`,`f4`,`f8`,`f9`,`f10`,`f12`,`f13`,`f16`,`f20`,`f21`,`f22`,`f23`,`f25`,`f26`,`f28`,`f29`,`f31`,`f35` | 18 |
 
-**Assertion:** `⋃ owners = 36 cột`, `⋂ owners = ∅`.
+**Assertion:** `⋃ owners = 55 cột`, `⋂ owners = ∅`.
 
 ---
 
@@ -143,17 +143,20 @@ T1 = 6    T2 = 12    T3 = 18    UNKNOWN = 0
 
 | Source attribute | Số mức | Sinh ra (đã chọn) | Sinh ra (không chọn, vẫn phải dựng) |
 |---|---|---|---|
-| `synthetic_segment_g1` | 3 | `f40` | `f41`, `f42` |
-| `synthetic_segment_g2` | 10 | `f43`, `f44`, `f45` | `f46`–`f52` |
-| `synthetic_segment_g4` | 3 | `f64` | `f63`, `f65` |
+| `synthetic_segment_g1` | 3 | `f40`, `f41`, `f42` | — (chọn đủ cả group) |
+| `synthetic_segment_g2` | 10 | `f43`, `f44`, `f45`, `f46`, `f47`, `f52` | `f48`–`f51` |
+| **`synthetic_segment_g3`** | **10** | `f53`, `f54`, `f57`, `f58`, `f59`, `f62` | `f55`, `f56`, `f60`, `f61` |
+| `synthetic_segment_g4` | 3 | `f64`, `f65` | `f63` |
 | `synthetic_segment_g6` | 2 | `f68` | `f78` |
 | `synthetic_category_515` | 515 | `f79`, `f80`, `f81`, `f82` | — |
 | `synthetic_attr_64` | 64 | `f37` | — |
 | `synthetic_attr_241` | 241 | `f38` | — |
 
-**Tổng: 7 thuộc tính categorical** sinh ra 12 cột T2 đã chọn.
+**Tổng: 8 thuộc tính categorical** sinh ra 24 cột T2 đã chọn.
 
-> ⚠️ Con số **7**, không phải 6. (4 one-hot group + `cat_515` + `attr_64` + `attr_241`.)
+> ⚠️ Con số **8**, không phải 7. (5 one-hot group + `cat_515` + `attr_64` + `attr_241`.)
+> `g3` là group mới ở `fs_2026_08_v2`; `g5` `g7` `g8` tồn tại nhưng chưa được chọn.
+> 🔴 `g4` vỡ bất biến one-hot trên test split — xem `SCOPE_EXPANSION_55F.md` §2.3.
 
 ### 5.2 · Assertion G-1
 
@@ -299,8 +302,8 @@ và *level đó dẫn tới hành vi gì*.
 | **`L10`** | `f18`, `f30` | **đẳng thức chính xác** `==` | `round(log10(round(10^f)),6) = f` đúng **100.0000%** |
 | **`LN`** | `f5`, `f11` | **dung sai tương đối `1e-15`** | `ln(round(e^f)) = f` chỉ đúng **93.05% / 93.42%**; ở `1e-15`: **100%** |
 | **`REC`** | `f1`, `f2` | **đẳng thức chính xác** (INT) | miền `[0,365]` nguyên |
-| **`CAT`** | 12 cột T2 | **đẳng thức chính xác** | ánh xạ song ánh |
-| **`PASS`** | 18 cột T3 | **không áp dụng** | không phải reconstruction |
+| **`CAT`** | 24 cột T2 | **đẳng thức chính xác** | ánh xạ song ánh |
+| **`PASS`** | 24 cột T3 | **không áp dụng** | không phải reconstruction |
 
 ### 9.1 · Vì sao `LN` không dùng được đẳng thức chính xác
 
@@ -336,7 +339,7 @@ assert round(pow(10,f30_orig))  == count(distinct date(event_ts) in window)
 
 | # | Điều khoản |
 |---|---|
-| **P-1** | 18 cột T3 copy nguyên trạng từ `raw.customer_snapshot`, **không** biến đổi |
+| **P-1** | 24 cột T3 copy nguyên trạng từ `raw.customer_snapshot`, **không** biến đổi |
 | **P-2** | T3 **không** tham gia sinh event |
 | **P-3** | T3 **không** được tính vào tỉ lệ pass của GATE A |
 | **P-4** | T3 **đóng băng** trong toàn bộ kịch bản Track B |
@@ -346,8 +349,8 @@ assert round(pow(10,f30_orig))  == count(distinct date(event_ts) in window)
 
 ### 10.1 · Vì sao P-3
 
-Nếu tính T3 vào GATE A, tỉ lệ pass luôn ≥ `18/36 = 50%` chỉ nhờ copy — con số đó
-**không mang thông tin**. GATE A chỉ tính trên 18 cột T1+T2.
+Nếu tính T3 vào GATE A, tỉ lệ pass luôn ≥ `24/55 = 44%` chỉ nhờ copy — con số đó
+**không mang thông tin**. GATE A chỉ tính trên 31 cột T1+T2.
 
 ---
 
@@ -360,9 +363,9 @@ Nếu tính T3 vào GATE A, tỉ lệ pass luôn ≥ `18/36 = 50%` chỉ nhờ c
 | **U-3** | Semantic `UNKNOWN` không được suy ra từ tên cột |
 | **U-4** | Reconstruction khớp 100% **không** nâng semantic từ `[ASSUMPTION]` lên `[FACT]` |
 
-Hiện tại: **0 cột UNKNOWN** trong 36 cột đã chọn (sau khi đo `f5`, `f11`).
+Hiện tại: **0 cột UNKNOWN** trong 55 cột đã chọn (sau khi đo `f5`, `f11`, `f19`).
 
-Ngoài 36 cột: `f6`, `f14`, `f15`, `f39` chưa đo chi tiết — nhưng `[MEASURED]`
+Ngoài 55 cột: `f14`, `f15`, `f39` chưa đo chi tiết (`f6` nay đã ở T3) — nhưng `[MEASURED]`
 `f6 ≡ f15` và `f14 ≡ f39` **trùng tuyệt đối** (0 dòng lệch). Không thuộc scope này.
 
 ---
@@ -444,8 +447,8 @@ làm sai. Migration **không được** làm hỏng nó.
 ### 14.1 · Phạm vi
 
 ```
-GATE A áp dụng cho:  T1 (6 cột)  +  T2 (12 cột)  =  18 cột
-GATE A KHÔNG áp dụng cho:  T3 (18 cột)
+GATE A áp dụng cho:  T1 (7 cột)  +  T2 (24 cột)  =  31 cột
+GATE A KHÔNG áp dụng cho:  T3 (24 cột)
 ```
 
 ### 14.2 · Ba mức kiểm
@@ -454,11 +457,11 @@ GATE A KHÔNG áp dụng cho:  T3 (18 cột)
 
 ```
 Với mỗi customer C:
-    reconstructed_row(C)[18 cột]  ==  original_row(U)[18 cột]
+    reconstructed_row(C)[31 cột]  ==  original_row(U)[31 cột]
     theo luật §9
 ```
 
-**Metric:** `row_pass_rate = #(user pass toàn bộ 18 cột) / #user`
+**Metric:** `row_pass_rate = #(user pass toàn bộ 31 cột) / #user`
 
 #### Mức 2 — Column-level
 
@@ -531,10 +534,10 @@ Xử lý **mềm** — ghi nhận, tiếp tục:
 Contract được coi là **thoả** khi **tất cả** điều kiện sau đúng:
 
 ```
-[ ] A-1  18/18 cột T1+T2 đạt column_pass_rate = 100%
+[ ] A-1  31/31 cột T1+T2 đạt column_pass_rate = 100%
 [ ] A-2  row_pass_rate = 100% trên tập không quarantine
 [ ] A-3  Tỉ lệ quarantine ≤ ngưỡng đã chốt (ngưỡng chốt SAU khi chạy thử)
-[ ] A-4  Distribution-level khớp cho cả 18 cột
+[ ] A-4  Distribution-level khớp cho cả 31 cột
 [ ] A-5  Assertion §9.3 (so sánh n đã decode) pass
 [ ] A-6  Assertion G-1 (one-hot invariant của group đầy đủ) pass
 [ ] A-7  TA-1..TA-6 pass — không tautology

@@ -1,13 +1,19 @@
 -- ============================================================================
--- FORWARD FEATURE ENGINE — categorical (T2): 12 cot
---   f37 · f38 · f79 · f80 · f81 · f82 · f40 · f43 · f44 · f45 · f64 · f68
+-- FORWARD FEATURE ENGINE — categorical (T2): 24 cot (scope fs_2026_08_v2)
+--   value map : f37 · f38 · f79 · f80 · f81 · f82
+--   one-hot g1: f40 · f41 · f42                       (3/3 — DU CA GROUP)
+--   one-hot g2: f43 · f44 · f45 · f46 · f47 · f52     (6/10)
+--   one-hot g3: f53 · f54 · f57 · f58 · f59 · f62     (6/10)  ★ MOI o v2
+--   one-hot g4: f64 · f65                             (2/3)
+--   one-hot g6: f68                                   (1/2)
 --
 -- docs/RECONSTRUCTION_SPEC.md §5 (group-level) · §8 (encoding contract)
 --
 -- ★ GROUP-LEVEL RECONSTRUCTION (§5, G-1)
---   `synthetic_segment_g2` co 10 MUC du model chi doc f43/f44/f45.
---   Dung du 10 muc la BAT BUOC: chi dung 3 se lam vo bat bien
---   `sum(f43..f52) = 1`, va luc do f43/f44/f45 mat nghia "loai tru lan nhau".
+--   `synthetic_segment_g2` co 10 MUC du model chi doc 6 cot.
+--   Dung du 10 muc la BAT BUOC: chi dung 6 se lam vo bat bien
+--   `sum(f43..f52) = 1`, va luc do cac cot da chon mat nghia "loai tru lan nhau".
+--   Dieu nay dung y het cho g3 (10 muc, chon 6) va g4 (3 muc, chon 2).
 --
 -- ★ BAY §8.3 — f37 va f38 DUNG CHUNG ALPHABET
 --   alphabet(f37) la tap con hoan toan cua alphabet(f38) (64/64 gia tri),
@@ -78,29 +84,35 @@ unioned as (
 
 select
     target_id,
-    -- 12 cot T2. Cac cot anh em (f41,f42,f46..f52,f63,f65,f78) VAN duoc dung
-    -- o `unioned` de giu bat bien one-hot, chi khong xuat ra day (§1.2).
-    max(value) filter (where column_name = 'f37') as f37,
-    max(value) filter (where column_name = 'f38') as f38,
-    max(value) filter (where column_name = 'f79') as f79,
-    max(value) filter (where column_name = 'f80') as f80,
-    max(value) filter (where column_name = 'f81') as f81,
-    max(value) filter (where column_name = 'f82') as f82,
-    max(value) filter (where column_name = 'f40') as f40,
-    max(value) filter (where column_name = 'f43') as f43,
-    max(value) filter (where column_name = 'f44') as f44,
-    max(value) filter (where column_name = 'f45') as f45,
-    max(value) filter (where column_name = 'f64') as f64,
-    max(value) filter (where column_name = 'f68') as f68,
+    -- 24 cot T2. Cac cot anh em (f48..f51, f55, f56, f60, f61, f63, f78) VAN
+    -- duoc dung o `unioned` de giu bat bien one-hot, chi khong xuat ra day (§1.2).
+    {% for col in [
+        'f37','f38','f79','f80','f81','f82',
+        'f40','f41','f42',
+        'f43','f44','f45','f46','f47','f52',
+        'f53','f54','f57','f58','f59','f62',
+        'f64','f65',
+        'f68'
+    ] -%}
+    max(value) filter (where column_name = '{{ col }}') as {{ col }},
+    {% endfor %}
 
     -- Bat bien one-hot cua group DAY DU — dbt test se assert = 1.
-    -- Neu chi dung 3/10 muc thi tong nay khong bao gio bang 1 => lo ngay.
+    -- Neu chi dung 6/10 muc thi tong nay khong bao gio bang 1 => lo ngay.
+    sum(value) filter (where column_name in ('f40','f41','f42'))  as _g1_onehot_sum,
     sum(value) filter (where column_name in
         ('f43','f44','f45','f46','f47','f48','f49','f50','f51','f52')
     )                                             as _g2_onehot_sum,
-    sum(value) filter (where column_name in ('f40','f41','f42'))  as _g1_onehot_sum,
+    sum(value) filter (where column_name in
+        ('f53','f54','f55','f56','f57','f58','f59','f60','f61','f62')
+    )                                             as _g3_onehot_sum,
     sum(value) filter (where column_name in ('f63','f64','f65'))  as _g4_onehot_sum,
     sum(value) filter (where column_name in ('f68','f78'))        as _g6_onehot_sum
 
 from unioned
 group by target_id
+
+-- ⚠️ g4: bat bien nay dung 100% tren train nhung VO tren test —
+--    sum(f63,f64,f65) = 0 o 3/181,669 dong test. Attribute that co mot muc
+--    baseline toan-0 khong xuat hien trong train. `split_allowed: train`
+--    nen chua no ra; 🚫 KHONG mo scope sang test truoc khi xu ly muc thu tu.

@@ -75,7 +75,7 @@ full `feat_user_serving`. Redis batch key:
 fs:{version}:u:{user_id}
 ```
 
-Hash này chỉ chứa 36 selected features của `fs_2026_08_v1` và metadata `_v`, `_ts`,
+Hash này chỉ chứa 55 selected features của `fs_2026_08_v2` và metadata `_v`, `_ts`,
 `_feature_set_id`. Con trỏ publish:
 
 ```text

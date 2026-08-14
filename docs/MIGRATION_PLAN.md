@@ -7,22 +7,38 @@
 
 Đã có:
 
-- immutable 36-column `ReconstructionTarget` và tamper hash;
+- immutable 55-column `ReconstructionTarget` và tamper hash;
 - solver dùng một engine với branch H1/H2;
+- **`constructive.solve_h1` đạt argmin có chứng minh** — 0/200,000 target thật
+  nằm ngoài argmin, thay cho greedy round-robin (5.38% lệch);
 - `semantic_status=UNIDENTIFIED` tách khỏi branch vận hành;
 - event witness deterministic, provenance và capability boundary;
 - forward runner thực thi chính SQL dbt;
+- Gate A / A-T3 pass trên dữ liệu train **thật** (300/300 dòng, 55 cột);
 - Gate A-F và handoff `CustomerState(T0)`;
 - Track B rule-based sinh future events;
-- CLI và DAG manual `60_reconstruction_e2e`.
+- CLI và DAG manual `60_reconstruction_e2e`;
+- **đường reconstruction đã tách khỏi build hằng ngày** (`tag:reconstruction`),
+  và `dag_00` dựng schema `biz` + shell 5 relation trong DuckDB.
+
+Đã có (tiếp) — đường land, `reconstruction/sink.py`:
+
+- writer `raw_events_v2.csv` → parquet snappy trên lake;
+- writer `biz.*` → Postgres (`COPY FROM STDIN`, một transaction) → DuckDB;
+- `dag_60` có `mode=backfill` chạy train split thật rồi land;
+- `assert_reconstruction_sources_ready()` chặn việc đọc mart rỗng như thể nó có nghĩa.
 
 Chưa có:
 
+- **một lần chạy end-to-end trong stack thật** — `publish_biz_to_postgres` là
+  đường chưa được thực thi lần nào (host không dựng được Postgres/MinIO);
 - materialize target từ toàn bộ train split;
-- encoding maps đầy đủ từ dataset;
-- writer production cho `raw/events_v2`;
+- encoding maps đầy đủ từ dataset (hiện fit theo `--limit` của chính run);
 - schema/consumer v2 và publish Track B lên Kafka v2;
+- Track A batch cho nhánh H2;
 - pilot/full-run reporting và quarantine threshold thực nghiệm.
+
+> Chi tiết bằng chứng cho từng dòng "chưa có": `TECH_REFERENCE.md` §12.1–§12.3.
 
 ## 2. Kiến trúc mục tiêu
 
@@ -30,7 +46,7 @@ Chưa có:
 full_trainset.csv (read-only)
         |
         v
-biz.reconstruction_target (immutable, 36 columns, REFERENCE_TS)
+biz.reconstruction_target (immutable, 55 columns, REFERENCE_TS)
         |
         v
 Track A solver -> RECONSTRUCTED events -> MinIO raw/events_v2
@@ -84,7 +100,7 @@ không phải deliverable của migration này.
 
 ### M0 — Freeze contracts
 
-- Freeze `fs_2026_08_v1.yaml` và runtime config.
+- Freeze `fs_2026_08_v2.yaml` và runtime config.
 - Chốt `REFERENCE_TS` theo generation run.
 - Áp DDL `sql/postgres/02_biz_reconstruction.sql`.
 - Thêm migration cho Postgres volume cũ.
@@ -93,7 +109,7 @@ không phải deliverable của migration này.
 
 ### M1 — Materialize target và encoding
 
-- Đọc train split, chỉ lấy đúng 36 cột.
+- Đọc train split, chỉ lấy đúng 55 cột.
 - Fit ba value encoding và bốn one-hot layouts.
 - Persist versioned maps.
 - Chạy bijection/round-trip trên toàn observed domain.

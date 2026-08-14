@@ -128,10 +128,31 @@ def test_sql_chan_label_va_is_treat(sql):
     assert "label" in body and "is_treat" in body
 
 
-def test_sql_ep_dung_36_cot(sql):
-    """INVARIANT 1 o tang DB."""
-    assert "ck_scope_36" in sql
-    assert "= 36" in sql.split("CONSTRAINT ck_scope_36 CHECK (")[1].split(")")[0] + "= 36"
+def test_sql_ep_dung_scope_cua_artifact(sql):
+    """INVARIANT 1 o tang DB — va con so phai LAY TU ARTIFACT.
+
+    Truoc day test nay hard-code 36, nen DB va `fs_*.yaml` co the troi khoi nhau
+    ma khong ai biet: payload 55 cot se bi CHECK 36 tu choi ngay khi writer
+    Postgres duoc viet. Doc tu artifact thi moi lan doi scope, test nay ep SQL
+    phai doi theo.
+    """
+    from lzd_pipeline.reconstruction.feature_set import load_feature_set
+
+    n = load_feature_set().expected_column_count
+    assert f"ck_scope_{n}" in sql
+    body = sql.split(f"CONSTRAINT ck_scope_{n} CHECK (")[1].split(")")[0]
+    assert f"= {n}" in body + f"= {n}"
+
+
+def test_sql_passthrough_dung_du_cot_t3(sql):
+    """`feat_passthrough.sql` select tung cot T3 theo ten — thieu mot cot trong
+    DDL la loi runtime o production, khong phai loi lint."""
+    import re
+
+    from lzd_pipeline.reconstruction.feature_set import load_feature_set
+
+    block = sql.split("CREATE TABLE IF NOT EXISTS biz.passthrough_source (")[1].split(");")[0]
+    assert set(re.findall(r"\b(f\d+)\s+DOUBLE", block)) == set(load_feature_set().tiers["T3"])
 
 
 def test_target_la_immutable_o_tang_db(sql):

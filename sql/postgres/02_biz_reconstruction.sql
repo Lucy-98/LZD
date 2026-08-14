@@ -59,7 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_gen_run_fp   ON biz.generation_run (reproducibili
 -- 2) reconstruction_target - §10 IMMUTABLE
 --    🚫 Khong component nao duoc phep sua target de validation pass.
 -- ---------------------------------------------------------------------------
--- Ham phu cho ck_scope_36 (Postgres khong co san). Phai ton tai TRUOC table.
+-- Ham phu cho ck_scope (Postgres khong co san). Phai ton tai TRUOC table.
 CREATE OR REPLACE FUNCTION biz.jsonb_object_keys_count(j JSONB) RETURNS INT
 LANGUAGE sql IMMUTABLE STRICT AS $$ SELECT count(*)::INT FROM jsonb_object_keys(j) $$;
 
@@ -70,15 +70,17 @@ CREATE TABLE IF NOT EXISTS biz.reconstruction_target (
     feature_version           TEXT        NOT NULL,
     reference_ts              TIMESTAMPTZ NOT NULL,
     split                     TEXT        NOT NULL CHECK (split = 'train'),
-    payload                   JSONB       NOT NULL,   -- DUNG 36 cot
+    payload                   JSONB       NOT NULL,   -- DUNG 55 cot (fs_2026_08_v2)
     target_hash               TEXT        NOT NULL,   -- tamper-evidence §6.3
     feature_payload_hash      TEXT        NOT NULL,   -- §6.1a
     created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- I-1 / Gate E: label & is_treat KHONG BAO GIO duoc co mat
     CONSTRAINT ck_no_label CHECK (NOT (payload ? 'label' OR payload ? 'is_treat')),
-    -- INVARIANT 1: dung 36 cot, khong hon
-    CONSTRAINT ck_scope_36 CHECK (biz.jsonb_object_keys_count(payload) = 36)
+    -- INVARIANT 1: dung 55 cot, khong hon.
+    -- Con so nay phai khop `expected_column_count` cua fs_2026_08_v2.yaml.
+    -- Doi scope => doi CA HAI, va bump `selected_feature_set_id`.
+    CONSTRAINT ck_scope_55 CHECK (biz.jsonb_object_keys_count(payload) = 55)
 );
 
 -- 🚫 Chan UPDATE/DELETE — immutable la rang buoc, khong phai loi hua
@@ -120,14 +122,18 @@ CREATE TABLE IF NOT EXISTS biz.onehot_layout (
     PRIMARY KEY (encoding_version, attr_name, level_index)
 );
 
+-- 24 cot T3 cua fs_2026_08_v2. Phai khop `tiers["T3"]` cua artifact —
+-- neu thieu cot, feat_passthrough.sql se select mot cot khong ton tai.
 CREATE TABLE IF NOT EXISTS biz.passthrough_source (
     target_id                 TEXT        PRIMARY KEY REFERENCES biz.reconstruction_target(target_id),
-    f3 DOUBLE PRECISION,  f4 DOUBLE PRECISION,  f8 DOUBLE PRECISION,
-    f9 DOUBLE PRECISION,  f10 DOUBLE PRECISION, f12 DOUBLE PRECISION,
-    f13 DOUBLE PRECISION, f16 DOUBLE PRECISION, f20 DOUBLE PRECISION,
+    f0  DOUBLE PRECISION, f3  DOUBLE PRECISION, f4  DOUBLE PRECISION,
+    f6  DOUBLE PRECISION, f8  DOUBLE PRECISION, f9  DOUBLE PRECISION,
+    f10 DOUBLE PRECISION, f12 DOUBLE PRECISION, f13 DOUBLE PRECISION,
+    f16 DOUBLE PRECISION, f17 DOUBLE PRECISION, f20 DOUBLE PRECISION,
     f21 DOUBLE PRECISION, f22 DOUBLE PRECISION, f23 DOUBLE PRECISION,
-    f25 DOUBLE PRECISION, f26 DOUBLE PRECISION, f28 DOUBLE PRECISION,
-    f29 DOUBLE PRECISION, f31 DOUBLE PRECISION, f35 DOUBLE PRECISION
+    f24 DOUBLE PRECISION, f25 DOUBLE PRECISION, f26 DOUBLE PRECISION,
+    f27 DOUBLE PRECISION, f28 DOUBLE PRECISION, f29 DOUBLE PRECISION,
+    f31 DOUBLE PRECISION, f34 DOUBLE PRECISION, f35 DOUBLE PRECISION
 );
 
 -- ---------------------------------------------------------------------------
@@ -263,13 +269,21 @@ CREATE TABLE IF NOT EXISTS biz.reconstruction_diff (
 --
 -- Feature engine CAN `reference_ts` de biet bien point-in-time, giong het
 -- `feat_user_realtime_pit` doc `feature_ts` tu snapshot.
--- Nhung no TUYET DOI khong duoc thay `payload` (36 gia tri feature) — neu thay,
+-- Nhung no TUYET DOI khong duoc thay `payload` (55 gia tri feature) — neu thay,
 -- no co the "doc dap an" va Gate A thanh vo nghia (§12 tautology).
 --
 -- View nay phoi bay DUNG ba cot. dbt source tro vao DAY, khong tro vao bang goc.
 -- ---------------------------------------------------------------------------
+-- ⚠️ Ten cot PHAI la `customer_id_hint`, khong phai `lzd_user_id`.
+--    `feat_cfs_counter.sql` / `feat_cfs_recency.sql` doc view nay qua
+--    `source('biz','reconstruction_boundary')` va select `customer_id_hint`.
+--    Lech ten => model do o PRODUCTION voi "column does not exist", trong khi
+--    harness van xanh vi harness seed bang bang phang cua rieng no.
+--
+--    Hau to `_hint` la co y: day KHONG phai khoa join uy quyen: Track B chi
+--    duoc mang ID de truy vet, khong duoc dung no de doc lai target (§3.4-1).
 CREATE OR REPLACE VIEW biz.v_reconstruction_boundary AS
-SELECT target_id, lzd_user_id, reference_ts
+SELECT target_id, lzd_user_id AS customer_id_hint, reference_ts
 FROM biz.reconstruction_target;
 
 COMMENT ON VIEW biz.v_reconstruction_boundary IS

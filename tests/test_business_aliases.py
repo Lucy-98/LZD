@@ -4,7 +4,7 @@ from lzd_pipeline.features.business_aliases import load_business_aliases
 from lzd_pipeline.reconstruction.feature_set import load_feature_set
 
 
-def test_business_aliases_cover_selected_36_features():
+def test_business_aliases_cover_every_selected_feature():
     fs = load_feature_set()
     aliases = load_business_aliases()
 

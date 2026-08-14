@@ -1,0 +1,173 @@
+# ==========================================================================
+# SELECTED FEATURE SET — solver contract artifact
+#
+# RECONSTRUCTION_SPEC.md §13.3
+#
+# SOLVER ĐỌC FILE NÀY. Nó định nghĩa 55-column reconstruction scope.
+#
+# ★ v2 mở rộng v1 (36 cột) lên 55 cột. Đây là SUPERSET CHẶT của v1 —
+#   không cột nào bị bỏ, chỉ cộng thêm 19. Nhờ vậy mọi gate đang xanh ở v1
+#   không phải re-validate; chỉ phần thêm mới cần bằng chứng.
+#
+#   +1  T1   f19            counter LOG10 thứ 7   (§ bằng chứng bên dưới)
+#   +12 T2   f41 f42        hoàn tất group g1 (3/3)
+#            f46 f47 f52    mở rộng group g2 (6/10)
+#            f53 f54 f57
+#            f58 f59 f62    group g3 — MỚI HOÀN TOÀN (6/10)
+#            f65            mở rộng group g4 (2/3)
+#   +6  T3   f0 f6 f17 f24 f27 f34    pass-through, không cam kết semantic
+#
+# 🚫 File này KHÔNG chứa `semantic_signal_count` hay câu hỏi ngỏ về semantic.
+#    Chúng nằm ở `feature_semantics_2026_08.yaml` — solver KHÔNG đọc file đó.
+#
+# 🚫 INVARIANT 1: 55 cột là hard scope. KHÔNG tự mở lên 83.
+#    `expected_column_count` bên dưới là chỗ DUY NHẤT chốt con số này.
+# ==========================================================================
+id: fs_2026_08_v2
+created_at: "2026-08-14"
+supersedes: fs_2026_08_v1
+source_dataset: "data/full_trainset.csv"
+split_allowed: train          # 🚫 test set bất khả xâm phạm
+
+# 🚫 INVARIANT 1 — đổi số này là đổi hợp đồng, phải bump `id`.
+expected_column_count: 55
+
+# --------------------------------------------------------------------------
+# 55 cột mục tiêu, chia theo reconstruction tier
+# --------------------------------------------------------------------------
+columns:
+  # T1 — event-level: tái tạo bằng cách SINH EVENT
+  T1: [f1, f2, f5, f11, f18, f19, f30]
+
+  # T2 — attribute-level: tái tạo bằng cách gán LEVEL cho source attribute
+  T2: [f37, f38, f79, f80, f81, f82,
+       f40, f41, f42,
+       f43, f44, f45, f46, f47, f52,
+       f53, f54, f57, f58, f59, f62,
+       f64, f65,
+       f68]
+
+  # T3 — pass-through: copy nguyên trạng, KHÔNG thuộc Gate A
+  T3: [f0, f3, f4, f6, f8, f9, f10, f12, f13, f16, f17, f20, f21, f22,
+       f23, f24, f25, f26, f27, f28, f29, f31, f34, f35]
+
+# --------------------------------------------------------------------------
+# Comparison regime — RECONSTRUCTION_SPEC.md §7
+# Mỗi cột T1/T2 phải thuộc đúng MỘT regime.
+# --------------------------------------------------------------------------
+regimes:
+  LOG10:                      # round-trip khớp CHÍNH XÁC 100.0000%
+    columns: [f18, f19, f30]  # f19 đo được 926,669/926,669 train + 181,669/181,669 test
+    decode: "round(10 ** f)"
+    encode: "round(log10(n), 6)"
+    compare: exact
+  LN:                         # exact chỉ 93.05%/93.42% → PHẢI dùng dung sai
+    columns: [f5, f11]
+    decode: "round(exp(f))"
+    encode: "log(n)"
+    compare: relative
+    tolerance: 1.0e-15        # 🚫 CẤM nới. Fail ở đây ⇒ solver sai.
+  REC:
+    columns: [f1, f2]
+    decode: "int(f)"
+    encode: "date_diff_days"
+    compare: exact
+  CAT:
+    columns: [f37, f38, f79, f80, f81, f82,
+              f40, f41, f42,
+              f43, f44, f45, f46, f47, f52,
+              f53, f54, f57, f58, f59, f62,
+              f64, f65,
+              f68]
+    compare: exact
+  PASS:                       # KHÔNG phải reconstruction → Gate A-T3 riêng
+    columns: [f0, f3, f4, f6, f8, f9, f10, f12, f13, f16, f17, f20, f21, f22,
+              f23, f24, f25, f26, f27, f28, f29, f31, f34, f35]
+    compare: exact
+
+# --------------------------------------------------------------------------
+# 8 source attribute sinh ra 24 cột T2 — RECONSTRUCTION_SPEC.md §5
+#
+# `outputs`  = TOÀN BỘ cột mà attribute sinh ra (kể cả cột KHÔNG được chọn).
+#              Group-level reconstruction: phải dựng ĐỦ mức, không phải chỉ
+#              mức của cột đã chọn (§5, G-1).
+# `selected` = tập con thực sự đi vào model.
+#
+# Bất biến one-hot `sum(outputs) == 1` đã đo trên TOÀN BỘ 926,669 dòng train
+# cho cả 5 group. Trên test split: g1 g2 g3 g6 giữ nguyên; ⚠️ g4 xem note.
+# --------------------------------------------------------------------------
+source_attributes:
+  synthetic_category_515:
+    levels: 515
+    encoding: encoding_map_515
+    outputs:  [f79, f80, f81, f82]
+    selected: [f79, f80, f81, f82]
+    note: "MỘT biến latent, 4 encoding. card(tuple)=card(mỗi cột)=515 (song ánh)."
+
+  synthetic_attr_64:
+    levels: 64
+    encoding: encoding_map_64
+    outputs:  [f37]
+    selected: [f37]
+    note: "alphabet ⊂ alphabet(f38) → decode PHẢI có khoá thuộc tính (§8.3)."
+
+  synthetic_attr_241:
+    levels: 241
+    encoding: encoding_map_241
+    outputs:  [f38]
+    selected: [f38]
+    note: "card(tuple f37,f38)=1133 > 241 ⇒ ĐỘC LẬP với f37."
+
+  synthetic_segment_g1:
+    levels: 3
+    encoding: one_hot
+    outputs:  [f40, f41, f42]
+    selected: [f40, f41, f42]
+    note: >
+      ★ Group DUY NHẤT được chọn ĐỦ CẢ 3 CỘT. Hệ quả: target mang sẵn ràng
+      buộc tuyến tính sum(f40,f41,f42)==1, nên 55 cột có ít hơn 55 bậc tự do.
+      Đây là sự thật về selection, không phải lỗi.
+
+  synthetic_segment_g2:
+    levels: 10
+    encoding: one_hot
+    outputs:  [f43, f44, f45, f46, f47, f48, f49, f50, f51, f52]
+    selected: [f43, f44, f45, f46, f47, f52]
+
+  synthetic_segment_g3:
+    levels: 10
+    encoding: one_hot
+    outputs:  [f53, f54, f55, f56, f57, f58, f59, f60, f61, f62]
+    selected: [f53, f54, f57, f58, f59, f62]
+    note: >
+      ★ MỚI ở v2. Group này chưa từng được khai báo ở bất kỳ tài liệu nào.
+      Đo được sum(f53..f62)==1 trên 926,669/926,669 dòng train VÀ
+      181,669/181,669 dòng test — song ánh giữ qua split độc lập.
+
+  synthetic_segment_g4:
+    levels: 3
+    encoding: one_hot
+    outputs:  [f63, f64, f65]
+    selected: [f64, f65]
+    note: >
+      ⚠️ Bất biến one-hot ĐÚNG 100% trên train nhưng VỠ trên test:
+      sum(f63,f64,f65)==0 ở 3/181,669 dòng test. Nghĩa là attribute thật có
+      mức baseline toàn-0 KHÔNG xuất hiện trong train. `split_allowed: train`
+      nên chưa nổ; 🚫 KHÔNG được mở scope sang test khi chưa xử lý mức thứ tư.
+      Điều này BÁC một phần khẳng định "domain đóng" ở SPEC §8.2(b).
+
+  synthetic_segment_g6:
+    levels: 2
+    encoding: one_hot
+    outputs:  [f68, f78]
+    selected: [f68]
+
+# --------------------------------------------------------------------------
+# Cột NGOÀI 55 nhưng phải dựng làm đầu ra trung gian (§1.2)
+# Chúng KHÔNG vào target contract, KHÔNG vào Gate A.
+# --------------------------------------------------------------------------
+intermediate_only:
+  [f48, f49, f50, f51,          # g2 — mức không được chọn
+   f55, f56, f60, f61,          # g3 — mức không được chọn
+   f63,                         # g4 — mức không được chọn
+   f78]                         # g6 — mức không được chọn

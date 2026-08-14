@@ -19,7 +19,7 @@ stg_user_snapshot
         +--> feat_user_behaviour
         +--> feat_user_realtime_pit
         +--> feat_user_serving              (baseline/full mart)
-        +--> feat_user_selected_serving     (36-column Redis sync source)
+        +--> feat_user_selected_serving     (55-column Redis sync source)
         `--> training_dataset
 ```
 
@@ -28,8 +28,8 @@ stg_user_snapshot
 hoặc reconstruction solver.
 
 Feature export hiện dùng `feat_user_selected_serving`: chỉ `user_id`, `dt`,
-`feature_ts` và 36 cột trong `config/features/fs_2026_08_v1.yaml`. Redis batch
-key là `fs:{version}:u:{user_id}`; mỗi hash có 36 selected features + metadata
+`feature_ts` và 55 cột trong `config/features/fs_2026_08_v2.yaml`. Redis batch
+key là `fs:{version}:u:{user_id}`; mỗi hash có 55 selected features + metadata
 `_v`, `_ts`, `_feature_set_id`.
 
 ## 2. Stream
@@ -59,7 +59,7 @@ nhưng `stg_app_events` dedup theo `event_id` trước khi tính feature offline
 ## 3. Reconstruction Track A
 
 ```text
-immutable 36-column target (train only)
+immutable 55-column target (train only)
         |
         | decode T1/T2/T3
         v

@@ -265,7 +265,7 @@ Liên tục:  23 / 83   (28%)   → T3 / UNKNOWN
 | `f34` | nguyên `[0,100]`, 31 mức | **T1 \| T2** — xem §5.4 |
 | `f0` | nguyên `{0,1,2,3,4,5}`, 6 mức | **T1 \| T2** — xem §5.4 |
 | `f7` | nguyên `{0,1,2,3,4,5}`, 6 mức; khác `f0` ở **50.8%** dòng ⇒ **biến khác** | **T1 \| T2** — xem §5.4 |
-| `f40`–`f78` | 11 nhóm one-hot loại trừ, `row_sum = 11.0` ở **100%** dòng; sau khử trùng ⇒ **7 biến categorical** | **T2** |
+| `f40`–`f78` | `row_sum = 11.0` ở **100%** dòng = **8** group one-hot + `f70` hằng số + 2 cột trùng khít; sau khử trùng ⇒ **8 biến categorical** | **T2** |
 | `f79`–`f82` | cardinality từng cột = **515**; cardinality tuple `(f79,f80,f81,f82)` = **515** ⇒ **song ánh hoàn hảo**, **MỘT** biến 515 mức, 4 cách mã hoá | **T2** |
 | `f37` | 64 mức, `[0, 0.715096]`; **không** có mẫu số hữu tỉ nhỏ (test `x·q ∈ ℤ` phẳng 17.8% = đúng số dòng bằng 0) ⇒ **không phải tỉ lệ đếm** | **T2** |
 | `f38` | 241 mức, `[0, 0.843222]`; cùng đặc điểm | **T2** |
@@ -360,10 +360,10 @@ LAYER 3   f1 = date_diff('day', attr_date_A, feature_ts)
 ### 6.3 · Lineage T2 — one-hot `f40`–`f78`
 
 ```
-LAYER 1   CUSTOMER.synthetic_segment_G1 .. G7      (7 biến categorical)
+LAYER 1   CUSTOMER.synthetic_segment_G1 .. G8      (8 biến categorical)
              │  bằng chứng: 11 nhóm loại trừ, row_sum = 11.0 ở 100% dòng
              │  sau khử trùng (f68≡f71≡f77; f74 lệch 2 dòng; f70 hằng số)
-             │  ⇒ CHỈ CÒN 7 biến thật
+             │  ⇒ CHỈ CÒN 8 biến thật
              ▼
 LAYER 2   (thuộc tính entity — điều khiển hành vi mô phỏng)
              ▼
@@ -472,7 +472,7 @@ training/serving skew có thật (audit C16).
 
 Ba chỗ đứt lineage đã ghi ở `FEATURE_DICTIONARY.md` §6: D2 (`user_tenure_days` bị
 chặn ở 30), D3 (`voucher_used_30d` đếm claim nhưng tên nói used), D4 (không point-in-time).
-Các lỗi này thuộc legacy/full mart, không thuộc selected Redis sync 36 cột hiện tại.
+Các lỗi này thuộc legacy/full mart, không thuộc selected Redis sync 55 cột hiện tại.
 
 ---
 
@@ -708,7 +708,7 @@ Trường hợp giữa là **cái bẫy nguy hiểm nhất** và là lý do §3.
 | `online_store.aggregate_realtime()` | ✅ | cutoff theo `now()` lúc serve |
 | `feat_user_behaviour.sql` | ❌ | dùng `now()` lúc dbt build — **D4** |
 | `feat_user_serving.sql` | ⚠️ | baseline/full mart join behaviour `using (user_id)`, không theo `dt` |
-| `feat_user_selected_serving.sql` | ✅ | selected 36-column sync source; không chứa label/is_treat |
+| `feat_user_selected_serving.sql` | ✅ | selected 55-column sync source; không chứa label/is_treat |
 | `training_dataset.sql` | ✅ | join `(user_id, dt)`; label từ snapshot |
 | `offline_store.iter_shard()` | ✅ | chỉ đọc `entity_key + batch_names` ⇒ **label không rời training dataset** |
 

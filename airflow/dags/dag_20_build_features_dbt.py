@@ -14,6 +14,10 @@ Sau khi dbt build xong:
 
 Tat ca task ghi DuckDB deu nam trong pool `duckdb_writer` (1 slot) vi DuckDB
 chi cho 1 writer tai 1 thoi diem.
+
+⚠️ DAG nay CHI build duong feature PRODUCTION (`--exclude tag:reconstruction`).
+   Model cua duong reconstruction build rieng bang `--select tag:reconstruction`
+   sau khi Track A da land du lieu. Ly do: xem khoi chu thich o `DBT_SELECTOR`.
 """
 from __future__ import annotations
 
@@ -58,10 +62,24 @@ def build_features_dbt():
         pool="duckdb_writer",
     )
 
+    # ------------------------------------------------------------------
+    # 🚫 `--exclude tag:reconstruction`
+    #
+    # Model reconstruction (`stg_events_v2`, `feat_cfs_*`, `feat_passthrough`)
+    # doc `source('raw','events_v2')` va `source('biz', ...)`. Nhung relation do
+    # CHI ton tai sau khi Track A chay va writer land du lieu — hien tai CHUA CO
+    # writer production (xem TECH_REFERENCE.md §12.1).
+    #
+    # Khong exclude thi `dbt run` do CatalogException va keo sap ca duong
+    # feature production hang ngay, du duong do khong lien quan gi toi
+    # reconstruction. Danh sach tag nam o dbt_project.yml.
+    # ------------------------------------------------------------------
+    DBT_SELECTOR = "--exclude tag:reconstruction"
+
     dbt_run = BashOperator(
         task_id="dbt_run",
         bash_command=(
-            f"cd {DBT_DIR} && dbt run --no-version-check "
+            f"cd {DBT_DIR} && dbt run --no-version-check {DBT_SELECTOR} "
             "--vars '{\"run_date\": \"{{ ds }}\"}'"
         ),
         env=DBT_ENV,
@@ -72,7 +90,7 @@ def build_features_dbt():
     dbt_test = BashOperator(
         task_id="dbt_test",
         bash_command=(
-            f"cd {DBT_DIR} && dbt test --no-version-check "
+            f"cd {DBT_DIR} && dbt test --no-version-check {DBT_SELECTOR} "
             "--vars '{\"run_date\": \"{{ ds }}\"}'"
         ),
         env=DBT_ENV,

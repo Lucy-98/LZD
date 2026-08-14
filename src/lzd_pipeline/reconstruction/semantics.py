@@ -25,13 +25,16 @@ from lzd_pipeline.reconstruction.candidate import GEN_FREE, Candidate, Slot
 REASON_F5 = "f5"
 REASON_F11 = "f11"
 REASON_F18 = "f18"
+REASON_F19 = "f19"
 REASON_F30 = "f30"
 
 #: Moc nghiep vu cho f1/f2. Event nay co timestamp CO DINH (§5.2) — khong co
 #: bac tu do — nen no khong tham gia toi uu, chi tham gia feasibility.
 REASON_RECENCY = "recency"
 
-COUNTER_REASONS = (REASON_F5, REASON_F11, REASON_F18)
+#: `f19` CHI ton tai tu scope v2 (55 cot) tro di. Voi target v1 (36 cot),
+#: `DecodedTarget.n19 is None` va reason nay khong duoc phat.
+COUNTER_REASONS = (REASON_F5, REASON_F11, REASON_F18, REASON_F19)
 
 
 def _recency_slots(d: "DecodedTarget") -> tuple[Slot, ...]:
@@ -46,9 +49,14 @@ def _recency_slots(d: "DecodedTarget") -> tuple[Slot, ...]:
 
 @dataclass(frozen=True)
 class DecodedTarget:
-    """Gia tri DA GIAI MA tu 36-feature target — thu solver thuc su lam viec.
+    """Gia tri DA GIAI MA tu selected-feature target — thu solver thuc su lam viec.
 
     Chi chua counter T1 + recency. KHONG chua gia tri feature goc.
+
+    `n19` la OPTIONAL vi no chi ton tai trong scope v2 (55 cot). Voi target
+    dung `fs_2026_08_v1` (36 cot) thi `n19 is None` va solver khong phat
+    `EVT_F19` nao — nho vay MOT engine phuc vu duoc CA HAI feature set thay
+    vi fork ra hai nhanh se drift.
     """
 
     n5: int
@@ -58,6 +66,7 @@ class DecodedTarget:
     d1: int          # days_since_first_*  (SYNTHETIC_ASSUMPTION S-01)
     d2: int          # days_since_last_*   (S-02);  bat bien do duoc: d1 >= d2
     window_days: int = 30
+    n19: int | None = None   # counter LOG10 thu 7 — chi co o scope v2
 
     def __post_init__(self) -> None:
         if self.d1 < self.d2:
@@ -65,6 +74,30 @@ class DecodedTarget:
         for name in ("n5", "n11", "n18", "n30"):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} phai >= 1 (mien do duoc: [1, ...])")
+        if self.n19 is not None and self.n19 < 1:
+            raise ValueError(f"n19 phai >= 1 (mien do duoc: [1, 4712]), nhan {self.n19}")
+
+    @property
+    def counter_demand(self) -> tuple[tuple[str, int], ...]:
+        """(gen_reason, so event) cho MOI counter dang hoat dong trong scope.
+
+        Mot cho duy nhat quyet dinh "scope nay co f19 khong" — feasibility,
+        candidate generation va constructive solver deu doc tu day, nen khong
+        the lech nhau.
+        """
+        demand = [
+            (REASON_F5, self.n5),
+            (REASON_F11, self.n11),
+            (REASON_F18, self.n18),
+        ]
+        if self.n19 is not None:
+            demand.append((REASON_F19, self.n19))
+        return tuple(demand)
+
+    @property
+    def counter_capacity(self) -> int:
+        """Tong so event CO KE TOAN — cac event mot counter T1 dem (§6.2)."""
+        return sum(c for _, c in self.counter_demand)
 
     @property
     def forced_days(self) -> frozenset[int]:
@@ -128,12 +161,16 @@ class H1Branch:
         return (c.unexplained_events, c.sessions)
 
     def is_feasible(self, c: Candidate, d: DecodedTarget) -> bool:
-        if c.count_of(REASON_F5) != d.n5:
-            return False
-        if c.count_of(REASON_F11) != d.n11:
-            return False
-        if c.count_of(REASON_F18) != d.n18:
-            return False
+        for reason, want in d.counter_demand:
+            if c.count_of(reason) != want:
+                return False
+        # Counter ngoai scope phai VANG MAT, khong phai "khong kiem".
+        # Neu target v1 (khong co f19) ma candidate van phat EVT_F19 thi
+        # forward engine se dem duoc n19 > 0 trong khi target khong co cot
+        # f19 de doi chieu => sai lech am tham.
+        for reason in COUNTER_REASONS:
+            if reason not in {r for r, _ in d.counter_demand} and c.count_of(reason):
+                return False
         if c.count_of(REASON_F30) != 0:          # H1 khong co counter rieng cho f30
             return False
         # f1/f2: dung so moc phan biet (1 neu d1==d2, nguoc lai 2)
@@ -154,7 +191,7 @@ class H1Branch:
 
         for extra in itertools.combinations(pool, free_slots):
             days = tuple(sorted((*forced, *extra)))
-            for base in _place_counters(days, ((REASON_F5, d.n5), (REASON_F11, d.n11), (REASON_F18, d.n18))):
+            for base in _place_counters(days, d.counter_demand):
                 slots = (*base, *rec)
                 cand = Candidate.of(slots)
                 # Ngay chua co event nao phai duoc phu bang FREE_EVENT
@@ -181,12 +218,12 @@ class H2Branch:
     def is_feasible(self, c: Candidate, d: DecodedTarget) -> bool:
         if c.unexplained_events != 0:            # H2 khong cho phep FREE_EVENT
             return False
-        if c.count_of(REASON_F5) != d.n5:
-            return False
-        if c.count_of(REASON_F11) != d.n11:
-            return False
-        if c.count_of(REASON_F18) != d.n18:
-            return False
+        for reason, want in d.counter_demand:
+            if c.count_of(reason) != want:
+                return False
+        for reason in COUNTER_REASONS:
+            if reason not in {r for r, _ in d.counter_demand} and c.count_of(reason):
+                return False
         if c.count_of(REASON_F30) != d.n30:      # counter rieng, khong phai ngay
             return False
         if c.count_of(REASON_RECENCY) != len({d.d1, d.d2}):
@@ -196,10 +233,7 @@ class H2Branch:
     def candidates(self, d: DecodedTarget) -> Iterator[Candidate]:
         forced = sorted(d.forced_days)
         pool = [x for x in range(d.window_days) if x not in d.forced_days]
-        counts = (
-            (REASON_F5, d.n5), (REASON_F11, d.n11),
-            (REASON_F18, d.n18), (REASON_F30, d.n30),
-        )
+        counts = (*d.counter_demand, (REASON_F30, d.n30))
         rec = _recency_slots(d)
         # active_days tu do => duyet moi so ngay tu |forced| toi window
         for k in range(max(len(forced), 1), d.window_days + 1):

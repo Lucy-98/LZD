@@ -23,7 +23,7 @@ Files:
 Snapshot ID:
 
 ```text
-reconstruction_runtime_v1:H1:demo-target-001:seed42
+reconstruction_runtime_v2:H1:demo-target-001:seed42
 ```
 
 This is a review fixture, not production MinIO/Kafka/Redis data. Regenerate it

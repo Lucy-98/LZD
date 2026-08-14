@@ -8,7 +8,7 @@
 > trong repo; materialize full dataset và publish production vẫn là roadmap.
 >
 > 🚫 Thuật ngữ "reverse-data" **đã bị bỏ** — xem §7.1. Reconstruction target là
-> **36 cột**, không phải 83.
+> **55 cột**, không phải 83.
 >
 > Nhãn: `[FACT]` từ code/schema · `[MEASURED]` từ query · `[ASSUMPTION]` giả định ·
 > `[UNKNOWN]` chưa đủ evidence · `[PLAN]` chưa tồn tại.
@@ -105,7 +105,7 @@ warehouse.duckdb
 │   ├── feat_user_behaviour       ← hist_* từ event, cửa sổ 30 ngày
 │   ├── feat_user_realtime_pit    ← rt_* point-in-time, ô 5 phút
 │   ├── feat_user_serving         ← baseline/full mart: f0..f82 + hist_*
-│   ├── feat_user_selected_serving← 36 selected cột  ← BẢNG ĐƯỢC SYNC
+│   ├── feat_user_selected_serving← 55 selected cột  ← BẢNG ĐƯỢC SYNC
 │   └── training_dataset          ← serving + rt_* + label + is_treat + split
 └── dq_failures/      ← dbt test store_failures
 ```
@@ -113,8 +113,8 @@ warehouse.duckdb
 ### 2.3 · Downstream feature sink — ngoài scope
 
 Redis hiện tồn tại trong runtime và nhận batch/realtime state. Batch state dùng
-`fs:{version}:u:{user_id}` và chỉ chứa 36 selected features của
-`fs_2026_08_v1`; `fs:meta:active_version` là con trỏ atomic. Realtime overlay dùng
+`fs:{version}:u:{user_id}` và chỉ chứa 55 selected features của
+`fs_2026_08_v2`; `fs:meta:active_version` là con trỏ atomic. Realtime overlay dùng
 `rt:u:{user_id}` với các field bucket 5 phút. API/policy và representation ngoài
 hai key boundary này vẫn thuộc downstream owner.
 
@@ -152,7 +152,7 @@ s3://lakehouse/raw/user_snapshot/dt=…/{train,test}.parquet
         │  CHỈ: cast(f{i} as double) + dedup
         ▼
 feat_user_selected_serving.sql
-        36 selected features từ fs_2026_08_v1
+        55 selected features từ fs_2026_08_v2
         T1: f1 f2 f5 f11 f18 f30
         T2: f37 f38 f79 f80 f81 f82 f40 f43 f44 f45 f64 f68
         T3: f3 f4 f8 f9 f10 f12 f13 f16 f20 f21 f22 f23
@@ -247,7 +247,7 @@ ngay, không ảnh hưởng gì khác.
 > ```
 > Column contract           ← feature_spec.yml làm được
 > Transformation semantics  ← nằm trong dbt SQL
-> Reconstruction semantics  ← `fs_2026_08_v1.yaml` + runtime branch config + dbt SQL
+> Reconstruction semantics  ← `fs_2026_08_v2.yaml` + runtime branch config + dbt SQL
 > ```
 
 ### 5.2 · Event schema — hợp đồng app ↔ data
@@ -451,17 +451,17 @@ data/full_trainset.csv          ← read-only tuyệt đối
 biz.reconstruction_target       ← IMMUTABLE
    target_id
    lzd_user_id
-   selected_feature_set_id      ← vd "fs_2026_08_v1"
+   selected_feature_set_id      ← vd "fs_2026_08_v2"
    feature_version
    reference_ts                 ← §9.3, KHÔNG phải now()
-   <36 SELECTED COLUMNS>        ← ★ CHỈ 36, KHÔNG phải f0..f82
+   <55 SELECTED COLUMNS>        ← ★ CHỈ 55, KHÔNG phải f0..f82
    split                        ← chỉ 'train'
    target_hash                  ← canonical form: RECONSTRUCTION_SPEC.md §6.1
    created_at
 ```
 
-> 🚫 **Target là 36 cột, không phải 83.** 47 cột còn lại **không** thuộc reconstruction
-> contract, trừ khi là dependency bắt buộc để tính ra một trong 36 (hiện **không có**
+> 🚫 **Target là 55 cột, không phải 83.** 28 cột còn lại **không** thuộc reconstruction
+> contract, trừ khi là dependency bắt buộc để tính ra một trong 55 (hiện **không có**
 > trường hợp nào — `RECONSTRUCTION_SPEC.md` §1.2).
 >
 > ⚠️ `target_hash` dùng để phát hiện **target bị sửa**, **KHÔNG** dùng làm phép so
@@ -521,13 +521,13 @@ biz.reconstruction_target       ← IMMUTABLE
 ```
 
 > ⚠️ **Xung đột tên cần chốt.** `biz.customer_opaque` trong tài liệu này nghĩa là
-> **18 cột T3 pass-through**, **không** phải "opaque identity cho privacy". Đề xuất
+> **24 cột T3 pass-through**, **không** phải "opaque identity cho privacy". Đề xuất
 > đổi tên cho hết mơ hồ:
 >
 > | Cũ | Mới | Nghĩa |
 > |---|---|---|
 > | `biz.customer` | `biz.synthetic_customer` | thực thể latent **synthetic**, **không** phải business entity thật |
-> | `biz.customer_opaque` | `biz.customer_passthrough_vector` | 18 cột T3, không diễn giải |
+> | `biz.customer_opaque` | `biz.customer_passthrough_vector` | 24 cột T3, không diễn giải |
 > | — | `biz.reconstruction_target` | §10, immutable |
 
 ### 11.2 · Vì sao `events_v2` là path RIÊNG, không ghi chung `app_events`
@@ -640,11 +640,11 @@ live_generator(state: CustomerState, behaviour_model, t_from, t_to) -> Iterator[
    feat_cfs_counter · feat_cfs_recency · feat_cfs_categorical
                         │
                         ▼
-              reconstructed 18 cột (T1+T2)
+              reconstructed 31 cột (T1+T2)
                         │
               ┌─────────┴──────────┐
               ▼                    ▼
-        ④ GATE A            feat_passthrough (18 cột T3)
+        ④ GATE A            feat_passthrough (24 cột T3)
      so với LZD row                │
               └─────────┬──────────┘
                         ▼
@@ -777,7 +777,7 @@ SEMANTICALLY_UNIDENTIFIED → ★ xem 13.6
 
 | Gate | Kiểm | Phạm vi |
 |---|---|---|
-| **A · Feature equality** | `reconstructed == target` theo regime `LN`/`LOG10`/`REC`/`CAT` | 18 cột T1+T2 |
+| **A · Feature equality** | `reconstructed == target` theo regime `LN`/`LOG10`/`REC`/`CAT` | 31 cột T1+T2 |
 | **B · Temporal validity** | `∀e: event_ts < feature_ts`; Track A ∩ Track B = ∅ | mọi event |
 | **C · Constraint validity** | H-1…H-12 của constraint model | mọi user |
 | **D · Provenance** | mọi event có `source_type` + `generation_run_id` hợp lệ; không vòng lặp `parent_run_id` | mọi event |
@@ -794,7 +794,7 @@ SEMANTICALLY_UNIDENTIFIED → ★ xem 13.6
 ```
 R0  · Sửa A1–A4  (skew · PIT · contract naming)        ← độc lập, làm ngay
 R1  · Model thật + đánh giá trên test RCT nguyên vẹn   ← gỡ A7
-R2  · Feature semantic grouping (36 cột → 32 tín hiệu)
+R2  · Feature semantic grouping (55 cột → ? tín hiệu, xem SPEC §2.7)
 R3  · SEMANTIC IDENTIFICATION EXPERIMENT               ← §13, có thể ra UNIDENTIFIED
 R4  · Immutable reconstruction target + REFERENCE_TS   ← §9.3, §10
 R5  · Synthetic entity + encoding contract             ← §11.1, round-trip property
@@ -842,7 +842,7 @@ event tương lai.
 
 | | **Track A — Reconstruction** | **Track B — Live generator** |
 |---|---|---|
-| Input | 36-feature target | `CustomerState(T0)` + behaviour model |
+| Input | 55-feature target | `CustomerState(T0)` + behaviour model |
 | Output | **một** historical event witness `E*` | luồng event tương lai |
 | Bài toán | `F → E* → F'`, cần `F' ≈ F` | `State → E_future → State'` |
 | Thời gian | `event_ts < reference_ts` | `event_ts ≥ reference_ts` |

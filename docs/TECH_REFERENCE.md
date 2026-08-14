@@ -11,7 +11,7 @@
 > không đổi thì tài liệu sai — không phải code sai.
 >
 > **Trạng thái xác minh (2026-08-14):** `python -m pytest tests/ -q` →
-> `210 passed`. Xem §11.
+> `280 passed`. Scope hiện hành: `fs_2026_08_v2` (**55 cột**). Xem §11.
 
 ---
 
@@ -49,7 +49,7 @@ FORWARD (production path)
     Kafka v1     ──▶ MinIO raw ──▶ Redis rt overlay
 
 RECONSTRUCTION (contract path, dry-run)
-    36 selected features ──▶ solver ──▶ Track A witness events
+    55 selected features ──▶ solver ──▶ Track A witness events
                                     ──▶ CHÍNH SQL dbt ──▶ F'
                                     ──▶ Gate A..F ──▶ CustomerState(T0)
                                     ──▶ Track B future events
@@ -67,7 +67,7 @@ nó thì Gate A không kiểm chứng gì cả (tautology, `RECONSTRUCTION_SPEC.
 | Đường dẫn | Nội dung | Ghi chú |
 |---|---|---|
 | [airflow/dags/](../airflow/dags/) | 8 DAG + `lzd_utils/callbacks.py` | §9 |
-| [config/features/](../config/features/) | `feature_spec.yml`, `fs_2026_08_v1.yaml`, `business_aliases.yml`, `feature_semantics_2026_08.yaml` | §4.2 |
+| [config/features/](../config/features/) | `feature_spec.yml`, `fs_2026_08_v2.yaml`, `business_aliases.yml`, `feature_semantics_2026_08.yaml` | §4.2 |
 | [config/reconstruction/runtime.yml](../config/reconstruction/runtime.yml) | runtime config của reconstruction | §4.3 |
 | [config/grafana/](../config/grafana/), [config/prometheus/](../config/prometheus/), [config/loki/](../config/loki/), [config/promtail/](../config/promtail/), [config/statsd/](../config/statsd/) | observability provisioning | 5 dashboard |
 | [dbt/](../dbt/) | 3 staging + 6 marts model, `profiles.yml` (DuckDB) | §7 |
@@ -75,7 +75,7 @@ nó thì Gate A không kiểm chứng gì cả (tautology, `RECONSTRUCTION_SPEC.
 | [scripts/](../scripts/) | `stack.ps1` (Windows), `init_kafka.sh`, `init_minio.sh`, `load_test.py` | §10 |
 | [sql/postgres/](../sql/postgres/) | `ops.*` audit schema, `biz.*` reconstruction schema | §8.5 |
 | [src/lzd_pipeline/](../src/lzd_pipeline/) | ~6.5k dòng Python, 5 subpackage | §5 |
-| [tests/](../tests/) | 210 test, 13 file | §11 |
+| [tests/](../tests/) | 280 test, 17 file | §11 |
 | [data/](../data/) | `full_trainset.csv` (926,669 dòng), `full_testset.csv` | committed |
 | `.tmp/` | output Track A batch, **git-ignored** | có thể rất lớn |
 
@@ -152,7 +152,7 @@ sai kiểu và trả về default thay vì crash lúc import.
 | File | Ai đọc | Định nghĩa |
 |---|---|---|
 | `feature_spec.yml` | `features/spec.py` → sync job, inference API, dbt test | Redis key layout, dtype, default, batch vs realtime |
-| `fs_2026_08_v1.yaml` | `reconstruction/feature_set.py` → solver | **36-column reconstruction scope**, tier, regime, tolerance, source attribute |
+| `fs_2026_08_v2.yaml` | `reconstruction/feature_set.py` → solver | **55-column reconstruction scope**, tier, regime, tolerance, source attribute |
 | `business_aliases.yml` | `features/business_aliases.py` → report/snapshot | tên nghiệp vụ synthetic cho `f*` (không phải Lazada fact) |
 | `feature_semantics_2026_08.yaml` | *không module nào trong solver path* | câu hỏi ngỏ về semantic |
 
@@ -161,25 +161,30 @@ sai kiểu và trả về default thay vì crash lúc import.
 không được phép chặn solver.
 
 `load_feature_set()` chạy `_validate()` ngay lúc load và fail cứng nếu:
-tier chồng lấn · regime không phủ hết 36 cột · `selected` của source attribute
-không nằm trong T2 · cột `intermediate_only` lọt vào target · `len(columns) != 36`.
+tier chồng lấn · regime không phủ hết 55 cột · `selected` của source attribute
+không nằm trong T2 · cột `intermediate_only` lọt vào target · một mức của group
+không được khai báo ở đâu cả · `len(columns) != expected_column_count`.
 
 ### 4.3 `config/reconstruction/runtime.yml`
 
 ```yaml
-version: reconstruction_runtime_v1
+version: reconstruction_runtime_v2
 semantic_status: UNIDENTIFIED     # trạng thái NHẬN THỨC
 semantic_branch: H1               # KỊCH BẢN vận hành
 reference_ts: "2026-08-01T23:59:59+00:00"
 future_days: 2
 generation_seed: 42
-constraint_model_version: constraints_v1
-encoding_version: encoding_2026_08_v1
-objective_version: objective_v1
-selection_policy_version: seeded_optimal_pool_v1
-solver_version: prototype_v1
+constraint_model_version: constraints_v2          # + ràng buộc counter f19
+encoding_version: encoding_2026_08_v2             # + one-hot layout của g3
+objective_version: objective_v1                   # định nghĩa objective không đổi
+selection_policy_version: seeded_day_choice_v1    # ngày active nay do seed chọn
+solver_version: constructive_argmin_v1            # greedy → constructive
 behaviour_policy_version: rule_v1
 ```
+
+> §11: **mọi** trường trên đều vào `reproducibility_fingerprint`. Đổi hành vi mà
+> không bump = hai kết quả khác nhau mang **cùng** fingerprint ⇒ Gate G mất hiệu
+> lực. Bảng bump khi lên scope v2: `SCOPE_EXPANSION_55F.md` §6.
 
 `semantic_status` và `semantic_branch` là **hai loại khác nhau** và
 `SolverConfig.__post_init__` enforce quan hệ giữa chúng (I-6): `H1_SUPPORTED`
@@ -322,7 +327,7 @@ dropped / queue depth.
 
 | Module | Vai trò | Ràng buộc enforce ở đây |
 |---|---|---|
-| `feature_set.py` | đọc `fs_2026_08_v1.yaml` | INVARIANT 1 (đúng 36 cột) |
+| `feature_set.py` | đọc `fs_2026_08_v2.yaml` | INVARIANT 1 (đúng `expected_column_count` = 55 cột) |
 | `target.py` | `ReconstructionTarget`, `SolverConfig`, `build_target()` | I-1..I-6, tamper hash |
 | `canonical.py` | `float_repr`, `feature_payload_hash`, `target_hash`, `reproducibility_fingerprint` | §6 |
 | `candidate.py` | `Slot`, `Candidate` — **cấu trúc**, không phải `list[Event]` | tất định khi song song hoá |
@@ -387,7 +392,8 @@ lý do dùng một `ReconstructionEngine` + `SemanticBranch` protocol thay vì
 
 ```python
 EVENT_TYPE_OF = {
-    "f5": "EVT_F5",   "f11": "EVT_F11",  "f18": "EVT_F18",  "f30": "EVT_F30",
+    "f5": "EVT_F5",   "f11": "EVT_F11",  "f18": "EVT_F18",
+    "f19": "EVT_F19", "f30": "EVT_F30",
     "recency": "EVT_ORDER_PAID",     # CFS witness cho f1/f2
     "FREE": "EVT_SESSION_STARTED",   # không counter T1 nào đếm
 }
@@ -405,8 +411,8 @@ engine nói "f5 đếm event `EVT_F5` trong cửa sổ W". Lệch nhau ⇒ Gate 
 
 | Gate | Kiểm gì | Ở đâu |
 |---|---|---|
-| **A** | 18 cột T1+T2 khớp target theo regime | `runner.gate_a()` |
-| **A-T3** | 18 cột T3 khớp — **báo cáo tỷ lệ RIÊNG** | `runner.gate_a()` |
+| **A** | 31 cột T1+T2 khớp target theo regime | `runner.gate_a()` |
+| **A-T3** | 24 cột T3 khớp — **báo cáo tỷ lệ RIÊNG** | `runner.gate_a()` |
 | **B** | mọi event Track A có `event_ts < reference_ts` | `e2e.run_end_to_end` |
 | **C** | candidate được chọn thật sự feasible | `branch.is_feasible()` |
 | **D** | mọi event Track B là `SYNTHETIC` + lineage hợp lệ | `persistence.check_all()` |
@@ -414,7 +420,7 @@ engine nói "f5 đếm event `EVT_F5` trong cửa sổ W". Lệch nhau ⇒ Gate 
 | **F** | số event trong `(0, 100_000)`, mọi event Track B `>= as_of_ts` | `e2e` |
 | **G** | reproducibility fingerprint | `canonical.reproducibility_fingerprint()` |
 
-Gate A và A-T3 **cố ý tách**: gộp chung thì tỷ lệ pass luôn ≥ 50% nhờ 18 cột
+Gate A và A-T3 **cố ý tách**: gộp chung thì tỷ lệ pass bị đẩy cao giả tạo nhờ 24 cột
 copy — con số vô nghĩa.
 
 **Cấm dùng hash làm phép so feature equality** (§6.2): regime LN lệch bit cuối ở
@@ -422,11 +428,11 @@ copy — con số vô nghĩa.
 
 | Regime | Cột | Cách so |
 |---|---|---|
-| `LOG10` | f18, f30 | exact (round 6 chữ số, round-trip khớp 100%) |
+| `LOG10` | f18, f19, f30 | exact (round 6 chữ số, round-trip khớp 100%) |
 | `LN` | f5, f11 | **tương đối, tolerance 1e-15** — cấm nới |
 | `REC` | f1, f2 | exact (số nguyên) |
-| `CAT` | 12 cột T2 | exact |
-| `PASS` | 18 cột T3 | exact |
+| `CAT` | 24 cột T2 | exact |
+| `PASS` | 24 cột T3 | exact |
 
 ### 6.5 Capability boundary (INVARIANT 4)
 
@@ -436,7 +442,7 @@ Chữ ký hàm     =  API boundary
 ```
 
 `CustomerState.source_target_id` là lineage id hợp lệ, nhưng thành lỗ hổng nếu
-Track B **giải được** nó: `source_target_id → target repo → 36 features`. Lúc đó
+Track B **giải được** nó: `source_target_id → target repo → 55 features`. Lúc đó
 dù chữ ký hàm sạch, generator vẫn "nhìn trộm" được target và closed-loop test
 kiểm chính nó.
 
@@ -476,9 +482,14 @@ trị), **nhưng** `card(tuple(f37,f38)) = 1133 > 241` ⇒ hai biến độc l�
 `f79..f82` là **một** biến latent 515 mức với bốn encoding (song ánh, đúng ở cả
 train lẫn test) — một `source_attribute`, không phải bốn.
 
-Group-level (§5, G-1): `synthetic_segment_g2` có **10 mức** dù model chỉ đọc
-`f43/f44/f45`. Dựng đủ 10 là bắt buộc, nếu không bất biến `sum(f43..f52) == 1`
-sẽ vỡ và ba cột được chọn mất nghĩa "loại trừ lẫn nhau".
+Group-level (§5, G-1): `synthetic_segment_g2` có **10 mức** dù model chỉ đọc 6 cột
+(`f43` `f44` `f45` `f46` `f47` `f52`). Dựng đủ 10 là bắt buộc, nếu không bất biến
+`sum(f43..f52) == 1` sẽ vỡ và các cột được chọn mất nghĩa "loại trừ lẫn nhau".
+Tương tự cho `g3` (10 mức, chọn 6) và `g4` (3 mức, chọn 2).
+
+`feature_set._validate` nay bắt **mọi** mức của một group phải nằm ở `selected`
+**hoặc** `intermediate_only` — quên một mức ở cả hai chỗ sẽ làm SQL dựng thiếu mức
+và bất biến one-hot vỡ âm thầm.
 
 Hai property kiểm trên **toàn domain**, không sample:
 `decode(encode(s)) == s` (`assert_bijective`) và `encode(decode(x)) == x`
@@ -487,9 +498,34 @@ Hai property kiểm trên **toàn domain**, không sample:
 ### 6.8 Track A batch trên dữ liệu thật
 
 `track_a_batch.py` khác `engine.solve()` ở chỗ nó **không** enumerate exhaustive.
-`construct_h1_candidate()` dựng thẳng một nghiệm H1 hợp lệ (round-robin counter
-lên các ngày active, vá FREE_EVENT vào ngày trống) rồi assert
-`branch.is_feasible()`. Với 926,669 dòng, exhaustive enumeration là bất khả thi.
+Nó gọi `constructive.solve_h1()` — dựng thẳng một nghiệm **đã chứng minh thuộc
+argmin**, `O(n30)`.
+
+`[MEASURED]` Vì sao không dùng exhaustive: không gian mà `feasible_candidates()`
+phải duyệt có median **10^10.4** candidate mỗi target ở scope 55 (p90 10^20.1,
+max 10^166.0). Chỉ 19.3% target có không gian ≤ 10^6. Exhaustive chỉ dùng được
+với `window_days ≤ 6`, tức **chỉ trong test**.
+
+Bài toán H1 có **dạng đóng** nên không cần search:
+
+```
+unexplained_min = max(0, n30 − |forced_days| − counter_capacity)
+sessions_min    = n_out + max(n30, ceil(T_in / SESSION_CAPACITY))
+```
+
+`solve_h1()` **assert** objective bằng đúng tuple này, nên lệch argmin sẽ nổ ngay
+tại chỗ chứ không âm thầm đi vào manifest. Chứng minh đầy đủ: docstring của
+[constructive.py](../src/lzd_pipeline/reconstruction/constructive.py).
+Kiểm chứng độc lập: `test_constructive.py` đối chiếu với `engine.optimal_pool()`.
+
+`[MEASURED]` 200,000 target thật: **0** nghiệm ngoài argmin. Bản greedy round-robin
+trước đó: **10,765 (5.38%)** ngoài argmin, và luôn dồn ngày active về mép gần nhất
+của cửa sổ (`d-0 ≈ 100%`) — bệnh lý §4.4 nói `generation_seed` sinh ra để tránh.
+Nay ngày active do seed chọn: `d-0`…`d-29` mỗi ngày 3.30%–3.37%.
+
+⚠️ `pool_size` báo **0**, không phải 1. Solver constructive không liệt kê pool nên
+không biết kích thước thật; báo `1` là nói *"nghiệm duy nhất"* — khẳng định chưa
+chứng minh. `0` = *"không liệt kê"*.
 
 Chỉ hỗ trợ `semantic_branch=H1`; H2 raise. Row nào lỗi đi vào `quarantine.csv`
 kèm lý do, vòng lặp chạy tiếp. `verify_limit` dòng đầu được chạy qua SQL dbt
@@ -497,6 +533,7 @@ thật và Gate A, kết quả nằm trong `manifest.json["gate_sample"]`.
 
 Decode target:
 `n5 = round(exp(f5))`, `n11 = round(exp(f11))`, `n18 = round(10^f18)`,
+`n19 = round(10^f19)` (chỉ khi khoá `f19` có mặt — scope v2),
 `n30 = round(10^f30)`, `d1 = round(f1)`, `d2 = round(f2)`, `window_days = 30`.
 
 ---
@@ -523,11 +560,11 @@ production làm.
 
 | Model | Cột sinh ra | Ghi chú |
 |---|---|---|
-| `feat_cfs_counter` | f5, f11, f18, f30 | hai regime mã hoá khác nhau, xem dưới |
+| `feat_cfs_counter` | f5, f11, f18, f19, f30 | hai regime mã hoá khác nhau, xem dưới |
 | `feat_cfs_recency` | f1, f2 | `date_diff('day', ...)`, biên PIT `<` nghiêm ngặt |
-| `feat_cfs_categorical` | 12 cột T2 + 4 cột `_g*_onehot_sum` | join theo `(attr, level_id)` |
-| `feat_passthrough` | 18 cột T3 | **copy có kiểm soát**, không phải feature engineering |
-| `feat_user_selected_serving` | 36 cột + `user_id, dt, feature_ts` | nguồn sync Redis |
+| `feat_cfs_categorical` | 24 cột T2 + 5 cột `_g*_onehot_sum` | join theo `(attr, level_id)` |
+| `feat_passthrough` | 24 cột T3 | **copy có kiểm soát**, không phải feature engineering |
+| `feat_user_selected_serving` | 55 cột + `user_id, dt, feature_ts` | nguồn sync Redis |
 | `training_dataset` | feature + `label` + `is_treat` | chỉ cho training |
 | `feat_user_behaviour`, `feat_user_realtime_pit`, `feat_user_serving` | | forward path baseline |
 
@@ -538,7 +575,8 @@ Ba chi tiết trong `feat_cfs_counter` là contract, không phải style:
 case when n5 >= 1 then ln(n5) end  as f5
 
 -- LOG10: round ĐÚNG 6 chữ số — quy ước lưu trữ đo được, round-trip khớp exact
-case when n18 >= 1 then round(log10(n18), 6) end  as f18
+case when n18 >= 1 then round(log10(n18), 6) end  as f18,
+case when n19 >= 1 then round(log10(n19), 6) end  as f19
 
 -- KHÔNG coalesce n=0 thành 1. Miền đo được là [1,N]; engine thấy 0 nghĩa là
 -- KHÔNG KHỚP THẬT ⇒ để NULL cho Gate A bắt.
@@ -575,7 +613,7 @@ Jinja env dùng `StrictUndefined` — thiếu var là lỗi ngay, không render 
 
 | Key | Type | Nội dung |
 |---|---|---|
-| `fs:{version}:u:{user_id}` | HASH | 36 field `f*` + `_v`, `_ts`, `_feature_set_id` |
+| `fs:{version}:u:{user_id}` | HASH | 55 field `f*` + `_v`, `_ts`, `_feature_set_id` |
 | `rt:u:{user_id}` | HASH | `rt_*_1h\|<bucket_epoch>` (ô 5 phút) + `rt_last_event_ts` |
 | `fs:meta:active_version` | STRING | con trỏ version đang phục vụ |
 | `fs:meta:{version}:status` | HASH | trạng thái sync |
@@ -608,7 +646,7 @@ mlflow/          # MLflow artifact root
 ### 8.4 DuckDB
 
 `marts.feat_user_selected_serving` là **nguồn sync duy nhất** lên Redis. Nó chứa
-`user_id, dt, feature_ts` + 36 cột, và **không** chứa `label`/`is_treat`.
+`user_id, dt, feature_ts` + 55 cột, và **không** chứa `label`/`is_treat`.
 
 ### 8.5 Postgres
 
@@ -626,7 +664,7 @@ Các CHECK constraint đáng chú ý — chúng lặp lại luật của tầng 
 
 ```sql
 ck_no_label      CHECK (NOT (payload ? 'label' OR payload ? 'is_treat'))
-ck_scope_36      CHECK (biz.jsonb_object_keys_count(payload) = 36)
+ck_scope_55      CHECK (biz.jsonb_object_keys_count(payload) = 55)
 ck_status_branch CHECK (...)   -- I-6
 ck_p3 / ck_p4    CHECK (...)   -- provenance
 ck_quarantine_no_events, ck_last_event_before, ck_no_self_parent
@@ -697,22 +735,26 @@ và [`Makefile`](../Makefile) (bash/WSL, tập lệnh tương đương).
 
 ## 11. Test map & trạng thái xác minh
 
-**Chạy ngày 2026-08-14:** `python -m pytest tests/ -q` → **210 passed**.
+**Chạy ngày 2026-08-14:** `python -m pytest tests/ -q` → **280 passed**.
 
 | File | Test | Kiểm gì |
 |---|---|---|
-| `test_contract_slice1.py` | 30 | scope 36 cột, hash/tamper, fingerprint, encoding bijection, one-hot group |
-| `test_engine.py` | 24 | optimal pool, seed determinism, mutant detection, occurrence, canonical order |
-| `test_persistence.py` | 26 | P-1..P-5, parity Python ↔ SQL CHECK |
-| `test_handoff_and_trackb.py` | 23 | handoff refusal, Gate B, Track B lineage |
-| `test_forward_engine_contract.py` | 20 | TA-2/TA-3/TA-6 — SQL dbt không chạm solver internals |
+| `test_contract_slice1.py` | 46 | scope 55 cột, hash/tamper, fingerprint, encoding bijection, one-hot group |
+| `test_forward_engine_contract.py` | 31 | TA-2/TA-3/TA-6 — SQL dbt không chạm solver internals |
+| `test_constructive.py` | 30 | ★ argmin đối chiếu exhaustive, phân bố ngày, biên scope f19 |
+| `test_handoff_and_trackb.py` | 27 | handoff refusal, Gate B, Track B lineage |
+| `test_persistence.py` | 27 | P-1..P-5, parity Python ↔ SQL CHECK, DDL khớp artifact |
+| `test_engine.py` | 25 | optimal pool, seed determinism, mutant detection, occurrence, canonical order |
+| `test_capability_boundary.py` | 17 | INVARIANT 4 — AST import graph, import tương đối |
 | `test_sync_logic.py` | 16 | version, shard idempotency, validate |
-| `test_capability_boundary.py` | 14 | INVARIANT 4 — AST import graph, import tương đối |
-| `test_feature_spec.py` | 8 | spec loading, range expansion |
+| `test_feature_spec.py` | 9 | spec loading, range expansion, khớp feature-set artifact |
 | `test_event_schema.py` | 6 | validate event |
-| `test_end_to_end.py` | 5 | cả H1 và H2 chạy hết pipeline |
+| `test_end_to_end.py` | 6 | cả H1 và H2 chạy hết pipeline |
 | `test_business_aliases.py` | 3 | alias loading |
 | `test_track_a_batch.py` | 2 | batch materialization |
+| `test_sink.py` | 20 | land Postgres/DuckDB/lake; ★ Gate A qua đường production-shaped |
+| `test_warehouse_bootstrap.py` | 9 | shell `biz.*` đúng cấu trúc VÀ rỗng một cách ồn ào |
+| `test_dbt_reconstruction_tags.py` | 5 | tag `reconstruction` khớp đúng tập model dùng source đó |
 | `test_snapshot.py` | 1 | snapshot writer sinh đủ artifact + manifest |
 
 Đặc điểm đáng chú ý của test suite:
@@ -771,11 +813,142 @@ Những thứ **chưa** có trong code, để không ai đọc doc rồi tưởn
 | Materialize target từ toàn bộ train split | chưa |
 | Writer production cho `raw/events_v2` vào MinIO | chưa — Track A chỉ ghi `.tmp/` |
 | Kafka v2 schema/consumer/publisher cho Track B | chưa |
-| Solver production (branch-and-bound / CP / MILP) | chưa — prototype dùng exhaustive; batch path dùng constructive H1 |
+| Solver production (branch-and-bound / CP / MILP) | **không cần** — bài toán H1 có dạng đóng, `constructive.solve_h1` đạt argmin có chứng minh |
 | Track A batch cho H2 | chưa — raise nếu `semantic_branch != "H1"` |
 | Quarantine threshold thực nghiệm | chưa chốt |
 | Semantic thật của `f30`, `f9`/`f16` | `UNIDENTIFIED` — có chủ đích |
-| `test_snapshot.py` | đỏ, xem §11 |
+
+### 12.1 · ★ Track A **chưa** có đường chạy production
+
+Đây là khoảng cách dễ bị đọc nhầm nhất trong repo, nên ghi tách riêng.
+
+```
+✅ CODE THẬT    solver chạy trên full_trainset.csv thật
+                forward pass là CHÍNH file .sql của dbt (không viết lại bằng Python)
+                Gate A / A-T3 pass trên dữ liệu thật
+
+🚫 CHƯA CÓ      đường chạy qua Airflow + MinIO + Postgres + Kafka
+```
+
+`[FACT]` Bằng chứng, đọc được từ source:
+
+| # | Sự thật | Ở đâu |
+|---|---|---|
+| 1 | `dag_60_reconstruction_e2e` chỉ gọi `run_demo()` — **một** target synthetic, không đọc CSV thật. Docstring: *"intentionally does not write production MinIO, Redis, Kafka, or Postgres"* | `airflow/dags/dag_60_reconstruction_e2e.py` |
+| 2 | `sql/postgres/02_biz_reconstruction.sql` được mount vào `docker-entrypoint-initdb.d` nên **schema `biz` có tồn tại trong Postgres** — nhưng **không code nào ghi dữ liệu vào đó** | `docker-compose.yml:130` |
+| 3 | Không gì ghi `s3://lakehouse/raw/events_v2/`. `track_a_batch` chỉ ghi CSV/parquet vào `.tmp/` (git-ignored) | `track_a_batch.py` |
+
+### 12.2 · Đã sửa — tách đường reconstruction khỏi build hằng ngày
+
+**Vấn đề trước đó:** `dag_20` gọi `dbt run` **không selector** ⇒ build cả
+`feat_cfs_*`, mà các model đó `source('biz', …)` trong khi `dag_00` chỉ tạo
+`raw / staging / marts / dq_failures` — không có `biz`. Kết quả: `CatalogException`
+kéo sập **cả đường feature production hằng ngày**, dù nó không liên quan gì tới
+reconstruction.
+
+Đã làm ba việc, đều thuần config/bootstrap — **không ghi dữ liệu thật**:
+
+| # | Thay đổi | File |
+|---|---|---|
+| 1 | `dag_00` tạo thêm schema `biz` + dựng **shell** cho 5 relation `biz.*` | `dag_00_bootstrap_lake.py` · `reconstruction/warehouse.py` |
+| 2 | 5 model reconstruction được gắn `tags: ["reconstruction"]` | `dbt/dbt_project.yml` |
+| 3 | `dag_20` chạy `dbt run/test --exclude tag:reconstruction` | `dag_20_build_features_dbt.py` |
+
+```
+DAG 20 (hằng ngày)   dbt run --exclude tag:reconstruction   ← đường production
+đường reconstruction  dbt run --select  tag:reconstruction   ← sau khi Track A land
+```
+
+`[MEASURED]` Kiểm chứng bằng cách dựng DuckDB đúng tên 2 phần như production
+(`biz.x`, `raw.x`, **không** dùng relation map phẳng của harness), chạy shell rồi
+thực thi cả 5 model:
+
+```
+staging.stg_events_v2            OK (0 dòng)
+marts.feat_cfs_counter           OK (0 dòng)   ← xuất f19
+marts.feat_cfs_recency           OK (0 dòng)
+marts.feat_cfs_categorical       OK (0 dòng)   ← 24 cột T2
+marts.feat_passthrough           OK (0 dòng)   ← 24 cột T3, khớp artifact
+```
+
+⚠️ **`0 dòng` là trạng thái đúng, không phải thành công.** Shell rỗng làm
+`dbt run` hết đỏ; nó **không** làm Track A chạy. `warehouse.assert_reconstruction_sources_ready()`
+tồn tại để phân biệt hai chuyện đó và **raise** khi source còn rỗng.
+
+```
+🚫 CẤM đọc "dbt run xanh" thành "Track A đã chạy".
+```
+
+`dag_00` **cố ý không** gọi `assert_reconstruction_sources_ready()` — bootstrap kết
+thúc đúng ở trạng thái shell-rỗng. `test_warehouse_bootstrap.py` khoá bất biến này
+bằng AST.
+
+### 12.3 · Đường land — `reconstruction/sink.py`
+
+```
+[x] 1. dag_00: schema biz + shell biz.*
+[x] 2. writer: raw_events_v2.csv → parquet snappy trên lake
+[x] 3. writer: biz.* → Postgres → DuckDB
+[x] 4. materialize biz.* sang DuckDB   (chọn thay cho ATTACH Postgres — xem warehouse.py)
+[x] 5. dag_20: --exclude tag:reconstruction
+[x] 6. dag_60: param `mode=backfill` chạy train split thật
+```
+
+**Thứ tự không đảo được:**
+
+```
+   1. Postgres  ← artifact     constraint TỪ CHỐI dữ liệu sai
+   2. DuckDB    ← artifact     chỉ sau khi (1) đã chấp nhận
+   3. MinIO     ← artifact     event thô
+```
+
+Postgres đi trước vì nó là nơi **duy nhất** có ràng buộc thật: `ck_scope_55`,
+`ck_no_label`, FK tới `reconstruction_target`, trigger chặn UPDATE/DELETE. Nạp
+DuckDB trước rồi Postgres đổ sẽ để lại warehouse chứa dữ liệu mà control plane
+đã từ chối — trạng thái không điều tra được.
+
+**Hai kho chứa, hai tập relation khác nhau** — không phải bất cẩn:
+
+| | Bỏ qua | Vì sao |
+|---|---|---|
+| Postgres | `reconstruction_boundary` | ở đó nó là **VIEW** `v_reconstruction_boundary` dẫn xuất từ `reconstruction_target`; COPY vào view sẽ đổ |
+| DuckDB | `reconstruction_target` | nó chứa `payload` = cả 55 giá trị feature. Đưa vào warehouse là mở đường cho Track B nhìn trộm target (INVARIANT 4, SPEC §3.4-1) |
+
+**`[MEASURED]` Chạy thật trên host** (20,000 dòng train):
+
+```
+track_a_batch   20,000 rows → 383,517 event, Gate A 100/100
+sink            biz.reconstruction_boundary    20,000
+                biz.customer_attribute        160,000
+                biz.encoding_map                  305
+                biz.onehot_layout                  28
+                biz.passthrough_source         20,000
+parquet         383,517 event (16.5 MB snappy)
+```
+
+`assert_reconstruction_sources_ready()` **raise trước** khi land và **pass sau** —
+đúng như thiết kế.
+
+CLI:
+
+```bash
+python -m lzd_pipeline.reconstruction.track_a_batch --limit 20000 --output-dir .tmp/track_a
+python -m lzd_pipeline.reconstruction.sink --output-dir .tmp/track_a          # dry-run
+python -m lzd_pipeline.reconstruction.sink --output-dir .tmp/track_a --land   # GHI THẬT
+```
+
+### 12.4 · Vẫn còn thiếu
+
+| Hạng mục | Ghi chú |
+|---|---|
+| **Chạy thật trong stack** | Code đường land đã có và test xanh, nhưng **chưa từng chạy với Postgres/MinIO thật** — host không dựng được stack. `publish_biz_to_postgres` là đường **chưa được thực thi lần nào**. |
+| `encoding_map` fit theo `--limit` | Run 20,000 dòng cho 305 mức, full domain là 820. Hai run khác `--limit` gán `level_id` khác nhau dưới **cùng** `encoding_version` ⇒ Gate G mất hiệu lực. Phải fit trên toàn CSV hoặc dẫn xuất version từ hash của map. |
+| Kafka v2 cho Track B | chưa |
+| Track A batch cho H2 | chưa — raise nếu `semantic_branch != "H1"` |
+
+> 🚫 **Vẫn chưa được nói "Track A đã chạy production".** Đã có: solver thật, SQL
+> dbt thật, Gate A thật trên dữ liệu thật, và đường land có test. Chưa có: một lần
+> chạy end-to-end trong stack với Postgres và MinIO thật.
 
 Ranh giới nhận thức quan trọng nhất, lặp lại ở đây vì nó dễ bị đọc nhầm:
 

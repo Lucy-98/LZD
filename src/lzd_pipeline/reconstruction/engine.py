@@ -46,6 +46,7 @@ EVENT_TYPE_OF = {
     "f5": "EVT_F5",
     "f11": "EVT_F11",
     "f18": "EVT_F18",
+    "f19": "EVT_F19",              # counter LOG10 thu 7 — chi co o scope v2
     "f30": "EVT_F30",
     "recency": "EVT_ORDER_PAID",   # CFS witness cho f1/f2 recency
     "FREE": "EVT_SESSION_STARTED", # §4.1 — khong counter T1 nao dem

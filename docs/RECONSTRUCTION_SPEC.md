@@ -1,6 +1,6 @@
 # Reconstruction Spec — Solver Contract, Objective, Hash, Provenance
 
-> **Trạng thái: SPEC + prototype. Contract là source of truth; solver production chưa chốt.**
+> **Trạng thái: SPEC + implementation. Contract là source of truth.**
 >
 > Tài liệu này formalize những thứ §22 yêu cầu và trước đây còn mơ hồ:
 > solver I/O contract · solver objective + tie-break · canonical target hash ·
@@ -13,11 +13,31 @@
 
 ---
 
+> ## ⚠️ SCOPE HIỆN HÀNH LÀ **55 CỘT** (`fs_2026_08_v2`)
+>
+> Tài liệu này được viết cho scope **36 cột** (`fs_2026_08_v1`) và đã được đồng bộ
+> lên **55 cột**. Mọi lập luận về contract, objective, hash, provenance **giữ
+> nguyên hiệu lực** — vì `v2` là **superset chặt** của `v1`, không cột nào bị bỏ.
+>
+> | | v1 | **v2 (hiện hành)** |
+> |---|---|---|
+> | T1 · T2 · T3 | 6 · 12 · 18 = 36 | **7 · 24 · 24 = 55** |
+> | Gate A surface (T1+T2) | 18 | **31** |
+> | Source attribute | 7 | **8** |
+>
+> Bằng chứng đo đạc, danh sách 19 cột được thêm, việc thay solver greedy bằng
+> constructive argmin, và nợ kỹ thuật còn lại: **`SCOPE_EXPANSION_55F.md`**.
+>
+> 🚫 Chỗ nào tài liệu này còn nói "36" mà **không** kèm nhãn `(v1)` thì đó là
+> lỗi đồng bộ — sửa, đừng làm theo.
+
+---
+
 ## 0. Phát biểu chuẩn — Track A vs Track B
 
 > **Track A và Track B là hai pipeline độc lập về mục đích.**
 >
-> **Track A** là **one-time Feature-consistent Event Reconstruction**: lấy 36-feature
+> **Track A** là **one-time Feature-consistent Event Reconstruction**: lấy 55-feature
 > target, tìm **một** historical event witness trước `reference_ts`, replay qua feature
 > engine **thật** và kiểm tra reconstructed features khớp target.
 >
@@ -30,7 +50,7 @@
 
 | | Track A | Track B |
 |---|---|---|
-| Input | 36-feature target | `CustomerState(T0)` + behaviour model |
+| Input | 55-feature target | `CustomerState(T0)` + behaviour model |
 | Output | **một** event history `E*` | luồng event tương lai |
 | Thời gian | `event_ts < reference_ts` | `event_ts ≥ reference_ts` |
 | Tần suất | **một lần** / target / generation run | **liên tục** theo thời gian mô phỏng |
@@ -45,29 +65,40 @@ Chi tiết ranh giới bàn giao: §3.4.
 
 ```
 83  =  FULL FEATURE SPACE          (f0..f82, dataset gốc)
-36  =  RECONSTRUCTION TARGET SPACE (selected columns)
-32? =  SEMANTIC SIGNAL SPACE       ⬜ CẦN ĐO LẠI — xem §2
-47  =  NGOÀI SCOPE                 (83 − 36)
+55  =  RECONSTRUCTION TARGET SPACE (selected columns, fs_2026_08_v2)
+??  =  SEMANTIC SIGNAL SPACE       ⬜ CẦN ĐO LẠI — xem §2
+28  =  NGOÀI SCOPE                 (83 − 55)
 ```
 
-### 1.1 · Danh sách 36 cột — nguồn duy nhất
+### 1.1 · Danh sách 55 cột — nguồn duy nhất
+
+> 🚫 Bảng này **không phải** source of truth. Source of truth duy nhất là
+> `config/features/fs_2026_08_v2.yaml`. Bảng dưới là bản sao để đọc; nếu lệch
+> nhau thì **artifact đúng**, tài liệu sai (đây chính là lỗi B5 mà §13.3 chống).
 
 | Tier | n | Cột |
 |---|---|---|
-| **T1** | 6 | `f1` `f2` `f5` `f11` `f18` `f30` |
-| **T2** | 12 | `f37` `f38` `f79` `f80` `f81` `f82` `f40` `f43` `f44` `f45` `f64` `f68` |
-| **T3** | 18 | `f3` `f4` `f8` `f9` `f10` `f12` `f13` `f16` `f20` `f21` `f22` `f23` `f25` `f26` `f28` `f29` `f31` `f35` |
+| **T1** | 7 | `f1` `f2` `f5` `f11` `f18` **`f19`** `f30` |
+| **T2** | 24 | `f37` `f38` `f79` `f80` `f81` `f82` · `f40` `f41` `f42` · `f43` `f44` `f45` `f46` `f47` `f52` · `f53` `f54` `f57` `f58` `f59` `f62` · `f64` `f65` · `f68` |
+| **T3** | 24 | `f0` `f3` `f4` `f6` `f8` `f9` `f10` `f12` `f13` `f16` `f17` `f20` `f21` `f22` `f23` `f24` `f25` `f26` `f27` `f28` `f29` `f31` `f34` `f35` |
 
-### 1.2 · Ngoại lệ duy nhất cho phép vượt 36
+`[MEASURED]` **v2 là superset chặt của v1** — cả 36 cột cũ đều còn, thêm đúng 19.
+Chi tiết bằng chứng: `SCOPE_EXPANSION_55F.md` §1–§2.
+
+### 1.2 · Ngoại lệ duy nhất cho phép vượt 55
 
 ```
-Một cột ngoài 36 CHỈ được đưa vào contract nếu nó là DEPENDENCY BẮT BUỘC
-để feature engine tính ra một trong 36 cột mục tiêu.
+Một cột ngoài 55 CHỈ được đưa vào contract nếu nó là DEPENDENCY BẮT BUỘC
+để feature engine tính ra một trong 55 cột mục tiêu.
 ```
 
-`[MEASURED]` Hiện tại **không có** ngoại lệ nào: 12 cột T2 cần **source group đầy đủ**
-(§5), nhưng các cột anh em (`f41`,`f42`,`f46`–`f52`,`f63`,`f65`,`f78`) là **đầu ra
-trung gian**, không phải input. Chúng **không** vào target contract.
+`[MEASURED]` Hiện tại **không có** ngoại lệ nào: 24 cột T2 cần **source group đầy đủ**
+(§5), nhưng các cột anh em (`f48`–`f51`, `f55`, `f56`, `f60`, `f61`, `f63`, `f78`) là
+**đầu ra trung gian**, không phải input. Chúng **không** vào target contract.
+
+`[FACT]` Bất biến này nay được **thực thi bằng code**: `feature_set._validate` bắt
+mọi cột của một source attribute phải nằm ở `selected` **hoặc** `intermediate_only`.
+Quên một mức ở cả hai chỗ sẽ làm SQL dựng thiếu mức và bất biến one-hot vỡ âm thầm.
 
 🚫 Mọi mở rộng scope khác đều vi phạm §21.
 
@@ -75,9 +106,13 @@ trung gian**, không phải input. Chúng **không** vào target contract.
 
 ## 2. ⬜ CẦN QUYẾT — con số "32 semantic signals" chưa hợp lệ
 
+> ⚠️ **Cả mục §2 này được viết trên nền scope 36 cột (v1).** Với scope 55 cột,
+> con số nền đổi và có thêm bằng chứng mới — xem §2.7. Lập luận phương pháp
+> (correlation là công cụ sai, phải dùng functional-dependency test) **không đổi**.
+
 ### 2.1 · Phương pháp cũ sai
 
-Con số 32 được suy ra bằng: `36 − 1 (f25≡f23) − 3 (f80,f81,f82)`.
+Con số 32 được suy ra bằng: `36 (v1) − 1 (f25≡f23) − 3 (f80,f81,f82)`.
 **Chưa test hết 630 cặp.** Đã test lại.
 
 ### 2.2 · `[MEASURED]` Kết quả test toàn bộ 630 cặp, `|corr| > 0.95`
@@ -143,7 +178,7 @@ lượng nền, khác cửa sổ/độ mịn**. `[UNKNOWN]`.
 > ⬜ **CẦN QUYẾT:** `f9`/`f16` là 1 hay 2 semantic signal? Cả hai đều T3 nên **không
 > ảnh hưởng solver**, nhưng ảnh hưởng `selected_feature_set` và cách đọc importance ở R2.
 
-### 2.6 · Kết luận
+### 2.6 · Kết luận (nền v1, 36 cột)
 
 ```
 semantic_signal_count = ⬜ CHƯA CHỐT
@@ -155,6 +190,31 @@ semantic_signal_count = ⬜ CHƯA CHỐT
 🚫 **Không được ghi "32" như một con số đã chốt** cho tới khi R2 chạy full
 functional-dependency test trên toàn bộ 630 cặp (không phải correlation).
 
+### 2.7 · `[MEASURED]` Nền v2 (55 cột) — và bằng chứng mới
+
+Số cột **không** bằng số tín hiệu. Ở scope 55, khoảng cách còn rộng hơn:
+
+```
+55 cột
+ − 3   f80,f81,f82 cùng biến latent 515 với f79
+ − 1   g1 được chọn ĐỦ 3 cột ⇒ sum(f40,f41,f42)==1 ⇒ 3 cột chỉ mang 2 bậc tự do
+ − ?   f23/f25 (trùng 99.78%),  f9/f16 (bằng nhau 73.84%)   — vẫn ⬜ CHƯA CHỐT
+```
+
+**Ba trùng lặp 100% mới đo được** (cả train lẫn test), chưa từng ghi ở tài liệu nào:
+
+```
+f31 ≡ f32 ≡ f33          f6 ≡ f15          f14 ≡ f39
+```
+
+Trong 55 cột chỉ có `f31` và `f6` được chọn ⇒ **không** ảnh hưởng scope hiện tại,
+nhưng nếu ai đó mở scope bằng cách thêm `f32`/`f33`/`f15`/`f39` thì đó là thêm
+**0 tín hiệu**. Xem `SCOPE_EXPANSION_55F.md` §1.1 — có đúng một tập 19 cột bản sao
+cũng cho ra con số 55.
+
+`[MEASURED]` Trong chính 55 cột đã chọn: **không có cặp trùng khít nào**
+(kiểm 1,485 cặp trên 926,669 dòng).
+
 ---
 
 ## 3. Solver I/O contract
@@ -165,11 +225,11 @@ functional-dependency test trên toàn bộ 630 cặp (không phải correlation
 @dataclass(frozen=True)
 class ReconstructionTarget:
     target_id:                str
-    selected_feature_set_id:  str        # vd "fs_2026_08_v1"
+    selected_feature_set_id:  str        # vd "fs_2026_08_v2"
     feature_version:          str
     reference_ts:             datetime   # KHÔNG BAO GIỜ now()
     split:                    Literal["train"]      # chỉ train
-    values:                   Mapping[str, float]   # ĐÚNG 36 khoá
+    values:                   Mapping[str, float]   # ĐÚNG 55 khoá
     target_hash:              str
 
 @dataclass(frozen=True)
@@ -199,7 +259,7 @@ class SolverConfig:
 | # | Ràng buộc | Thực thi |
 |---|---|---|
 | I-1 | `ReconstructionTarget` **không có** field `label`/`is_treat` | kiểu dữ liệu, không phải quy ước |
-| I-2 | `values` có **đúng 36 khoá** khớp `selected_feature_set_id` | validate lúc dựng |
+| I-2 | `values` có **đúng 55 khoá** khớp `selected_feature_set_id` | validate lúc dựng |
 | I-3 | `split == "train"` | validate lúc dựng |
 | I-4 | `frozen=True` — target **bất biến** | ngôn ngữ |
 | I-5 | Solver **không** nhận `behaviour_model` | chữ ký hàm |
@@ -303,7 +363,7 @@ future event  →  state_id  →  reconstruction target  →  generation run
 Nhưng nó là **lỗ hổng capability** nếu Track B được phép giải nó:
 
 ```
-🚫 source_target_id  →  target repository  →  reconstruction_target  →  36 features
+🚫 source_target_id  →  target repository  →  reconstruction_target  →  55 features
 ```
 
 Khi đó **dù chữ ký hàm sạch**, Track B vẫn "nhìn trộm" được target.
@@ -362,7 +422,7 @@ Track B có hợp lý hay không — đó là bài toán khác, cần validation
 ```
 ┌─ PHA 1 · FEASIBILITY ────────────────────────────────────────┐
 │   hard constraints H-1…H-12                                  │
-│   EXACT feature equality (36 cột, regime §7)                 │
+│   EXACT feature equality (55 cột, regime §7)                 │
 │   → không thoả ⇒ QUARANTINE. KHÔNG đánh đổi được.            │
 └──────────────────────────┬───────────────────────────────────┘
                            ▼
@@ -418,7 +478,7 @@ objective(E, branch) =                                    # lexicographic tuple
 |---|---|---|---|
 | `unexplained_events` | ✅ tự do | ❌ **không tồn tại** | H2 không có `FREE_EVENT` |
 | `active_days` | ❌ **bị ghim** bởi feature equality | ✅ tự do | §4.2a |
-| `sessions` | ✅ tự do | ✅ tự do | không feature nào trong 36 cột ghim số session |
+| `sessions` | ✅ tự do | ✅ tự do | không feature nào trong 55 cột ghim số session |
 
 > **Thứ tự trong tuple là một phần của contract.** Không được đảo. Hai implementer
 > cùng nói *"min temporal complexity"* nhưng một người tối ưu `(active_days, sessions)`
@@ -432,7 +492,7 @@ objective(E, branch) =                                    # lexicographic tuple
 ```
 
 Lý do: `required_sessions` **không được định nghĩa bởi bất kỳ ràng buộc nào** (không
-feature nào trong 36 cột ghim số session). Một "thặng dư so với 0" chính là giá trị
+feature nào trong 55 cột ghim số session). Một "thặng dư so với 0" chính là giá trị
 tuyệt đối ⇒ thêm khái niệm `required_*` chỉ tạo thêm chỗ để hiểu sai.
 
 Với `unexplained_events` cũng vậy: cận dưới lý thuyết là
@@ -568,7 +628,7 @@ ngày đầu cửa sổ ⇒ phân bố temporal suy biến ⇒ **Gate F FAIL**.
    ┌─ P1 ─────────────────────────────────────────────┐
    │  generate feasible candidates                    │
    │  enforce hard constraints H-1…H-12               │
-   │  enforce EXACT feature equality (36 cột, §7)     │
+   │  enforce EXACT feature equality (55 cột, §7)     │
    └───────────────────────┬──────────────────────────┘
                            ▼
    ┌─ P2 ─────────────────────────────────────────────┐
@@ -679,13 +739,59 @@ IMPLEMENTATION OBLIGATION
     — không bắt buộc liệt kê hết pool
 ```
 
-| Mức | Chiến lược cho phép |
-|---|---|
-| **Toy solver (prototype)** | **exhaustive enumeration** trên không gian nhỏ ⇒ kiểm được objective + selection đúng theo nghĩa đen |
-| **Solver thật** | branch-and-bound · constraint programming · MILP · heuristic có chứng minh cận |
+| Mức | Chiến lược cho phép | Trạng thái |
+|---|---|---|
+| **Toy solver** | **exhaustive enumeration** trên không gian nhỏ ⇒ kiểm được objective + selection đúng theo nghĩa đen | ✅ `engine.feasible_candidates` — **chỉ dùng trong test** |
+| **Solver thật** | branch-and-bound · constraint programming · MILP · **dạng đóng có chứng minh cận** | ✅ `constructive.solve_h1` |
 
-> Prototype **phải** dùng exhaustive enumeration — đó là cách duy nhất để test
-> `TEST-01` (P2 tìm đúng optimal pool) mà không phải tin vào chính solver đang test.
+> Exhaustive enumeration **phải** tồn tại — đó là cách duy nhất để test `TEST-01`
+> (P2 tìm đúng optimal pool) mà không phải tin vào chính solver đang test. Nhưng
+> nó **không** phải đường chạy sản xuất.
+
+#### 4.4c-1 · `[MEASURED]` Vì sao exhaustive KHÔNG thể là đường chạy thật
+
+Kích thước không gian mà `feasible_candidates` phải duyệt, đo trên 926,669 target thật:
+
+| quantile | scope 36 | scope 55 |
+|---|---|---|
+| median | 10^9.5 | 10^10.4 |
+| p90 | 10^18.6 | 10^20.1 |
+| max | 10^126.8 | 10^166.0 |
+| tỉ lệ ≤ 10^6 | 20.0% | 19.3% |
+
+⇒ Exhaustive **đã** bất khả thi ngay ở scope 36. Chỉ dùng được với `window_days ≤ 6`.
+
+#### 4.4c-2 · Bài toán H1 có **dạng đóng** — không cần search
+
+```
+F      = {d1,d2} ∩ [0,W)          n_out  = |{d1,d2}| − |F|
+C      = n5 + n11 + n18 [+ n19]   k      = n30
+
+unexplained_min = max(0, k − |F| − C)
+T_in            = C + |F| + unexplained_min
+sessions_min    = n_out + max(k, ceil(T_in / SESSION_CAPACITY))
+```
+
+Cả hai cận đều **đạt được** bằng một phép dựng `O(n30)`. Chứng minh đầy đủ nằm ở
+docstring của `src/lzd_pipeline/reconstruction/constructive.py`; `solve_h1` **assert**
+kết quả bằng đúng tuple này nên lệch argmin sẽ nổ ngay tại chỗ.
+
+`[MEASURED]` Trên 200,000 target thật: **0/200,000** nghiệm nằm ngoài argmin.
+Bản greedy round-robin trước đó: **10,765/200,000 (5.38%)** nằm ngoài argmin,
+trung bình dư 3.99 session mỗi target bị lệch.
+
+#### 4.4c-3 · Seed vẫn tuân thủ §4.4a-1
+
+Cả hai thành phần objective phụ thuộc **duy nhất** vào `(k, |F|, n_out, C)` — không
+phụ thuộc **chọn ngày nào**. ⇒ mọi cách chọn `k − |F|` ngày đều cho **cùng** giá trị
+objective ⇒ đều nằm trong argmin ⇒ seed chọn một phần tử **trong** pool.
+
+`[MEASURED]` Hệ quả trên phân bố temporal (Gate F sanity), 200,000 target:
+
+```
+greedy cũ    : luôn lấy ngày 0,1,2,…  ⇒  d-0 ≈ 100%,  d-29 ≈ 0%
+constructive : d-0 … d-29 mỗi ngày 3.30%–3.37%,  max/min = 1.019
+```
 
 ### 4.5 · Bất biến tất định
 
@@ -698,20 +804,55 @@ song song hoá **không** đổi kết quả, thứ tự xử lý **không** ả
 
 ---
 
-## 5. Group-level reconstruction — 7 source attributes
+## 5. Group-level reconstruction — 8 source attributes
 
 | Source attribute | Mức | Cột đã chọn | Cột anh em (dựng, không xuất) |
 |---|---|---|---|
-| `synthetic_segment_g1` | 3 | `f40` | `f41` `f42` |
-| `synthetic_segment_g2` | 10 | `f43` `f44` `f45` | `f46`–`f52` |
-| `synthetic_segment_g4` | 3 | `f64` | `f63` `f65` |
+| `synthetic_segment_g1` | 3 | `f40` `f41` `f42` | — (**chọn đủ cả group**) |
+| `synthetic_segment_g2` | 10 | `f43` `f44` `f45` `f46` `f47` `f52` | `f48`–`f51` |
+| **`synthetic_segment_g3`** | **10** | `f53` `f54` `f57` `f58` `f59` `f62` | `f55` `f56` `f60` `f61` |
+| `synthetic_segment_g4` | 3 | `f64` `f65` | `f63` |
 | `synthetic_segment_g6` | 2 | `f68` | `f78` |
 | `synthetic_category_515` | 515 | `f79` `f80` `f81` `f82` | — |
 | `synthetic_attr_64` | 64 | `f37` | — |
 | `synthetic_attr_241` | 241 | `f38` | — |
 
 **Assertion bắt buộc:** `sum(f43..f52) == 1` cho mọi dòng — one-hot invariant của
-group **đầy đủ**, không phải của 3 cột đã chọn.
+group **đầy đủ**, không phải của 6 cột đã chọn. Tương tự cho `g1`, `g3`, `g4`, `g6`.
+
+### 5.1 · `[MEASURED]` Có **8** group one-hot, không phải 7
+
+`[FACT]` `ERD.md:157` ghi *"`g1` … `g7` — **7** biến"*. Đo lại trên toàn bộ
+926,669 dòng train: có **8** group thoả `sum == 1` tuyệt đối, cộng một cột hằng số
+và bốn cột trùng khít.
+
+| Group | Cột | Trong scope v2? |
+|---|---|---|
+| `g1` `g2` `g3` `g4` `g6` | xem bảng trên | ✅ |
+| `g5` = `f66` `f67` · `g7` = `f73` `f74` · `g8` = `f75` `f76` | — | ❌ không được chọn |
+| `f70` ≡ 1.0 (hằng số) · `f69` `f71` `f72` `f77` (trùng khít) | — | ❌ |
+
+`g3` **chưa từng được khai báo** ở bất kỳ tài liệu nào trước v2. ERD cũng bỏ sót
+quan hệ `f69 ≡ f72 ≡ f78`.
+
+### 5.2 · 🔴 `g4` vỡ bất biến one-hot trên test split
+
+`[MEASURED]`
+
+```
+train:  sum(f63,f64,f65) == 1   ở  926,669 / 926,669   (100.0000%)
+test:   sum(f63,f64,f65) == 0   ở        3 / 181,669   (0.0017%)
+```
+
+⇒ Attribute thật có **mức baseline toàn-0** không xuất hiện trong train.
+⇒ Khẳng định "domain đóng" ở §8.2(b) **không đúng với `g4`**.
+⇒ `OneHotEncoding.decode` sẽ fail cứng `hot_count=0` trên 3 dòng đó.
+
+`split_allowed: train` nên chưa nổ ra.
+
+```
+🚫 CẤM mở scope sang test split trước khi xử lý mức thứ tư của g4.
+```
 
 ---
 
@@ -765,7 +906,7 @@ trong dữ liệu · `.17g` đảm bảo round-trip float64.
 ```
 target_hash          = tamper-evident hash của CANONICAL TARGET RECORD
                        (= identity: set_id + feature_version + reference_ts
-                        + payload: 36 giá trị)
+                        + payload: 55 giá trị)
 
 feature_payload_hash = sha256 CHỈ trên phần payload
                        join("\x1e", [f"{col}={float_repr(v)}" for col in sorted(cols)])
@@ -810,11 +951,15 @@ Sai  ⇒  FAIL CỨNG  (có người sửa target)
 
 | Regime | Cột | Decode | Encode | Compare | Bằng chứng |
 |---|---|---|---|---|---|
-| `LOG10` | `f18` `f30` | `round(10^f)` | `round(log10(n), 6)` | `==` | round-trip **100.0000%** |
+| `LOG10` | `f18` **`f19`** `f30` | `round(10^f)` | `round(log10(n), 6)` | `==` | round-trip **100.0000%** |
 | `LN` | `f5` `f11` | `round(exp(f))` | `ln(n)` float64 | `rel < 1e-15` | `==` chỉ 93.05%/93.42% |
 | `REC` | `f1` `f2` | `f` (nguyên) | `date_diff` | `==` | miền `[0,365]` nguyên |
-| `CAT` | 12 cột T2 | tra `encoding_map` | tra ngược | `==` | song ánh |
-| `PASS` | 18 cột T3 | — | copy | `==` | không phải reconstruction |
+| `CAT` | 24 cột T2 | tra `encoding_map` | tra ngược | `==` | song ánh |
+| `PASS` | 24 cột T3 | — | copy | `==` | không phải reconstruction |
+
+`[MEASURED]` `f19` vào regime `LOG10` với bằng chứng cùng loại `f18`/`f30`:
+round-trip đúng **926,669/926,669** dòng train **và 181,669/181,669** dòng test,
+156 mức, `max(n) = 4712`.
 
 🚫 **Cấm** nới `1e-15` của regime `LN`. Fail ở `1e-15` ⇒ **solver sai**, không phải
 dung sai sai.
@@ -1051,8 +1196,8 @@ Lưu trong `biz.generation_run`.
 
 | Gate | Kiểm | Phạm vi |
 |---|---|---|
-| **A** · Feature equality | reconstructed == target theo regime §7 | **18** cột T1+T2 |
-| **A-T3** · Passthrough integrity | copy đúng, không sai lệch | **18** cột T3 |
+| **A** · Feature equality | reconstructed == target theo regime §7 | **31** cột T1+T2 |
+| **A-T3** · Passthrough integrity | copy đúng, không sai lệch | **24** cột T3 |
 | **B** · Temporal validity | §12.1 — **disjoint theo THỜI GIAN**, không phải theo user | mọi event |
 | **C** · Constraint validity | hard constraints H-1…H-12 | mọi user |
 | **D** · Provenance | §9.2 P-1…P-5, không chu trình | mọi bản ghi |
@@ -1061,7 +1206,7 @@ Lưu trong `biz.generation_run`.
 | **G** · Reproducibility | §11 | mỗi run |
 
 > **Gate A và Gate A-T3 báo cáo tỉ lệ RIÊNG.** Gộp chúng làm tỉ lệ pass luôn ≥ 50%
-> nhờ copy — con số vô nghĩa. Tổng target vẫn là **36 cột**.
+> nhờ copy — con số vô nghĩa. Tổng target vẫn là **55 cột**.
 >
 > **Gate F chỉ là sanity, không phải L3 (behavioral plausibility).**
 
@@ -1247,7 +1392,7 @@ event liên tục (§0). Chạy nó lặp lại trong vòng streaming là hiểu
 [x] §12.1–12.2 Gate B: disjoint theo THỜI GIAN + session boundary invariant
 [x] §3.1 objective_version + selection_policy_version vào SolverConfig
 [x] §11 fingerprint gồm cả hai version mới
-[x] selected_feature_set_id artifact          → config/features/fs_2026_08_v1.yaml
+[x] selected_feature_set_id artifact          → config/features/fs_2026_08_v2.yaml
 [x] §8.4 bijection test viết thành CODE       → assert_bijective / assert_round_trip
 [x] §6.3 tamper-evidence check implement      → ReconstructionTarget.verify()
 [x] §10 semantic identification RECORD tồn tại → feature_semantics_2026_08.yaml
@@ -1275,12 +1420,12 @@ event liên tục (§0). Chạy nó lặp lại trong vòng streaming là hiểu
 
 | Module | Đóng gate nào |
 |---|---|
-| `feature_set.py` + `fs_2026_08_v1.yaml` | 36-column scope thành artifact máy đọc được; INVARIANT 1 |
+| `feature_set.py` + `fs_2026_08_v2.yaml` | 55-column scope thành artifact máy đọc được; INVARIANT 1 (`expected_column_count`) |
 | `canonical.py` | §6.1 payload primitive · §6.1a hai hash lồng nhau · §11 fingerprint |
 | `target.py` | I-1…I-4, I-6 · §6.3 tamper-evidence |
 | `encoding.py` | §8.1 bijection full-domain · §8.3 khoá thuộc tính |
 
-Test đã pass: **TEST-05** (mọi version vào fingerprint) · **TEST-09** (36-column scope)
+Test đã pass: **TEST-05** (mọi version vào fingerprint) · **TEST-09** (55-column scope)
 · **TEST-08 phần hash** (`semantic_status` không có trong chữ ký `fingerprint()`).
 Engine, forward SQL runner, Gate A-F, handoff T0 và Track B rule-based đều đã có test.
 Phần còn lại là materialize map/full target và publish production ra MinIO/Kafka.
@@ -1300,7 +1445,7 @@ thuật nó không bị chặn. Cái bị chặn là **kết luận** về `f30`
 
 ### 13.2 · FEATURE-SEMANTIC AUDIT — **không** chặn solver core
 
-Solver nhận 36 cột qua `selected_feature_set_id` và **không** đọc
+Solver nhận 55 cột qua `selected_feature_set_id` và **không** đọc
 `semantic_signal_count`. Hai mục dưới ảnh hưởng **R2 metadata / cách đọc importance**,
 không ảnh hưởng việc sinh nghiệm.
 
@@ -1317,22 +1462,32 @@ không ảnh hưởng việc sinh nghiệm.
 ### 13.3 · HAI artifact riêng — để `f9`/`f16` không chặn solver
 
 ```yaml
-# ── fs_2026_08_v1.yaml ── SOLVER ĐỌC CÁI NÀY ────────────────────
-id: fs_2026_08_v1
+# ── fs_2026_08_v2.yaml ── SOLVER ĐỌC CÁI NÀY ────────────────────
+id: fs_2026_08_v2
+expected_column_count: 55        # ★ INVARIANT 1 do ARTIFACT chốt, không phải code
 columns:
-  T1: [f1, f2, f5, f11, f18, f30]
-  T2: [f37, f38, f79, f80, f81, f82, f40, f43, f44, f45, f64, f68]
-  T3: [f3, f4, f8, f9, f10, f12, f13, f16, f20, f21, f22, f23,
-       f25, f26, f28, f29, f31, f35]
+  T1: [f1, f2, f5, f11, f18, f19, f30]
+  T2: [f37, f38, f79, f80, f81, f82, f40, f41, f42,
+       f43, f44, f45, f46, f47, f52, f53, f54, f57, f58, f59, f62,
+       f64, f65, f68]
+  T3: [f0, f3, f4, f6, f8, f9, f10, f12, f13, f16, f17, f20, f21, f22,
+       f23, f24, f25, f26, f27, f28, f29, f31, f34, f35]
 source_attributes:
   synthetic_category_515: {levels: 515, outputs: [f79, f80, f81, f82]}
   synthetic_attr_64:      {levels:  64, outputs: [f37]}
   synthetic_attr_241:     {levels: 241, outputs: [f38]}
   synthetic_segment_g1:   {levels:   3, outputs: [f40, f41, f42]}
   synthetic_segment_g2:   {levels:  10, outputs: [f43, "...", f52]}
+  synthetic_segment_g3:   {levels:  10, outputs: [f53, "...", f62]}
   synthetic_segment_g4:   {levels:   3, outputs: [f63, f64, f65]}
   synthetic_segment_g6:   {levels:   2, outputs: [f68, f78]}
 ```
+
+> ★ **`expected_column_count` nằm trong artifact, không phải trong code.**
+> Trước v2, INVARIANT 1 là `if len(fs.columns) != 36: raise` ngay trong
+> `feature_set.py`. Con số nằm trong code làm artifact không tự mô tả được scope,
+> và khi cần mở scope thì cách dễ nhất để vượt assert là **xoá assert**. Nằm trong
+> yaml thì đổi scope **bắt buộc** hiện ra ở git diff của hợp đồng, kèm một `id` mới.
 
 ```yaml
 # ── feature_semantics_2026_08.yaml ── SOLVER KHÔNG ĐỌC ──────────
@@ -1343,7 +1498,7 @@ open_questions:
 ```
 
 > **Tách hai artifact là điều kiện để §13.2 thật sự không chặn §13.1.** Nếu nhét
-> `semantic_signal_count` vào `fs_2026_08_v1`, thì `f9`/`f16` chưa giải quyết sẽ chặn
+> `semantic_signal_count` vào `fs_2026_08_v2`, thì `f9`/`f16` chưa giải quyết sẽ chặn
 > luôn artifact mà solver cần — đúng thứ ta vừa quyết định là **không** nên xảy ra.
 
 ✅ §13.1 đã đóng ở mức contract/prototype. Pilot vẫn cần chạy và báo cáo gate trên mẫu
@@ -1357,7 +1512,7 @@ thật; §13.2 chưa xong **không** chặn solver, nhưng chặn kết luận v
 ```
 ĐÃ ĐÓNG BĂNG (frozen)
 ─────────────────────
-✅ 36-feature scope                    ✅ canonical target hash
+✅ 55-feature scope                    ✅ canonical target hash
 ✅ T1/T2/T3 membership                 ✅ feature payload hash
 ✅ f79–f82 source-attribute contract   ✅ provenance model
 ✅ reconstruction target contract      ✅ semantic branch/status model
@@ -1387,7 +1542,7 @@ KHÔNG CÒN LÀ SOLVER BLOCKER
 
 ```
 INVARIANT 1
-    36 columns = hard reconstruction scope.
+    55 columns = hard reconstruction scope.
     KHÔNG tự mở lên 83.
 
 INVARIANT 2
@@ -1564,15 +1719,15 @@ assert  witness₁ == witness₂        ← GIỐNG HỆT
 > nằm trong fingerprint. Hiện §11 **không** đưa `semantic_status` vào ⇒ fingerprint
 > cũng phải giống. Nếu sau này thêm, test này phải sửa cùng lúc.
 
-### TEST-09 · 36-column scope được thực thi
+### TEST-09 · 55-column scope được thực thi
 
 ```
 Dựng target cố tình chứa ĐỦ f0..f82 (83 giá trị)
-nhưng selected_feature_set_id chỉ khai báo 36 cột
+nhưng selected_feature_set_id chỉ khai báo 55 cột
 
 assert  ReconstructionTarget từ chối dựng (I-2)   HOẶC  bỏ qua 47 cột ngoài scope
-assert  solver KHÔNG BAO GIỜ sinh ràng buộc cho cột ngoài 36
-assert  GateA/GateA-T3 chỉ đánh giá 18 + 18 cột
+assert  solver KHÔNG BAO GIỜ sinh ràng buộc cho cột ngoài 55
+assert  GateA/GateA-T3 chỉ đánh giá 31 + 24 cột
 ```
 
 > Bảo vệ trực tiếp **INVARIANT 1**. Bắt lỗi: ai đó "tiện tay" mở scope lên 83 vì
@@ -1633,7 +1788,7 @@ Track B chỉ được biết CustomerState
 [x] TEST-06   event_id độc lập traversal
 [x] TEST-07   H1/H2 chọn NGƯỢC nhau trên cùng fixture              ★ §4.2
 [x] TEST-08   semantic_status KHÔNG đổi output                     ★ INVARIANT 2
-[x] TEST-09   36-column scope được thực thi                        ★ INVARIANT 1
+[x] TEST-09   55-column scope được thực thi                        ★ INVARIANT 1
 [x] TEST-10   Track B không thấy ReconstructionTarget              ★ §3.4 / INVARIANT 4
               10a interface boundary  ✅ chữ ký live_generator + CustomerState
               10b CAPABILITY boundary ✅ áp lên live.py, forbidden 7 module

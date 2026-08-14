@@ -154,7 +154,7 @@ synthetic** mà feature engineering xuôi chiều sẽ tái tạo `f*` từ đó
 
 | Cột | Kiểu | Tái tạo cột nào | Tier | Ghi chú |
 |---|---|---|---|---|
-| `synthetic_segment_g1` … `g7` | TEXT | `f40`–`f78` | T2 | **7** biến, không phải 39. Sau khử trùng (`f68≡f71≡f77`, `f70` hằng số) |
+| `synthetic_segment_g1` … `g8` | TEXT | `f40`–`f78` | T2 | **8** biến, không phải 39. Sau khử trùng (`f68≡f71≡f77`, `f78≡f69≡f72`, `f70` hằng số). `fs_2026_08_v2` dùng `g1` `g2` `g3` `g4` `g6`; `g5` `g7` `g8` chưa được chọn |
 | `synthetic_category_515` | TEXT | `f79`, `f80`, `f81`, `f82` | T2 | ★ **MỘT** thuộc tính → **bốn** encoding. Song ánh (C19) |
 | `synthetic_attr_64` | TEXT | `f37` | T2 | 64 mức |
 | `synthetic_attr_241` | TEXT | `f38` | T2 | 241 mức. **Tách khỏi `f37`** — tuple cardinality 1133 > 241 (C21) |
@@ -165,6 +165,28 @@ synthetic** mà feature engineering xuôi chiều sẽ tái tạo `f*` từ đó
 **Cột T1 dạng counter** (`f18`, `f19`, `f30`) **không** nằm ở đây — chúng được tái tạo
 bằng cách **sinh đúng `n = round(10^f)` event**, không phải bằng thuộc tính. Đó chính
 là điểm khác nhau giữa T1 và T2.
+
+> `[MEASURED]` **Cấu trúc thật của khối `f40`–`f78`** — đo trên toàn bộ 926,669 dòng
+> train, kiểm lại trên 181,669 dòng test:
+>
+> | Group | Cột | Mức | `sum == 1` train | test | Trong `fs_2026_08_v2` |
+> |---|---|---|---|---|---|
+> | `g1` | `f40` `f41` `f42` | 3 | ✅ | ✅ | chọn **3/3** |
+> | `g2` | `f43`–`f52` | 10 | ✅ | ✅ | chọn 6/10 |
+> | `g3` | `f53`–`f62` | 10 | ✅ | ✅ | chọn 6/10 |
+> | `g4` | `f63` `f64` `f65` | 3 | ✅ | 🔴 **VỠ** | chọn 2/3 |
+> | `g5` | `f66` `f67` | 2 | ✅ | ✅ | — |
+> | `g6` | `f68` `f78` | 2 | ✅ | ✅ | chọn 1/2 |
+> | `g7` | `f73` `f74` | 2 | ✅ | ✅ | — |
+> | `g8` | `f75` `f76` | 2 | ✅ | ✅ | — |
+>
+> Cộng thêm `f70` ≡ 1.0 và 4 cột trùng khít (`f69` `f71` `f72` `f77`) ⇒
+> `row_sum(f40..f78) = 11.0` ở 100% dòng.
+>
+> 🔴 `g4`: `sum(f63,f64,f65) == 0` ở **3/181,669** dòng test, 0 dòng train ⇒ attribute
+> thật có **mức baseline toàn-0** không xuất hiện trong train. Vậy `synthetic_segment_g4`
+> có **4 mức**, không phải 3. `split_allowed: train` nên chưa nổ ra.
+> 🚫 Không mở scope sang test trước khi xử lý mức thứ tư.
 
 > ⚠️ **Ràng buộc X1 (`MIGRATION_PLAN.md` MX):** các thuộc tính trên **phải thực sự
 > điều khiển hành vi mô phỏng** (xác suất mua, giá trị giỏ, phản ứng voucher). Nếu chỉ

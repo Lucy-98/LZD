@@ -1,9 +1,11 @@
 """Materialize Track A reconstructed raw events from the real train CSV.
 
 This is the host-side path used when Docker/MinIO is not available. It reads the
-real `data/full_trainset.csv`, decodes the 36 selected reconstruction features,
-emits CFS raw events plus the sidecar tables needed by the dbt reconstruction
-models, and verifies a configurable sample through the same dbt SQL runner.
+real `data/full_trainset.csv`, decodes the selected reconstruction features
+(scope comes from the feature-set artifact, currently `fs_2026_08_v2` = 55
+columns), emits CFS raw events plus the sidecar tables needed by the dbt
+reconstruction models, and verifies a configurable sample through the same dbt
+SQL runner.
 """
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ import duckdb
 
 from lzd_pipeline.reconstruction import engine, runner
 from lzd_pipeline.reconstruction.canonical import float_repr
-from lzd_pipeline.reconstruction.candidate import Candidate, Slot
+from lzd_pipeline.reconstruction.constructive import solve_h1
 from lzd_pipeline.reconstruction.e2e import RuntimeConfig, load_runtime_config
 from lzd_pipeline.reconstruction.feature_set import SelectedFeatureSet, load_feature_set
 from lzd_pipeline.reconstruction.semantics import DecodedTarget, build_branch
@@ -103,6 +105,17 @@ def _write_csv(path: Path, rows: Iterable[Mapping[str, Any]], fields: Sequence[s
     return count
 
 
+def lzd_user_id(data_id: str) -> str:
+    """`train_123` -> `U0000123`.
+
+    Cung quy tac voi `seed_loader.load_csv_to_lake` — hai duong phai sinh ra
+    CUNG user_id, neu khong `biz.reconstruction_target.lzd_user_id` se khong
+    join duoc voi `raw.user_snapshot`.
+    """
+    digits = "".join(ch for ch in data_id if ch.isdigit())
+    return "U" + digits.rjust(7, "0")
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
@@ -145,10 +158,17 @@ def fit_value_maps(
 
 
 def decode_target(values: Mapping[str, float]) -> DecodedTarget:
+    """Giai ma T1 theo regime §7.
+
+    `f19` chi co trong scope v2 (55 cot). Doc theo su hien dien cua khoa —
+    KHONG mac dinh 0/1 khi thieu — de mot target v1 khong am tham sinh ra
+    `EVT_F19` ma forward engine se dem duoc.
+    """
     return DecodedTarget(
         n5=round(math.exp(values["f5"])),
         n11=round(math.exp(values["f11"])),
         n18=round(pow(10.0, values["f18"])),
+        n19=round(pow(10.0, values["f19"])) if "f19" in values else None,
         n30=round(pow(10.0, values["f30"])),
         d1=round(values["f1"]),
         d2=round(values["f2"]),
@@ -176,54 +196,6 @@ def decode_attributes(
     return attrs
 
 
-def construct_h1_candidate(decoded: DecodedTarget) -> Candidate:
-    forced = sorted(decoded.forced_days)
-    if len(forced) > decoded.n30:
-        raise ValueError(
-            f"H1 infeasible: n30={decoded.n30} < forced_days={len(forced)}"
-        )
-
-    active_days = list(forced)
-    for day in range(decoded.window_days):
-        if len(active_days) >= decoded.n30:
-            break
-        if day not in decoded.forced_days:
-            active_days.append(day)
-    active_days = sorted(active_days)
-    if not active_days:
-        raise ValueError("H1 infeasible: no active day")
-
-    slots: list[Slot] = [
-        Slot("recency", day, 1) for day in sorted({decoded.d1, decoded.d2})
-    ]
-
-    cursor = 0
-    for reason, total in (
-        ("f5", decoded.n5),
-        ("f11", decoded.n11),
-        ("f18", decoded.n18),
-    ):
-        per_day = {day: 0 for day in active_days}
-        for idx in range(total):
-            per_day[active_days[cursor % len(active_days)]] += 1
-            cursor += 1
-        slots.extend(Slot(reason, day, count) for day, count in per_day.items() if count)
-
-    candidate = Candidate.of(slots)
-    covered = candidate.day_offsets & set(range(decoded.window_days))
-    missing = set(active_days) - covered
-    if missing:
-        candidate = Candidate.of((
-            *candidate.slots,
-            *(Slot("FREE", day, 1) for day in sorted(missing)),
-        ))
-
-    branch = build_branch("H1")
-    if not branch.is_feasible(candidate, decoded):
-        raise ValueError("constructive H1 candidate failed feasibility")
-    return candidate
-
-
 def reconstruct_row(
     row: Mapping[str, str],
     *,
@@ -246,8 +218,17 @@ def reconstruct_row(
 
     if config.semantic_branch != "H1":
         raise ValueError("real Track A batch currently supports semantic_branch=H1")
-    candidate = construct_h1_candidate(decoded)
-    events = engine.materialize(
+
+    # P1+P2 gop lam mot: `solve_h1` dung thang mot nghiem DA CHUNG MINH thuoc
+    # argmin (constructive.py), roi P3 seeded chon ngay TRONG lop tuong duong.
+    # 🚫 KHONG dung engine.feasible_candidates() o day: median 10^9.5 candidate
+    #    moi target — exhaustive chi dung duoc cho unit test window_days <= 6.
+    candidate = solve_h1(
+        decoded,
+        target_id=target.target_id,
+        seed=config.generation_seed,
+    )
+    events = engine.materialize(                                     # P3b
         candidate,
         target_id=target.target_id,
         seed=config.generation_seed,
@@ -255,9 +236,13 @@ def reconstruct_row(
     )
     outcome = engine.SolveOutcome(
         status="SOLVED",
-        events=tuple(events),
+        events=tuple(engine.canonical_sequence(events)),             # P4
         candidate=candidate,
-        pool_size=1,
+        # ⚠️ `pool_size` la KICH THUOC POOL, khong phai "so nghiem da xet".
+        #    Solver constructive khong liet ke pool nen khong biet kich thuoc
+        #    that => bao 0 = "khong liet ke", KHONG duoc bao 1 (bao 1 la noi
+        #    "nghiem la duy nhat", mot khang dinh chua chung minh).
+        pool_size=0,
         objective_summary=engine.ObjectiveSummary(
             unexplained_events=candidate.unexplained_events,
             active_days=candidate.active_days_in_window(decoded.window_days),
@@ -403,6 +388,11 @@ def materialize_track_a(
     attrs_path = output_dir / "biz_customer_attribute.csv"
     pass_path = output_dir / "biz_passthrough_source.csv"
     target_path = output_dir / "targets_selected_features.csv"
+    # File nap thang vao `biz.reconstruction_target` (Postgres). Khac
+    # `targets_selected_features.csv` — file kia la artifact de REVIEW (dang
+    # bang rong, mot cot mot feature); file nay dung SHAPE cua bang Postgres
+    # voi payload la JSONB.
+    target_pg_path = output_dir / "biz_reconstruction_target.csv"
     quarantine_path = output_dir / "quarantine.csv"
 
     samples: list[RowResult] = []
@@ -417,6 +407,7 @@ def materialize_track_a(
          attrs_path.open("w", newline="", encoding="utf-8") as attrs_fh, \
          pass_path.open("w", newline="", encoding="utf-8") as pass_fh, \
          target_path.open("w", newline="", encoding="utf-8") as target_fh, \
+         target_pg_path.open("w", newline="", encoding="utf-8") as target_pg_fh, \
          quarantine_path.open("w", newline="", encoding="utf-8") as quarantine_fh:
 
         raw_writer = csv.DictWriter(raw_fh, fieldnames=[
@@ -440,12 +431,19 @@ def materialize_track_a(
         target_writer = csv.DictWriter(target_fh, fieldnames=[
             "target_id", "target_hash", *fs.columns,
         ])
+        # Thu tu cot PHAI khop `biz.reconstruction_target` trong
+        # sql/postgres/02_biz_reconstruction.sql (tru `created_at` co DEFAULT).
+        target_pg_writer = csv.DictWriter(target_pg_fh, fieldnames=[
+            "target_id", "lzd_user_id", "selected_feature_set_id",
+            "feature_version", "reference_ts", "split", "payload",
+            "target_hash", "feature_payload_hash",
+        ])
         quarantine_writer = csv.DictWriter(quarantine_fh, fieldnames=[
             "target_id", "reason",
         ])
         for writer in (
             raw_writer, audit_writer, boundary_writer, attrs_writer,
-            pass_writer, target_writer, quarantine_writer,
+            pass_writer, target_writer, target_pg_writer, quarantine_writer,
         ):
             writer.writeheader()
 
@@ -486,6 +484,19 @@ def materialize_track_a(
                 "target_id": result.target.target_id,
                 "target_hash": result.target.target_hash,
                 **{column: float_repr(result.target.values[column]) for column in fs.columns},
+            })
+            target_pg_writer.writerow({
+                "target_id": result.target.target_id,
+                "lzd_user_id": lzd_user_id(result.target.target_id),
+                "selected_feature_set_id": result.target.selected_feature_set_id,
+                "feature_version": result.target.feature_version,
+                "reference_ts": result.target.reference_ts.isoformat(),
+                "split": result.target.split,
+                # `json.dumps` dung repr float (round-trip dung), khong phai
+                # float_repr — JSONB luu so, khong luu chuoi.
+                "payload": json.dumps(dict(result.target.values), sort_keys=True),
+                "target_hash": result.target.target_hash,
+                "feature_payload_hash": result.target.feature_payload_hash,
             })
             for event_row in _raw_event_rows(result):
                 raw_writer.writerow(event_row)
@@ -569,6 +580,7 @@ def materialize_track_a(
             "biz_passthrough_source": str(pass_path),
             "biz_encoding_map": str(encoding_map_path),
             "biz_onehot_layout": str(onehot_path),
+            "biz_reconstruction_target": str(target_pg_path),
             "targets_selected_features": str(target_path),
             "quarantine": str(quarantine_path),
             "raw_events_v2_parquet": str(parquet_path) if parquet_path else None,

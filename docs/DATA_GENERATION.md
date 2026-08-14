@@ -78,7 +78,7 @@ Sinh ra một hệ thống nghiệp vụ synthetic + dòng event thô sao cho:
 > đủ 181,669 dòng ⇒ z ≈ 4.3, cắt còn 50k ⇒ z ≈ 2.3. Generator **chỉ** đọc
 > `split = 'train'`.
 
-**Scope reconstruction của tài liệu này:** `user_id`, `dt`, `feature_ts` và 36 feature
+**Scope reconstruction của tài liệu này:** `user_id`, `dt`, `feature_ts` và 55 feature
 đã được selection chốt. Source CSV có thể chứa `label`/`is_treat`, nhưng hai cột đó
 thuộc evaluation/training bên ngoài solver và **không được đi vào generation input**.
 47 cột `f*` còn lại không tham gia generation.
@@ -97,12 +97,12 @@ thuộc evaluation/training bên ngoài solver và **không được đi vào ge
 | **UNKNOWN** | **0** | — |
 
 ```
-36 = 6 (T1) + 12 (T2) + 18 (T3)
+55 = 7 (T1) + 24 (T2) + 24 (T3)
 ```
 
 ### 3.1 · Redundancy trong selected set
 
-`[MEASURED]` — 36 cột **không** bằng 36 tín hiệu độc lập:
+`[MEASURED]` — 55 cột **không** bằng 55 tín hiệu độc lập:
 
 | Nhóm | Bằng chứng | Tín hiệu thật |
 |---|---|---|
@@ -110,7 +110,7 @@ thuộc evaluation/training bên ngoài solver và **không được đi vào ge
 | `f79`,`f80`,`f81`,`f82` | `card(tuple) = card(mỗi cột) = 515` ⇒ song ánh | **1** |
 
 ```
-36 cột  ≈  32 tín hiệu độc lập
+55 cột  ≈  ? tín hiệu độc lập   (⬜ CHƯA CHỐT — xem RECONSTRUCTION_SPEC.md §2.7)
 ```
 
 > 🚫 **Không bỏ cột nào trong task này.** Cần ablation trước
@@ -159,20 +159,23 @@ phải `round()` trước; so sánh **giá trị feature** thì dùng đẳng th
 
 | Nhóm nguồn | Số mức | Sinh ra cột đã chọn |
 |---|---|---|
-| `G1` (`f40`–`f42`) | 3 | `f40` |
-| `G2` (`f43`–`f52`) | 10 | `f43`, `f44`, `f45` |
-| `G4` (`f63`–`f65`) | 3 | `f64` |
+| `G1` (`f40`–`f42`) | 3 | `f40`, `f41`, `f42` |
+| `G2` (`f43`–`f52`) | 10 | `f43`, `f44`, `f45`, `f46`, `f47`, `f52` |
+| **`G3` (`f53`–`f62`)** | **10** | `f53`, `f54`, `f57`, `f58`, `f59`, `f62` |
+| `G4` (`f63`–`f65`) | 3 | `f64`, `f65` |
 | `G6` (`f68`, `f78`) | 2 | `f68` |
 | `synthetic_category_515` | 515 | `f79`, `f80`, `f81`, `f82` |
 | `synthetic_attr_64` | 64 | `f37` |
 | `synthetic_attr_241` | 241 | `f38` |
 
-> ⚠️ **Là 7 thuộc tính categorical, không phải 6.** (4 nhóm one-hot + `cat_515` +
-> `attr_64` + `attr_241`.) Con số "6" trong yêu cầu là đếm thiếu — ERD phải có đủ 7.
+> ⚠️ **Là 8 thuộc tính categorical, không phải 6 hay 7.** (5 nhóm one-hot +
+> `cat_515` + `attr_64` + `attr_241`.) `G3` chưa từng được khai báo trước
+> `fs_2026_08_v2`. Ba nhóm nữa tồn tại nhưng chưa được chọn: `G5` (`f66` `f67`),
+> `G7` (`f73` `f74`), `G8` (`f75` `f76`) — xem `SCOPE_EXPANSION_55F.md` §2.2.
 
 ### 4.5 · Regime `PASS` — pass-through
 
-18 cột T3. Không transformation. `[UNKNOWN]` semantic.
+24 cột T3. Không transformation. `[UNKNOWN]` semantic.
 
 ---
 
@@ -215,7 +218,7 @@ Mọi mục dưới đây là `[ASSUMPTION]`. Cấu trúc là `[MEASURED]`; **ý
 > ra. Đây là `[MEASURED]` về hình thức, `[UNKNOWN]` về nguyên nhân — và là lý do
 > generator phải tham số hoá cơ số log, không hard-code.
 
-### S-06 · 7 thuộc tính categorical = phân khúc nghiệp vụ synthetic
+### S-06 · 8 thuộc tính categorical = phân khúc nghiệp vụ synthetic
 
 Tên `synthetic_*` là **cố ý** — nhắc rằng đây là `[ASSUMPTION]`.
 Semantic thật: `[UNKNOWN]`.
@@ -227,13 +230,13 @@ Semantic thật: `[UNKNOWN]`.
 ### 6.1 · Luồng
 
 ```
-   reconstruction input (user_id + dt + feature_ts + 36 selected f)
+   reconstruction input (user_id + dt + feature_ts + 55 selected f)
                  │
        ┌─────────┼─────────┬──────────────┐
        ▼         ▼         ▼              ▼
    DECODE T1  DECODE T2  PASS T3      IDENTITY
        │         │         │              │
-   counter    level id   18 cột      C… ↔ U…
+   counter    level id   24 cột      C… ↔ U…
    + dates                (đóng băng)
        │         │         │              │
        └─────────┴────┬────┴──────────────┘
@@ -272,7 +275,7 @@ tuple phân biệt tồn tại; ánh xạ 1-1 nên decode không mất thông ti
 
 ### 6.4 · Pass-through T3
 
-18 cột copy nguyên trạng vào `biz.customer_opaque` (hoặc cột JSON). **Không** decode,
+24 cột copy nguyên trạng vào `biz.customer_opaque` (hoặc cột JSON). **Không** decode,
 **không** gán semantic, **không** tham gia sinh event.
 
 ---
@@ -300,7 +303,7 @@ tuple phân biệt tồn tại; ánh xạ 1-1 nên decode không mất thông ti
 > Bảng dưới vẫn đúng về **event nào phục vụ cột nào**, nhưng thứ tự sinh và điều kiện
 > khả thi phải theo constraint model.
 
-### 7.1 · Chỉ 6 cột T1 cần event
+### 7.1 · Chỉ 7 cột T1 cần event
 
 | Cột | Event sinh ra | Số lượng / user | Ràng buộc thời gian |
 |---|---|---|---|
@@ -413,7 +416,7 @@ raw.customer_snapshot        ← đã có (từ CSV)
 raw.events                   ← MỚI, envelope v2
 
 biz.customer                 ← thuộc tính đã decode (T1 counter đích + T2 level id)
-biz.customer_opaque          ← 18 cột T3
+biz.customer_opaque          ← 24 cột T3
 biz.customer_identity_map    ← C… ↔ U…, chỉ split='train'
 biz.encoding_map_515         ← fit từ dataset: (level_id, f79, f80, f81, f82)
 biz.encoding_map_64          ← (level_id, f37)
@@ -426,8 +429,8 @@ biz.encoding_map_241         ← (level_id, f38)
 |---|---|---|---|
 | `feat_cfs_counter` | `stg_events` | `f5`, `f11`, `f18`, `f30` | ✅ |
 | `feat_cfs_recency` | `stg_events` | `f1`, `f2` | ✅ |
-| `feat_cfs_categorical` | `biz.customer` + `encoding_map_*` | 12 cột T2 | ✅ |
-| `feat_passthrough` | `raw.customer_snapshot` | 18 cột T3 | ❌ (không phải FE) |
+| `feat_cfs_categorical` | `biz.customer` + `encoding_map_*` | 24 cột T2 | ✅ |
+| `feat_passthrough` | `raw.customer_snapshot` | 24 cột T3 | ❌ (không phải FE) |
 
 Tách vì **contract validation khác nhau** (§13).
 
@@ -442,7 +445,7 @@ Tách vì **contract validation khác nhau** (§13).
 | **T-3** | Cửa sổ counter tính **lùi từ `feature_ts`**, không phải từ `now()` | Sửa lỗi D4 (`feat_user_behaviour` đang dùng `now()`) |
 | **T-4** | `f30`: `n` **ngày phân biệt**, không phải `n` event | §7.2 |
 | **T-5** | `f1 ≥ f2` ⇒ event của `f1` xảy ra **trước hoặc cùng lúc** event của `f2` | Ràng buộc đo được |
-| **T-6** | Giờ-trong-ngày của event Track A là **tự do** | Không feature nào trong 36 cột phụ thuộc giờ ⇒ được phép ngẫu nhiên hoá |
+| **T-6** | Giờ-trong-ngày của event Track A là **tự do** | Không feature nào trong 55 cột phụ thuộc giờ ⇒ được phép ngẫu nhiên hoá |
 
 ---
 
@@ -454,7 +457,7 @@ Tách vì **contract validation khác nhau** (§13).
       │ decode  [ASSUMPTION S-01..S-07]
       ▼
    biz.customer(C)                      biz.customer_opaque(C)
-      │  counter đích + level id           │  18 cột T3
+      │  counter đích + level id           │  24 cột T3
       │                                    │
       │ backfill_generator  [Track A]      │
       ▼                                    │
@@ -467,11 +470,11 @@ Tách vì **contract validation khác nhau** (§13).
    feat_cfs_categorical┤                   │
                       │                    │
                       ▼                    ▼
-                 reconstructed 18 cột   feat_passthrough 18 cột
+                 reconstructed 31 cột   feat_passthrough 24 cột
                       │                    │
                       └────────┬───────────┘
                                ▼
-                    feat_user_selected_serving (36 cột)
+                    feat_user_selected_serving (55 cột)
                                │
                     ┌──────────┴──────────┐
                     ▼                     ▼
@@ -527,8 +530,8 @@ Luật so sánh theo regime `[MEASURED]`:
 | `L10` | `f18`, `f30` | **đẳng thức chính xác** (round-trip đo được 100.0000%) |
 | `LN` | `f5`, `f11` | **dung sai tương đối 1e-15** (đẳng thức chính xác chỉ 93.0% / 93.4%) |
 | `REC` | `f1`, `f2` | **đẳng thức chính xác** (số nguyên) |
-| `CAT` | 12 cột T2 | **đẳng thức chính xác** |
-| `PASS` | 18 cột T3 | **không thuộc GATE A** — là copy, không phải reconstruction |
+| `CAT` | 24 cột T2 | **đẳng thức chính xác** |
+| `PASS` | 24 cột T3 | **không thuộc GATE A** — là copy, không phải reconstruction |
 
 > ⚠️ **T3 không được tính vào tỉ lệ pass của GATE A.** Nếu tính, GATE A sẽ luôn hiển
 > thị ≥50% pass chỉ nhờ copy — con số vô nghĩa.
@@ -592,16 +595,16 @@ dedup theo `event_id` ở `stg_app_events` sẽ **không** bắt được ⇒ co
 
 S-01 (`f1` = first order recency) · S-02 (`f2` = last order recency) ·
 S-03 (`f30` = active days 30d) · S-04 (`f18` = hành động hiếm) ·
-S-05 (`f5`/`f11` = 2 counter tần suất cao) · S-06 (7 thuộc tính categorical) ·
+S-05 (`f5`/`f11` = 2 counter tần suất cao) · S-06 (8 thuộc tính categorical) ·
 S-07 (cửa sổ 365 ngày cho `f5`/`f11`/`f18`)
 
 ### `[UNKNOWN]`
 
-- Semantic thật của **mọi** cột trong 36 cột
+- Semantic thật của **mọi** cột trong 55 cột
 - `f5`, `f11`, `f18` đếm **cái gì**; cửa sổ thời gian của chúng
 - Vì sao dataset dùng **hai** cơ số log khác nhau
 - 515 / 64 / 241 mức là thuộc tính gì
-- Semantic của toàn bộ 18 cột T3
+- Semantic của toàn bộ 24 cột T3
 
 ---
 

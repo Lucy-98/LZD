@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import pytest
 
 from lzd_pipeline.reconstruction import canonical, encoding
-from lzd_pipeline.reconstruction.feature_set import load_feature_set
+from lzd_pipeline.reconstruction.feature_set import DEFAULT_PATH, load_feature_set
 from lzd_pipeline.reconstruction.target import (
     LeakageViolation,
     ReconstructionTarget,
@@ -37,37 +37,80 @@ def _values(fs, fill=1.0) -> dict[str, float]:
 # ===========================================================================
 # Feature set artifact — INVARIANT 1
 # ===========================================================================
-def test_scope_la_dung_36_cot(fs):
-    assert len(fs.columns) == 36
-    assert len(fs.tiers["T1"]) == 6
-    assert len(fs.tiers["T2"]) == 12
-    assert len(fs.tiers["T3"]) == 18
+def test_scope_la_dung_55_cot(fs):
+    assert fs.id == "fs_2026_08_v2"
+    assert len(fs.columns) == 55
+    assert len(fs.tiers["T1"]) == 7
+    assert len(fs.tiers["T2"]) == 24
+    assert len(fs.tiers["T3"]) == 24
+
+
+def test_invariant_1_do_artifact_chot_chu_khong_phai_code(fs):
+    """Con so scope phai nam trong CHINH artifact, khong hard-code trong code.
+
+    Neu no nam trong code thi moi lan mo scope, cach de nhat de vuot assert la
+    xoa assert. Nam trong yaml thi doi scope BAT BUOC hien ra o git diff cua
+    hop dong, kem theo mot `id` moi.
+    """
+    assert fs.expected_column_count == len(fs.columns)
 
 
 def test_gate_a_va_gate_a_t3_tach_rieng(fs):
-    """§12 — gop hai gate lam ti le pass luon >= 50% nho copy."""
-    assert len(fs.gate_a_columns) == 18
-    assert len(fs.gate_a_t3_columns) == 18
+    """§12 — gop hai gate lam ti le pass cao gia tao nho copy."""
+    assert len(fs.gate_a_columns) == 31       # T1 + T2, thuc su reconstruct
+    assert len(fs.gate_a_t3_columns) == 24    # T3, chi copy
     assert not set(fs.gate_a_columns) & set(fs.gate_a_t3_columns)
 
 
+def test_v2_la_superset_chat_cua_v1(fs):
+    """v2 chi CONG THEM. Khong cot nao cua v1 bi bo => gate dang xanh giu nguyen."""
+    v1 = load_feature_set(DEFAULT_PATH.parent / "fs_2026_08_v1.yaml")
+    assert set(v1.columns) < set(fs.columns)
+    assert len(set(fs.columns) - set(v1.columns)) == 19
+
+
 def test_cot_trung_gian_khong_lot_vao_target(fs):
-    """§1.2 — f41,f42,f46..f52,f63,f65,f78 la dau ra trung gian."""
+    """§1.2 — muc khong duoc chon cua g2/g3/g4/g6 la dau ra trung gian."""
     assert not fs.intermediate_only & fs.column_set
-    assert "f41" in fs.intermediate_only
-    assert "f78" in fs.intermediate_only
+    assert "f48" in fs.intermediate_only      # g2
+    assert "f55" in fs.intermediate_only      # g3
+    assert "f63" in fs.intermediate_only      # g4
+    assert "f78" in fs.intermediate_only      # g6
+
+
+def test_moi_muc_cua_group_deu_duoc_khai_bao(fs):
+    """§5 / G-1 — mot muc bi bo quen o CA selected LAN intermediate_only se
+    lam SQL dung thieu muc va bat bien one-hot vo mot cach am tham."""
+    for attr in fs.source_attributes.values():
+        assert not set(attr.outputs) - fs.column_set - fs.intermediate_only
 
 
 def test_source_attribute_dung_du_muc_cua_group(fs):
-    """§5 / G-1 — dung du 10 muc cho G2 du chi chon 3 cot."""
+    """§5 / G-1 — dung du 10 muc cho G2 du chi chon 6 cot."""
     g2 = fs.source_attributes["synthetic_segment_g2"]
     assert g2.levels == 10
     assert len(g2.outputs) == 10          # phai dung DU
-    assert set(g2.selected) == {"f43", "f44", "f45"}   # model chi doc 3
+    assert set(g2.selected) == {"f43", "f44", "f45", "f46", "f47", "f52"}
+
+    # g3 la group MOI o v2 — chua tung duoc khai bao o bat ky tai lieu nao
+    g3 = fs.source_attributes["synthetic_segment_g3"]
+    assert g3.levels == 10
+    assert set(g3.outputs) == {f"f{i}" for i in range(53, 63)}
+    assert set(g3.selected) == {"f53", "f54", "f57", "f58", "f59", "f62"}
 
     cat = fs.source_attributes["synthetic_category_515"]
     assert cat.levels == 515
     assert set(cat.outputs) == {"f79", "f80", "f81", "f82"}  # MOT bien, 4 encoding
+
+
+def test_g1_duoc_chon_du_ca_group(fs):
+    """Group DUY NHAT nam tron trong target => target mang san sum(g1)==1.
+
+    He qua: 55 cot nhung it hon 55 bac tu do. Day la su that ve selection,
+    ghi lai de khong ai doc "55 cot" thanh "55 tin hieu doc lap".
+    """
+    g1 = fs.source_attributes["synthetic_segment_g1"]
+    assert set(g1.selected) == set(g1.outputs) == {"f40", "f41", "f42"}
 
 
 def test_regime_gan_dung_cot(fs):
@@ -87,13 +130,13 @@ def test_dung_sai_chi_ap_dung_cho_regime_ln(fs):
 
 
 # ===========================================================================
-# TEST-09 · 36-column scope duoc thuc thi (INVARIANT 1)
+# TEST-09 · scope duoc thuc thi (INVARIANT 1)
 # ===========================================================================
 def test_09_target_chua_83_cot_bi_tu_choi(fs):
     """Ai do 'tien tay' mo scope len 83 vi target vo tinh mang du du lieu."""
     v = _values(fs)
     v.update({f"f{i}": 0.0 for i in range(83)})   # nhet ca f0..f82
-    with pytest.raises(ScopeViolation, match="DUNG 36 cot"):
+    with pytest.raises(ScopeViolation, match="DUNG 55 cot"):
         build_target(target_id="T", values=v, reference_ts=REF_TS)
 
 

@@ -46,7 +46,7 @@ DEFAULT_VARS = {
     "history_days": 30,
     "counter_window_days": 365,
     "f30_semantic_branch": "H1",
-    "reconstruction_encoding_version": "encoding_2026_08_v1",
+    "reconstruction_encoding_version": "encoding_2026_08_v2",
 }
 
 
@@ -93,7 +93,7 @@ def seed(
     *,
     encoding_rows: Sequence[tuple[str, int, str, float]],
     onehot_rows: Sequence[tuple[str, int, str]],
-    encoding_version: str = "encoding_2026_08_v1",
+    encoding_version: str = "encoding_2026_08_v2",
 ) -> None:
     """Nap bang nguon. Event DUY NHAT den tu `outcomes` - tuc tu solver."""
     con.execute("SET TimeZone='UTC'")
@@ -159,7 +159,7 @@ def build_marts(
     semantic_branch: str = "H1",
     history_days: int = 30,
     counter_window_days: int = 365,
-    encoding_version: str = "encoding_2026_08_v1",
+    encoding_version: str = "encoding_2026_08_v2",
 ) -> None:
     """Chay CHINH SQL cua dbt, theo dung thu tu phu thuoc."""
     for rel, path in (

@@ -373,7 +373,7 @@ phải nói rõ là rất ít.
 | 1 | 83 covariate, **không công bố semantic** | Không entity nào được gán `f*` |
 | 2 | Train: 22.2% treated, CR 5.66% vs 0.94% | Train là **observational, có targeting bias** |
 | 3 | Test: 52.1% treated, CR 3.70% vs 3.33% | Test là **RCT**, uplift thật ≈ **+0.37pp** |
-| 4 | `f40`–`f78` = 11 nhóm one-hot | Có ≥7 thuộc tính **categorical** ở tầng nghiệp vụ |
+| 4 | `f40`–`f78`, `row_sum = 11.0` = 8 nhóm one-hot + `f70` + 2 cột trùng khít | Có ≥8 thuộc tính **categorical** ở tầng nghiệp vụ |
 | 5 | `f79`–`f82`: 1 biến 515 mức, 4 kiểu mã hoá | Có ≥1 categorical **cardinality cao** (~515) |
 | 6 | `f1`,`f2` nguyên `[0,365]`, `f1 ≥ f2` luôn đúng | Có ≥2 đại lượng **kiểu ngày trong năm / recency** có thứ tự |
 | 7 | `f30 = log10(n)`, `n` nguyên `[1,30]` (100% dòng) | Có ≥1 **counter chặn trên ở 30** |
@@ -404,8 +404,8 @@ Dataset LZD đóng hai vai hoàn toàn khác:
 
 ```
    Vai 1 — OBSERVED REFERENCE / TARGET SPACE
-   f0..f82 là vector quan sát trong CSV. Feature store selected chỉ lấy 36 cột
-   đã chốt trong fs_2026_08_v1; không nạp nguyên trạng toàn bộ f0..f82 lên Redis.
+   f0..f82 là vector quan sát trong CSV. Feature store selected chỉ lấy 55 cột
+   đã chốt trong fs_2026_08_v2; không nạp nguyên trạng toàn bộ f0..f82 lên Redis.
    Không diễn giải phần ngoài selected set.
 
    Vai 2 — REFERENCE ĐỂ HIỆU CHỈNH

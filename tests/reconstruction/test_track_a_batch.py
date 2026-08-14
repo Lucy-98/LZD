@@ -4,18 +4,16 @@ import csv
 from dataclasses import replace
 from pathlib import Path
 
+from lzd_pipeline.reconstruction.constructive import solve_h1
 from lzd_pipeline.reconstruction.e2e import load_runtime_config
 from lzd_pipeline.reconstruction.feature_set import load_feature_set
 from lzd_pipeline.reconstruction.semantics import DecodedTarget, build_branch
-from lzd_pipeline.reconstruction.track_a_batch import (
-    construct_h1_candidate,
-    materialize_track_a,
-)
+from lzd_pipeline.reconstruction.track_a_batch import materialize_track_a
 
 
 def test_h1_feasibility_counts_active_days_inside_window_only():
-    decoded = DecodedTarget(n5=1, n11=1, n18=1, n30=5, d1=365, d2=365)
-    candidate = construct_h1_candidate(decoded)
+    decoded = DecodedTarget(n5=1, n11=1, n18=1, n19=1, n30=5, d1=365, d2=365)
+    candidate = solve_h1(decoded, target_id="T", seed=42)
 
     assert candidate.active_days > decoded.n30
     assert candidate.active_days_in_window(decoded.window_days) == decoded.n30
@@ -35,6 +33,7 @@ def _fixture_row() -> dict[str, str]:
         "f5": "0.0",
         "f11": "0.0",
         "f18": "0.0",
+        "f19": "0.0",
         "f30": "0.69897",
         "f37": "0.140481",
         "f38": "0.286151",
@@ -47,6 +46,9 @@ def _fixture_row() -> dict[str, str]:
         "f42": "0.0",
         "f43": "1.0",
         **{f"f{i}": "0.0" for i in range(44, 53)},
+        # g3 (f53..f62) — group MOI o scope v2, van phai one-hot hop le
+        "f53": "1.0",
+        **{f"f{i}": "0.0" for i in range(54, 63)},
         "f63": "0.0",
         "f64": "1.0",
         "f65": "0.0",

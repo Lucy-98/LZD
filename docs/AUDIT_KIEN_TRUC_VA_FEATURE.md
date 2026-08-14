@@ -10,7 +10,7 @@ Repo có nền data pipeline dùng được cho reconstruction:
 - Kafka consumer ghi MinIO trước rồi mới cập nhật downstream state và commit offset;
 - MinIO parquet là raw source of truth;
 - DuckDB/dbt đọc raw trực tiếp và dedup theo `event_id`;
-- selected reconstruction scope là đúng 36 cột;
+- selected reconstruction scope là đúng 55 cột (`fs_2026_08_v2`);
 - Track A/Track B E2E dry-run đã chạy bằng SQL dbt thật;
 - semantic `f30` vẫn `UNIDENTIFIED`, branch H1/H2 là scenario config.
 
@@ -60,7 +60,7 @@ API và representation của downstream state không ảnh hưởng invariant c�
 
 ### 5.1 Scope
 
-Dataset có `f0..f82`, nhưng reconstruction contract chỉ lấy 36 cột:
+Dataset có `f0..f82`, nhưng reconstruction contract chỉ lấy 55 cột:
 
 - T1: `f1 f2 f5 f11 f18 f30`;
 - T2: 12 cột categorical/encoding;

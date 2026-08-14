@@ -1,9 +1,19 @@
-"""Doc `fs_2026_08_v1.yaml` — SELECTED FEATURE SET contract.
+"""Doc `fs_2026_08_v*.yaml` — SELECTED FEATURE SET contract.
 
 RECONSTRUCTION_SPEC.md §13.3.
 
-Day la nguon DUY NHAT cua 36-column scope. Truoc day danh sach nay nam duoi
-dang van xuoi o 3 tai lieu khac nhau -> khong co gi ngan chung drift (B5).
+Day la nguon DUY NHAT cua reconstruction scope. Truoc day danh sach nay nam
+duoi dang van xuoi o 3 tai lieu khac nhau -> khong co gi ngan chung drift (B5).
+
+★ INVARIANT 1 van la hard invariant, chi khac cho DAT con so:
+      truoc:  `if len(fs.columns) != 36`  — hard-code trong code
+      nay:    `expected_column_count` trong CHINH artifact yaml
+
+  Ly do doi: con so 36 nam trong code lam artifact khong the tu mo ta scope
+  cua no. Khi v2 nang len 55, mot hang so trong code se bien INVARIANT 1
+  thanh "cai chan duong" thay vi "cai bao ve" — va cach de nhat de vuot no
+  la xoa han assert. Dat trong yaml thi doi scope BAT BUOC phai sua artifact
+  va bump `id`, tuc la doi hop dong mot cach hien thi duoc trong git diff.
 
 🚫 Module nay KHONG doc `feature_semantics_2026_08.yaml`. `semantic_signal_count`
    va cau hoi ngo f9/f16 KHONG duoc phep chan solver (§13.2).
@@ -20,7 +30,7 @@ import yaml
 Tier = Literal["T1", "T2", "T3"]
 Regime = Literal["LOG10", "LN", "REC", "CAT", "PASS"]
 
-DEFAULT_PATH = Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v1.yaml"
+DEFAULT_PATH = Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v2.yaml"
 
 
 @dataclass(frozen=True)
@@ -53,6 +63,7 @@ class SourceAttribute:
 class SelectedFeatureSet:
     id: str
     split_allowed: str
+    expected_column_count: int
     tiers: dict[Tier, tuple[str, ...]]
     regimes: dict[Regime, tuple[str, ...]]
     tolerances: dict[Regime, float]
@@ -62,7 +73,7 @@ class SelectedFeatureSet:
     # -- scope --------------------------------------------------------------
     @functools.cached_property
     def columns(self) -> tuple[str, ...]:
-        """36 cot muc tieu, sap theo ten (thu tu canonical cho hashing §6.1)."""
+        """Cot muc tieu, sap theo ten (thu tu canonical cho hashing §6.1)."""
         return tuple(sorted(c for cols in self.tiers.values() for c in cols))
 
     @functools.cached_property
@@ -71,12 +82,12 @@ class SelectedFeatureSet:
 
     @functools.cached_property
     def gate_a_columns(self) -> tuple[str, ...]:
-        """18 cot T1+T2 — pham vi Gate A (§12)."""
+        """Cot T1+T2 — pham vi Gate A (§12)."""
         return tuple(sorted(self.tiers["T1"] + self.tiers["T2"]))
 
     @functools.cached_property
     def gate_a_t3_columns(self) -> tuple[str, ...]:
-        """18 cot T3 — pham vi Gate A-T3, bao cao ti le RIENG (§12)."""
+        """Cot T3 — pham vi Gate A-T3, bao cao ti le RIENG (§12)."""
         return tuple(sorted(self.tiers["T3"]))
 
     def tier_of(self, column: str) -> Tier:
@@ -132,6 +143,7 @@ def load_feature_set(path: Path | str = DEFAULT_PATH) -> SelectedFeatureSet:
     fs = SelectedFeatureSet(
         id=raw["id"],
         split_allowed=raw["split_allowed"],
+        expected_column_count=int(raw["expected_column_count"]),
         tiers=tiers,
         regimes=regimes,
         tolerances=tolerances,
@@ -156,7 +168,7 @@ def _validate(fs: SelectedFeatureSet) -> None:
     regime_cols = {c for cols in fs.regimes.values() for c in cols}
     if regime_cols != fs.column_set:
         raise ValueError(
-            "regime khong phu het 36 cot: "
+            f"regime khong phu het {len(fs.column_set)} cot: "
             f"thieu={sorted(fs.column_set - regime_cols)} "
             f"thua={sorted(regime_cols - fs.column_set)}"
         )
@@ -171,8 +183,25 @@ def _validate(fs: SelectedFeatureSet) -> None:
     # §1.2: cot trung gian KHONG duoc lot vao target contract
     leak = fs.intermediate_only & fs.column_set
     if leak:
-        raise ValueError(f"cot intermediate_only lot vao 36 cot muc tieu: {sorted(leak)}")
+        raise ValueError(
+            f"cot intermediate_only lot vao {len(fs.columns)} cot muc tieu: {sorted(leak)}"
+        )
 
-    # 🚫 INVARIANT 1
-    if len(fs.columns) != 36:
-        raise ValueError(f"scope phai la DUNG 36 cot, dang co {len(fs.columns)}")
+    # §5 / G-1: MOI cot cua group phai duoc khai bao — selected HOAC
+    # intermediate_only. Neu mot muc bi bo quen o ca hai cho, SQL se dung
+    # thieu muc va bat bien one-hot `sum(outputs) == 1` vo mot cach am tham.
+    for attr in fs.source_attributes.values():
+        unaccounted = set(attr.outputs) - fs.column_set - fs.intermediate_only
+        if unaccounted:
+            raise ValueError(
+                f"{attr.name}: cot cua group khong duoc khai bao o dau ca: "
+                f"{sorted(unaccounted)}. Phai nam trong T2 hoac intermediate_only, "
+                "neu khong bat bien one-hot cua group se vo."
+            )
+
+    # 🚫 INVARIANT 1 — con so do CHINH artifact chot, khong phai code
+    if len(fs.columns) != fs.expected_column_count:
+        raise ValueError(
+            f"{fs.id}: scope phai la DUNG {fs.expected_column_count} cot, "
+            f"dang co {len(fs.columns)}"
+        )

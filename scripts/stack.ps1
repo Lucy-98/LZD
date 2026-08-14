@@ -40,9 +40,54 @@ function Write-Section($text) {
 function Write-DockerFailureHelp {
     Write-Host ""
     Write-Host "Docker command failed." -ForegroundColor Red
-    Write-Host "Neu log co 'x509: certificate signed by unknown authority', day la loi trust/CA cua Docker Desktop khi pull tu Docker Hub." -ForegroundColor Yellow
-    Write-Host "Can sua Docker Desktop proxy/registry CA truoc khi build/up stack." -ForegroundColor Yellow
+    Write-Host "Doc dong loi THAT SU o tren truoc khi ket luan:" -ForegroundColor Yellow
+    Write-Host "  - 'x509: certificate signed by unknown authority' -> loi trust/CA cua" -ForegroundColor Yellow
+    Write-Host "    Docker Desktop khi pull tu Docker Hub. Sua proxy/registry CA." -ForegroundColor Yellow
+    Write-Host "  - 'short read: expected N bytes but got M' / 'unexpected EOF' /" -ForegroundColor Yellow
+    Write-Host "    'TLS handshake timeout' -> mang dut giua chung, KHONG phai loi CA." -ForegroundColor Yellow
+    Write-Host "    Chi can chay lai; layer da tai xong deu duoc cache." -ForegroundColor Yellow
     Write-Host "Trong luc do van co the chay local: .\scripts\stack.ps1 test hoac .\scripts\stack.ps1 snapshot" -ForegroundColor Yellow
+}
+
+function Invoke-DockerPullWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Images,
+        [int]$MaxTries = 4
+    )
+
+    # Keo tung image mot chu khong de `docker compose up` keo song song ca chuc
+    # image: tren duong truyen cham/chap chon, N stream dong thoi lam dut tai va
+    # compose bao 'short read ... unexpected EOF' roi bo het.
+    $failed = @()
+    foreach ($img in $Images) {
+        $ok = $false
+        for ($try = 1; $try -le $MaxTries; $try++) {
+            Write-Host "  pull [$try/$MaxTries] $img" -ForegroundColor Cyan
+            & docker pull $img
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+
+            # Phan biet "mang chap chon" voi "TLS bi chan giua duong". Retry chi
+            # cuu duoc cai dau; cai sau co thu 100 lan cung the. Probe lai bang
+            # manifest inspect (re) de doc duoc thong bao loi that su.
+            $probe = Invoke-CaptureNative "docker" @("manifest", "inspect", $img)
+            if ($probe.ExitCode -ne 0 -and $probe.Output -match "x509|certificate signed by unknown authority|failed to verify certificate") {
+                Write-Host ""
+                Write-Host "  Registry tra ve certificate KHONG tin duoc - dung retry." -ForegroundColor Red
+                Write-Host $probe.Output -ForegroundColor DarkYellow
+                Write-DockerCaFixHelp
+                throw "TLS interception / CA khong tin duoc. Xem huong dan phia tren."
+            }
+            Start-Sleep -Seconds 5
+        }
+        if (-not $ok) { $failed += $img }
+    }
+
+    if ($failed.Count -gt 0) {
+        Write-Host ""
+        Write-Host "Khong keo duoc cac image sau sau $MaxTries lan thu:" -ForegroundColor Red
+        $failed | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+        throw "Thieu image, chua the up stack."
+    }
 }
 
 function Write-DockerCaFixHelp {
@@ -143,6 +188,9 @@ function Test-ImagesOrRegistry {
     Write-Section "Image con thieu"
     $missing | ForEach-Object { Write-Host "  MISSING  $_" -ForegroundColor Yellow }
     Test-DockerRegistryAccess
+
+    Write-Section "Keo image con thieu (tuan tu, co retry)"
+    Invoke-DockerPullWithRetry -Images $missing
 }
 
 function Show-Urls {

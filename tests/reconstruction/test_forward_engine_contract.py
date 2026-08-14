@@ -192,7 +192,8 @@ def test_categorical_tra_theo_KHOA_THUOC_TINH(models):
 
 def test_categorical_co_assert_onehot_invariant(models):
     body = _strip_comments(models["feat_cfs_categorical"])
-    for g in ("_g1_onehot_sum", "_g2_onehot_sum", "_g4_onehot_sum", "_g6_onehot_sum"):
+    for g in ("_g1_onehot_sum", "_g2_onehot_sum", "_g3_onehot_sum",
+              "_g4_onehot_sum", "_g6_onehot_sum"):
         assert g in body
 
 
@@ -206,11 +207,13 @@ def test_f79_f82_tu_MOT_thuoc_tinh(models):
 # ===========================================================================
 # Pass-through — §12 Gate A-T3 rieng
 # ===========================================================================
-def test_passthrough_co_du_18_cot(models):
+def test_passthrough_co_du_cot_t3(models):
+    """Danh sach lay tu ARTIFACT, khong chep tay — chep tay la cach B5 tai dien."""
+    from lzd_pipeline.reconstruction.feature_set import load_feature_set
+
     body = models["feat_passthrough"]
-    cols = ["f3","f4","f8","f9","f10","f12","f13","f16","f20",
-            "f21","f22","f23","f25","f26","f28","f29","f31","f35"]
-    assert len(cols) == 18
+    cols = load_feature_set().tiers["T3"]
+    assert len(cols) == 24
     for c in cols:
         assert f"'{c}'" in body, f"passthrough thieu {c}"
 

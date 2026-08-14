@@ -10,9 +10,9 @@
 #   - confidence must stay SYNTHETIC_ASSUMPTION unless the true source is known.
 #   - T3 aliases are latent snapshot signals; they are not reconstructed events.
 # ==========================================================================
-version: business_aliases_2026_08_v1
-feature_set_id: fs_2026_08_v1
-scope: selected_36_features
+version: business_aliases_2026_08_v2
+feature_set_id: fs_2026_08_v2
+scope: selected_55_features
 semantic_status: SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT
 
 feature_aliases:
@@ -351,6 +351,195 @@ feature_aliases:
     confidence: SYNTHETIC_ASSUMPTION
     reconstruction_note: Pass-through only; no Track A event semantic.
 
+  # ========================================================================
+  # v2 DELTA — 19 columns added when the scope went 36 -> 55.
+  # Same rules apply: synthetic narrative names, never a Lazada claim.
+  # ========================================================================
+
+  # -- T1 (+1) -------------------------------------------------------------
+  f19:
+    tier: T1
+    alias: promo_redemption_intensity_365d_log10
+    display_name: Promotion redemption intensity, 365d, log10 encoded
+    business_role: Repeat redemption behaviour; separates promo lookers from promo takers.
+    source_family: promo_counter
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: >
+      Decoded as round(10 ** f19); emitted as CFS counter witness EVT_F19.
+      Same mechanism as f18, measured round-trip exact on train and test.
+
+  # -- T2 (+12) ------------------------------------------------------------
+  f41:
+    tier: T2
+    alias: preferred_platform_segment_alt_flag
+    display_name: Alternate platform segment flag
+    business_role: Second level of the platform preference group.
+    source_family: one_hot_customer_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Level 2 of the 3-level platform one-hot group.
+
+  f42:
+    tier: T2
+    alias: preferred_platform_segment_residual_flag
+    display_name: Residual platform segment flag
+    business_role: Third level of the platform preference group.
+    source_family: one_hot_customer_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Level 3 of the 3-level platform one-hot group; group now fully selected.
+
+  f46:
+    tier: T2
+    alias: lifecycle_lapsing_flag
+    display_name: Lapsing lifecycle flag
+    business_role: Slipping customers are a common voucher target.
+    source_family: one_hot_lifecycle_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a 10-level lifecycle one-hot group.
+
+  f47:
+    tier: T2
+    alias: lifecycle_dormant_flag
+    display_name: Dormant lifecycle flag
+    business_role: Dormant customers need stronger incentive to respond at all.
+    source_family: one_hot_lifecycle_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a 10-level lifecycle one-hot group.
+
+  f52:
+    tier: T2
+    alias: lifecycle_reactivated_flag
+    display_name: Reactivated lifecycle flag
+    business_role: Recently reactivated customers may not need a second subsidy.
+    source_family: one_hot_lifecycle_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from a 10-level lifecycle one-hot group.
+
+  f53:
+    tier: T2
+    alias: price_band_budget_flag
+    display_name: Budget price band flag
+    business_role: Price band shapes whether a fixed-value voucher is meaningful.
+    source_family: one_hot_price_band_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: >
+      Selected bit from synthetic_segment_g3, a 10-level one-hot group first
+      identified in v2. Group invariant measured on train and test.
+
+  f54:
+    tier: T2
+    alias: price_band_value_flag
+    display_name: Value price band flag
+    business_role: Price band shapes whether a fixed-value voucher is meaningful.
+    source_family: one_hot_price_band_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from the 10-level price band one-hot group.
+
+  f57:
+    tier: T2
+    alias: price_band_midrange_flag
+    display_name: Mid-range price band flag
+    business_role: Price band shapes whether a fixed-value voucher is meaningful.
+    source_family: one_hot_price_band_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from the 10-level price band one-hot group.
+
+  f58:
+    tier: T2
+    alias: price_band_premium_flag
+    display_name: Premium price band flag
+    business_role: Premium buyers may respond to service perks rather than discount.
+    source_family: one_hot_price_band_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from the 10-level price band one-hot group.
+
+  f59:
+    tier: T2
+    alias: price_band_high_end_flag
+    display_name: High-end price band flag
+    business_role: Premium buyers may respond to service perks rather than discount.
+    source_family: one_hot_price_band_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from the 10-level price band one-hot group.
+
+  f62:
+    tier: T2
+    alias: price_band_unclassified_flag
+    display_name: Unclassified price band flag
+    business_role: Residual level of the price band group.
+    source_family: one_hot_price_band_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Selected bit from the 10-level price band one-hot group.
+
+  f65:
+    tier: T2
+    alias: city_tier_secondary_flag
+    display_name: Secondary city tier flag
+    business_role: Logistics cost and delivery expectation differ by city tier.
+    source_family: one_hot_city_tier_segment
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: >
+      Level of the 3-level city tier group. Group invariant holds on train but
+      breaks on 3 test rows, so the true attribute has an all-zero baseline level.
+
+  # -- T3 (+6) -------------------------------------------------------------
+  f0:
+    tier: T3
+    alias: latent_ordinal_segment_a
+    display_name: Latent ordinal segment A
+    business_role: Small ordinal segment; role in the voucher decision is unproven.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: >
+      Pass-through only. ERD.md places it at tier T1|T2, i.e. the tier itself is
+      an assumption; T3 is the choice that commits to no semantic.
+
+  f6:
+    tier: T3
+    alias: latent_engagement_depth_score
+    display_name: Latent engagement depth score
+    business_role: Depth of engagement may separate browsers from buyers.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f17:
+    tier: T3
+    alias: latent_assortment_breadth_score
+    display_name: Latent assortment breadth score
+    business_role: Breadth of interest may predict cross-category voucher response.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f24:
+    tier: T3
+    alias: latent_basket_stability_score
+    display_name: Latent basket stability score
+    business_role: Stable baskets respond differently from opportunistic ones.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: Pass-through only; no Track A event semantic.
+
+  f27:
+    tier: T3
+    alias: latent_quality_index_a
+    display_name: Latent quality index A
+    business_role: Bounded 0-100 index; business meaning is unproven.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: >
+      Pass-through only. ERD.md places it at tier T1|T2; T3 commits to no semantic.
+
+  f34:
+    tier: T3
+    alias: latent_quality_index_b
+    display_name: Latent quality index B
+    business_role: Bounded 0-100 index; business meaning is unproven.
+    source_family: latent_snapshot
+    confidence: SYNTHETIC_ASSUMPTION
+    reconstruction_note: >
+      Pass-through only. ERD.md places it at tier T1|T2; T3 commits to no semantic.
+
 track_a_event_aliases:
   EVT_F5:
     alias: CFS_PRODUCT_BROWSE_INTENSITY
@@ -361,6 +550,9 @@ track_a_event_aliases:
   EVT_F18:
     alias: CFS_PROMO_TOUCH
     note: Witness event for f18; not a Lazada domain event.
+  EVT_F19:
+    alias: CFS_PROMO_REDEMPTION
+    note: Witness event for f19; not a Lazada domain event.
   EVT_F30:
     alias: CFS_ACTIVE_DAY_MARKER
     note: H2 witness event for f30; not used by H1.

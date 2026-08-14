@@ -13,8 +13,12 @@
 # ==========================================================================
 id: fs_2026_08_v1
 created_at: "2026-08-12"
+superseded_by: fs_2026_08_v2  # scope hoạt động hiện tại là v2 (55 cột)
 source_dataset: "data/full_trainset.csv"
 split_allowed: train          # 🚫 test set bất khả xâm phạm
+
+# 🚫 INVARIANT 1 — đổi số này là đổi hợp đồng, phải bump `id`.
+expected_column_count: 36
 
 # --------------------------------------------------------------------------
 # 36 cột mục tiêu, chia theo reconstruction tier

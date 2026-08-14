@@ -120,14 +120,21 @@ Liên tục:  23 / 83   (28%)   →  T3 / UNKNOWN
 | **UNKNOWN** | **4** | `f6`, `f14`, `f15`, `f39` — ngoài selected set, xem §4.9 |
 | **T3** | **23** | 23 cột `>1000` |
 
-### 3.2 · Tier của 36 cột **đã chọn** (selection đã chốt)
+### 3.2 · Tier của 55 cột **đã chọn** (`fs_2026_08_v2`)
 
 | Tier | Số | Cột |
 |---|---|---|
-| **T1** | **6** | `f1`, `f2`, `f5`, `f11`, `f18`, `f30` |
-| **T2** | **12** | `f37`, `f38`, `f79`, `f80`, `f81`, `f82`, `f40`, `f43`, `f44`, `f45`, `f64`, `f68` |
-| **T3** | **18** | `f3`,`f4`,`f8`,`f9`,`f10`,`f12`,`f13`,`f16`,`f20`,`f21`,`f22`,`f23`,`f25`,`f26`,`f28`,`f29`,`f31`,`f35` |
+| **T1** | **7** | `f1`, `f2`, `f5`, `f11`, `f18`, **`f19`**, `f30` |
+| **T2** | **24** | `f37`, `f38`, `f79`, `f80`, `f81`, `f82` · `f40`, `f41`, `f42` · `f43`, `f44`, `f45`, `f46`, `f47`, `f52` · `f53`, `f54`, `f57`, `f58`, `f59`, `f62` · `f64`, `f65` · `f68` |
+| **T3** | **24** | `f0`,`f3`,`f4`,`f6`,`f8`,`f9`,`f10`,`f12`,`f13`,`f16`,`f17`,`f20`,`f21`,`f22`,`f23`,`f24`,`f25`,`f26`,`f27`,`f28`,`f29`,`f31`,`f34`,`f35` |
 | **UNKNOWN** | **0** | — |
+
+> `f0`, `f27`, `f34` được §3.1 xếp `T1|T2` — tức **chính tier cũng là assumption**.
+> Ở v2 chúng vào **T3** một cách có ý: pass-through là lựa chọn **không cam kết
+> semantic gì cả**. Nâng lên T1/T2 đòi hỏi bằng chứng hiện chưa có.
+>
+> Lịch sử: v1 (`fs_2026_08_v1`) là 6 · 12 · 18 = 36 cột. v2 là **superset chặt**.
+> Xem `SCOPE_EXPANSION_55F.md`.
 
 Chi tiết reconstruction: `DATA_GENERATION.md` · `RECONSTRUCTION_CONTRACT.md` §4.
 
@@ -209,21 +216,49 @@ T2:  mức ordinal / tier    →  gán thuộc tính, encode
 Cả hai đều cho tái tạo chính xác từng dòng. **Việc chọn cái nào không suy ra được
 từ dữ liệu** — nó là `SYNTHETIC_ASSUMPTION`, phải ghi rõ khi chốt.
 
-### 4.5 · `f40`–`f78` — khối one-hot, **7 biến thật**
+### 4.5 · `f40`–`f78` — khối one-hot, **8 biến thật**
 
 ```yaml
-feature_group:                G_onehot_1 .. G_onehot_7
-structural_constraint:        11 nhóm loại trừ lẫn nhau
-                              row_sum(f40..f78) = 11.0 ở 100% dòng (926,669/926,669)
-                              f68 ≡ f71 ≡ f77  (sum(abs(a−b)) = 0)
+feature_group:                G_onehot_1 .. G_onehot_8
+structural_constraint:        row_sum(f40..f78) = 11.0 ở 100% dòng (926,669/926,669)
+                                 = 8 group one-hot (mỗi group đóng góp 1)
+                                 + f70 hằng số 1
+                                 + 2 cột trùng khít với mức nóng của g6
+                              row_sum(f40..f78 trừ f70) = 10.0
+                              f68 ≡ f71 ≡ f77   (sum(abs(a−b)) = 0)
+                              f78 ≡ f69 ≡ f72   (sum(abs(a−b)) = 0)   ← ★ MỚI ĐO
                               f74 lệch f68 ở 2/926,669 dòng
-                              f70 hằng số = 1  ⇒ zero information
-                              ⇒ sau khử trùng: 39 cột mã hoá 7 BIẾN CATEGORICAL
-candidate_synthetic_semantic: CUSTOMER.synthetic_segment_G1..G7
+                              f73 lệch f69 ở 2/926,669 dòng
+                              f70 hằng số = 1   ⇒ zero information
+                              ⇒ sau khử trùng: 39 cột mã hoá 8 BIẾN CATEGORICAL
+candidate_synthetic_semantic: CUSTOMER.synthetic_segment_G1..G8
 encoding:                     one-hot
 reconstruction_tier:          T2
 confidence:                   CONFIRMED (cấu trúc) / SYNTHETIC_ASSUMPTION (semantic)
 ```
+
+`[MEASURED]` **Tám** group thoả `sum == 1` tuyệt đối trên toàn bộ train:
+
+| Group | Cột | levels | test split | Trong `fs_2026_08_v2` |
+|---|---|---|---|---|
+| `g1` | `f40` `f41` `f42` | 3 | ✅ | chọn **3/3** |
+| `g2` | `f43`–`f52` | 10 | ✅ | chọn 6/10 |
+| **`g3`** | **`f53`–`f62`** | **10** | ✅ | **MỚI** — chọn 6/10 |
+| `g4` | `f63` `f64` `f65` | 3 | 🔴 **VỠ** | chọn 2/3 |
+| `g5` | `f66` `f67` | 2 | ✅ | không chọn |
+| `g6` | `f68` `f78` | 2 | ✅ | chọn 1/2 |
+| `g7` | `f73` `f74` | 2 | ✅ | không chọn |
+| `g8` | `f75` `f76` | 2 | ✅ | không chọn |
+
+> ⚠️ **Sửa lỗi bản trước.** `row_sum = 11.0` là **đúng**, nhưng bản trước đọc nó
+> thành *"11 nhóm loại trừ lẫn nhau"* và kết luận *"7 biến"* — cả hai đều sai.
+> 11 = **8** group + `f70` + 2 cột trùng khít, không phải 11 group.
+> Bản trước cũng bỏ sót quan hệ `f78 ≡ f69 ≡ f72`.
+
+> 🔴 **`g4` vỡ bất biến one-hot trên test split:** `sum(f63,f64,f65) == 0` ở
+> **3/181,669** dòng test, 0 dòng train ⇒ attribute thật có mức baseline toàn-0
+> không xuất hiện trong train. `split_allowed: train` nên chưa nổ.
+> 🚫 Không mở scope sang test trước khi xử lý mức thứ tư.
 
 ### 4.6 · `f79`–`f82` — **MỘT** biến categorical 515 mức, bốn encoding
 
@@ -304,7 +339,7 @@ true_semantic:                UNKNOWN — đếm cái gì, cửa sổ bao lâu
 
 ### 4.9 · `f6`, `f14`, `f15`, `f39` — ngoài selected set, có trùng lặp
 
-`[MEASURED]` — không thuộc 36 cột đã chọn, ghi lại để không đo lại:
+`[MEASURED]` — không thuộc 55 cột đã chọn, ghi lại để không đo lại:
 
 | Cặp | Kết quả | Ghi chú |
 |---|---|---|
@@ -379,8 +414,8 @@ Ngoại lệ duy nhất: `f70` — và vẫn phải bump `feature_spec.version`.
 ## 7. Track B — event-derived hiện có
 
 11 feature event-derived tồn tại trong baseline/full mart hoặc training path cũ.
-Chúng **không** thuộc Redis selected feature sync v2, vốn chỉ có 36 cột
-`fs_2026_08_v1`. `reconstruction_tier` không áp dụng cho nhóm này.
+Chúng **không** thuộc Redis selected feature sync, vốn chỉ có 55 cột
+`fs_2026_08_v2`. `reconstruction_tier` không áp dụng cho nhóm này.
 
 ### 7.1 · `user_tenure_days` ⚠️ **LỖI CONTRACT**
 
@@ -437,7 +472,7 @@ confidence:           CONFIRMED (công thức) / ⚠️ SAI so với business_de
 | `voucher_redeemed_30d` | `VOUCHER_REDEEMED` ← thứ tên đang hứa |
 
 Nếu đưa lại feature này vào selected feature contract thì phải đặt tên đúng và
-bump `feature_spec.version`; hiện nó không thuộc 36 cột Redis sync.
+bump `feature_spec.version`; hiện nó không thuộc 55 cột Redis sync.
 
 ### 7.5 · Nhóm `rt_*` (7 cột)
 
@@ -566,7 +601,7 @@ nhận xấp xỉ. **Cân nhắc bỏ nếu không muốn thêm phức tạp.**
 | **D6** | `f70` | Hằng số 1 — zero information | 🟡 | Loại khi bump spec |
 | **D7** | `f23`/`f25`, `f68`/`f71`/`f74`/`f77`, `f79`–`f82` | Trùng lặp ⇒ importance đếm nhiều lần | 🟡 | **Group trước selection** (§6), ablation trước khi xoá |
 
-> **Không cột selected nào bị xoá trong tài liệu này.** `f70` không thuộc 36 cột
+> **Không cột selected nào bị xoá trong tài liệu này.** `f70` không thuộc 55 cột
 > selected; nếu một ngày đưa vào contract thì vẫn phải bump `feature_spec.version`.
 
 ---

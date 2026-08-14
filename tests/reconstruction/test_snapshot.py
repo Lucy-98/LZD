@@ -25,7 +25,7 @@ def test_snapshot_writer_emits_review_artifacts(tmp_path):
         "track_b_events.csv",
     }
     assert expected == {p.name for p in tmp_path.iterdir()}
-    assert manifest["selected_feature_count"] == 36
+    assert manifest["selected_feature_count"] == 55
     assert manifest["summary"]["all_passed"] is True
     assert "manifest.json" not in manifest["files"]
 
@@ -35,7 +35,7 @@ def test_snapshot_writer_emits_review_artifacts(tmp_path):
 
     with (tmp_path / "features_expected_actual.csv").open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
-    assert len(rows) == 36
+    assert len(rows) == 55
     assert {row["ok"] for row in rows} == {"true"}
     assert {row["method"] for row in rows} == {"event_reconstructed", "pass_through"}
     assert "business_alias" in rows[0]

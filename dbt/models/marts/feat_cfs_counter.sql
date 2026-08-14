@@ -1,5 +1,5 @@
 -- ============================================================================
--- FORWARD FEATURE ENGINE — counter (T1): f5 · f11 · f18 · f30
+-- FORWARD FEATURE ENGINE — counter (T1): f5 · f11 · f18 · f19 · f30
 --
 -- docs/RECONSTRUCTION_SPEC.md §7 (regime) · §4.2 (H1/H2)
 --
@@ -12,9 +12,14 @@
 --    Model chi biet `event_type`, dung nhu production.
 --
 -- HAI REGIME MA HOA KHAC NHAU — do duoc tren 926,669 dong:
---   LOG10  f18, f30   luu 6 chu so   round-trip khop CHINH XAC 100.0000%
---   LN     f5,  f11   float64 day du round-trip exact chi 93.05% / 93.42%
+--   LOG10  f18, f19, f30   luu 6 chu so   round-trip khop CHINH XAC 100.0000%
+--   LN     f5,  f11        float64 day du round-trip exact chi 93.05% / 93.42%
 --                                     => phai so bang dung sai tuong doi 1e-15
+--
+-- ★ f19 (scope v2): counter LOG10 thu 7, CUNG co che voi f18.
+--   [MEASURED] round-trip 926,669/926,669 train VA 181,669/181,669 test,
+--   156 muc, max n = 4712. No lam NHE bai toan: capacity infeasibility
+--   47.56% -> 39.54%, va ha ti le event khong giai thich duoc 14.1% -> 10.9%.
 -- ============================================================================
 {{ config(materialized='table') }}
 
@@ -87,7 +92,11 @@ counted as (
         count(*) filter (
             where event_type = 'EVT_F18'
               and event_ts >= reference_ts - interval '{{ counter_window }} days'
-        )                                                        as n18
+        )                                                        as n18,
+        count(*) filter (
+            where event_type = 'EVT_F19'
+              and event_ts >= reference_ts - interval '{{ counter_window }} days'
+        )                                                        as n19
 
     from joined
     group by target_id, reference_ts
@@ -102,6 +111,7 @@ resolved as (
         n5,
         n11,
         n18,
+        n19,
         case
             when '{{ f30_branch }}' = 'H2' then n30_h2
             else n30_h1
@@ -115,7 +125,7 @@ select
     reference_ts,
 
     -- Gia tri da giai ma — giu lai de audit va de assertion o tang event (§14.1)
-    n5, n11, n18, n30,
+    n5, n11, n18, n19, n30,
 
     -- ── REGIME LN — float64 DAY DU, KHONG lam tron ──────────────────────
     -- 🚫 CAM `round(ln(n), k)`: lam tron se pha round-trip 1e-15.
@@ -126,10 +136,14 @@ select
     -- 6 chu so la quy uoc luu tru do duoc; lam tron o day cho round-trip
     -- khop CHINH XAC, khong can dung sai.
     case when n18 >= 1 then round(log10(n18), 6) end             as f18,
+    case when n19 >= 1 then round(log10(n19), 6) end             as f19,
     case when n30 >= 1 then round(log10(n30), 6) end             as f30
 
 from resolved
 
 -- ⚠️ KHONG coalesce n=0 thanh 1.
---    Mien do duoc la [1, N] cho ca bon counter. Neu engine thay 0, do la
+--    Mien do duoc la [1, N] cho ca NAM counter. Neu engine thay 0, do la
 --    KHONG KHOP THAT — phai de NULL cho Gate A bat, khong duoc che di.
+--    Voi target scope v1 (khong co f19) thi solver khong phat EVT_F19 nao,
+--    n19 = 0, f19 = NULL — va f19 khong nam trong 36 cot nen Gate A khong
+--    doc no. Do la hanh vi DUNG, khong phai lo lot.

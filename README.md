@@ -1,7 +1,7 @@
 # LZD Uplift Feature Platform
 
 Repo nay dung de dung lai pipeline du lieu cho bai toan Lazada voucher uplift:
-nap dataset goc, build feature bang dbt/DuckDB, sync 36 selected features len
+nap dataset goc, build feature bang dbt/DuckDB, sync 55 selected features len
 Redis, va kiem chung reconstruction tu feature train ve event witness.
 
 Scope hien tai cua nhanh nay la data pipeline va reconstruction. API serving va
@@ -14,7 +14,7 @@ trong nhanh reconstruction.
 
 - Co mot stack local de dong doi/mentor co the tai tao lai du lieu va quan sat
   luong `CSV -> lakehouse -> dbt -> Redis`.
-- Giai thich ro 36 feature nao duoc sync len Redis thay vi sync ca `f0..f82`.
+- Giai thich ro 55 feature nao duoc sync len Redis thay vi sync ca `f0..f82`.
 - Chung minh reconstruction: tu selected feature trong train, sinh nguoc Track A
   witness events, chay lai dbt SQL, va so lai feature expected/actual.
 
@@ -72,11 +72,11 @@ Postgres.
 
 Dang hoan thanh:
 
-- Local unit/contract tests: `210 passed` (2026-08-14). Xem
+- Local unit/contract tests: `280 passed` (2026-08-14). Xem
   [Tech reference](docs/TECH_REFERENCE.md) §11.
 - Reconstruction snapshot da commit trong `docs/reconstruction_snapshot/`.
 - Track A batch tu `data/full_trainset.csv` da chay pilot 1,000 va 10,000 row.
-- Redis batch contract da chot cho 36 selected features.
+- Redis batch contract da chot cho 55 selected features.
 - Airflow DAG cho batch/reconstruction dry-run da co.
 
 Chua lam trong nhanh nay:
@@ -91,7 +91,7 @@ Chua lam trong nhanh nay:
 
 ```text
 airflow/dags/                 Airflow DAGs
-config/features/              feature spec, selected 36-feature set
+config/features/              feature spec, selected 55-feature set
 config/features/business_aliases.yml  synthetic business aliases for selected f*
 config/reconstruction/        reconstruction runtime config
 dbt/                          DuckDB/dbt models and tests
@@ -352,7 +352,7 @@ That table contains:
 user_id
 dt
 feature_ts
-36 selected features
+55 selected features
 ```
 
 It does not contain `label` or `is_treat`.
@@ -370,7 +370,7 @@ Type: Redis HASH.
 Fields:
 
 ```text
-f1 f2 f5 f11 f18 f30
+f1 f2 f5 f11 f18 f19 f30
 f37 f38 f79 f80 f81 f82 f40 f43 f44 f45 f64 f68
 f3 f4 f8 f9 f10 f12 f13 f16 f20 f21 f22 f23 f25 f26 f28 f29 f31 f35
 _v
@@ -453,7 +453,7 @@ Tracks:
 
 Selected features:
 
-- T1/event-level: `f1,f2,f5,f11,f18,f30`
+- T1/event-level: `f1,f2,f5,f11,f18,f19,f30`
 - T2/attribute-level: `f37,f38,f79,f80,f81,f82,f40,f43,f44,f45,f64,f68`
 - T3/pass-through: `f3,f4,f8,f9,f10,f12,f13,f16,f20,f21,f22,f23,f25,f26,f28,f29,f31,f35`
 
@@ -464,6 +464,7 @@ Examples of synthetic aliases:
 | `f5` | `product_browse_intensity_365d_ln` |
 | `f11` | `cart_checkout_intent_365d_ln` |
 | `f18` | `promo_touch_intensity_365d_log10` |
+| `f19` | `promo_redemption_intensity_365d_log10` |
 | `f30` | `active_days_30d_log10` |
 | `f37` | `price_sensitivity_segment_64_encoded` |
 | `f38` | `promo_affinity_segment_241_encoded` |
@@ -531,7 +532,7 @@ Files:
 | `biz_encoding_map.csv` | fitted categorical value encodings |
 | `biz_onehot_layout.csv` | full one-hot layout |
 | `biz_passthrough_source.csv` | frozen T3 source values |
-| `targets_selected_features.csv` | expected 36-feature payload and hash |
+| `targets_selected_features.csv` | expected 55-feature payload and hash |
 | `quarantine.csv` | rows that cannot be reconstructed |
 | `manifest.json` | counts, config, gate sample result |
 

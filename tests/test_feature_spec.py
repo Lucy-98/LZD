@@ -21,17 +21,32 @@ def spec():
     return load_feature_spec(SPEC_PATH)
 
 
-def test_batch_features_are_selected_36(spec):
-    """Redis batch contract chi duoc sync 36 selected features."""
+def test_batch_features_are_the_selected_set(spec):
+    """Redis batch contract chi duoc sync selected features, khong sync f0..f82."""
     names = spec.batch_names
     assert "f1" in names
     assert "f82" in names
-    assert "f0" not in names
+    assert "f7" not in names       # f7 nam ngoai selected set o ca v1 lan v2
+    assert "f33" not in names      # ban sao 100% cua f31 — da bi loai khi chon
     assert "label" not in names
     assert "is_treat" not in names
-    assert len([n for n in names if n.startswith("f") and n[1:].isdigit()]) == 36
+    assert len([n for n in names if n.startswith("f") and n[1:].isdigit()]) == 55
     assert spec.offline["serving_table"] == "marts.feat_user_selected_serving"
-    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v1"
+    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v2"
+
+
+def test_batch_features_khop_chinh_xac_feature_set_artifact(spec):
+    """Chong drift B5: spec sync va solver contract phai la MOT danh sach.
+
+    Truoc day hai file nay doc lap nhau, nen mo scope o mot ben ma quen ben
+    kia se lam Redis thieu cot dung luc serving — loi chi lo o production.
+    """
+    from lzd_pipeline.reconstruction.feature_set import load_feature_set
+
+    fs = load_feature_set()
+    f_names = {n for n in spec.batch_names if n.startswith("f") and n[1:].isdigit()}
+    assert f_names == set(fs.columns)
+    assert spec.offline["selected_feature_set_id"] == fs.id
 
 
 def test_no_duplicate_feature_names(spec):
