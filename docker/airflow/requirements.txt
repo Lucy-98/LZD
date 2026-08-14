@@ -31,9 +31,16 @@ python-json-logger==2.0.7
 # moi phai doi sang `mlflow==2.16.2` + econml/optuna.
 mlflow-skinny==2.16.2
 
-# Model uplift: DRLearner ban giao duoi dang booster text. Airflow can
-# lightgbm de VERIFY artifact truoc khi dang ky (so cot, doc duoc hay khong).
+# Model uplift: DR-Learner (LightGBM). Airflow can bo nay de:
+#   - `training/register.py`  VERIFY artifact truoc khi dang ky
+#   - `training/train.py`     HUAN LUYEN lai trong repo
+#
+# scikit-learn chi dung cho `StratifiedKFold` trong cross-fitting nuisance —
+# giu nguyen thay vi tu viet, vi doi cach chia fold la doi ca pseudo-outcome.
+# scipy chi dung cho `ate_with_ci` (z-score).
 lightgbm==4.7.0
+scikit-learn==1.7.2
+scipy==1.15.3
 
 # --- tien ich --------------------------------------------------------------
 PyYAML==6.0.2

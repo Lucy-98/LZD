@@ -31,9 +31,21 @@ quán quân trong 6 mô hình:
 | LinearDML | 0.01534 | 0.01667 | 0.00852 |
 | TLearner | 0.01482 | 0.01600 | 0.01287 |
 
-> ⚠️ KTC Qini của DRLearner là `[-0.00066, 0.04831]` — **chứa 0**. Nghĩa là ở
-> mức holdout này chưa loại trừ được giả thuyết "không có uplift". Đây là số
-> của bản gốc, ghi lại nguyên trạng, **không** phải khẳng định model có tác dụng.
+> ⚠️ **Ba điều phải đọc kèm bảng trên**, đều lấy từ chính artifact:
+>
+> 1. **Cả 6 model đều có KTC Qini chứa 0**, kể cả DRLearner
+>    `[-0.00066, +0.04831]`. Không model nào phân biệt được với "không có
+>    uplift" ở mức 95%.
+> 2. **Trên tập val, DRLearner đứng thứ 3**, không phải nhất —
+>    `best_params.json: thu_tu_theo_dr_qini` = SLearner → LinearDML →
+>    **DRLearner** → NonParamDML → CausalForestDML → TLearner. SLearner hơn
+>    0.00706 nhưng KTC `[-0.0111, +0.0267]` chứa 0 ⇒ không có ý nghĩa.
+> 3. `chon_quan_quan.tuong_quan_hang_select_vs_holdout = **0.2571**` — tương
+>    quan xếp hạng giữa tập chọn quán quân và tập holdout rất yếu.
+>
+> ⇒ Phát biểu đúng: *DRLearner là quán quân theo quy trình chọn đã ghi, và nó
+> dẫn đầu trên holdout.* 🚫 **Không** phải *DRLearner chắc chắn tốt hơn các
+> model kia*.
 
 ---
 
@@ -192,12 +204,76 @@ toàn bộ suite                         305 passed
 
 ---
 
-## 6. Chưa làm
+## 6. Huấn luyện trong repo
+
+`[FACT]` 4 hook `TODO(model)` của `train.py` **đã nối**, vào
+[training/uplift.py](../src/lzd_pipeline/training/uplift.py) — bản **port
+nguyên văn** từ notebook, không viết lại.
+
+```
+build_model()     -> DRLearner(n_folds=5, params=BEST_PARAMS)
+fit_model()       -> model.fit(X, W, Y)      ← thứ tự: treatment TRƯỚC outcome
+evaluate()        -> qini / auuc / uplift@{10,20,30} + 4 phép tự kiểm
+predict_uplift()  -> model.predict_cate(X)
+```
+
+### 6.1 · Vì sao port chứ không viết lại
+
+Model đang phục vụ sinh ra từ chính đoạn code này. Viết một phiên bản "tương
+đương" sẽ làm hai thứ trôi khỏi nhau mà không ai biết — huấn luyện lại trong
+repo sẽ cho model **khác** model đang chạy, trong khi cả hai đều tự gọi là
+DRLearner. Hằng số cũng bị khoá bằng test:
+
+| Hằng số | Giá trị | Nguồn |
+|---|---|---|
+| `E_ALPHA` | 0.071 | `best_params.json: xu_ly_overlap.propensity_alpha` (quy tắc Crump) |
+| `BEST_PARAMS` | 350 cây, lr 0.01777, depth 4, min_child 30 | `metadata.json: sieu_tham_so` |
+| `SEED` | 42 | notebook |
+
+### 6.2 · `train.py` ≠ `register.py`
+
+```
+register.py   đưa model ĐÃ CHỐT (từ notebook) vào registry
+train.py      huấn luyện bản MỚI trong repo
+```
+
+🚫 Gộp hai việc lại sẽ làm không ai biết model đang chạy đến từ đâu.
+
+`[FACT]` Hai đường **không thể** cho kết quả trùng khít: notebook train trên
+**76** đặc trưng (`train.parquet` + `val.parquet`, có 14 cột feature store
+không cấp), còn `train.py` train trên đúng tập cột `feature_spec.yml` khai báo.
+⇒ Model từ `train.py` là bản **mới**, phải benchmark lại trước khi thay.
+
+Cả hai log **booster text** chứ không phải pickle, nên artifact của chúng thay
+thế được cho nhau ở tầng serving.
+
+### 6.3 · Bốn phép tự kiểm thước đo
+
+Thước đo uplift rất dễ cài đặt sai mà vẫn cho ra số đẹp. `sanity_checks()` giữ
+lại bốn phép của notebook, và `evaluate()` log cảnh báo nếu phép nào trượt:
+
+`[MEASURED]` trên RCT mô phỏng 60,000 dòng:
+
+```
+qini(biết trước)   = +1.00000     ← đúng bằng 1
+qini(ngẫu nhiên)   = -0.01733     ← ≈ 0
+qini(tau thật)     = +0.12044
+qini(tau đảo dấu)  = -0.12046     ← đối xứng
+nhiễu ×0 → ×5      : 0.120 → 0.107 → 0.093 → 0.049 → 0.041   (giảm đơn điệu)
+```
+
+> ⚠️ Tính đơn điệu theo nhiễu đúng **trong kỳ vọng**, không đúng cho từng lần
+> bốc: đo được nhiễu nhỏ (0.5×sd) đôi khi làm Qini tăng nhẹ vì nhiễu lấy mẫu
+> lấn át. Test lấy trung bình nhiều lần bốc thay vì nới lỏng ngưỡng.
+
+---
+
+## 7. Chưa làm
 
 | Hạng mục | Ghi chú |
 |---|---|
 | **Đăng ký thật vào MLflow** | `register.py` viết xong, `--verify-only` chạy được, nhưng **chưa chạy với MLflow server thật** (host không dựng được stack) |
-| Huấn luyện trong repo | `train.py` vẫn còn 4 `TODO(model)`. Model hiện tại huấn luyện ở notebook ngoài |
+| **Chạy `train.py` end-to-end** | `DRLearner.fit` cần `scikit-learn`, mà proxy mạng ở đây chặn cài. `test_fit_va_xuat_booster` **SKIP** chứ không pass — đường huấn luyện chưa được thực thi lần nào |
 | Cấp giá trị thật cho 9 cột one-hot | Xem §2.2 — cần đo lại Qini trước |
 | `f36` là T3 ngoài scope | `f36` cần mặc định `0.965`, nhưng nó **không** nằm trong 55 cột. Nếu sau này muốn cấp thật thì phải mở scope |
 | DAG đăng ký model | Chưa có; `register.py` mới chỉ có CLI |

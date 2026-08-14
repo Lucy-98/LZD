@@ -1,29 +1,34 @@
-"""=========================== KHUNG CHO TEAMMATE ===========================
+"""Huan luyen DR-Learner trong repo.
 
-PHAN NAY CHUA LAM MODEL - chi dung khung + duong ong.
-
-Da lam san (khong can dong):
-  - doc training data tu DuckDB dung dung feature theo feature_spec.yml
-  - tao MLflow run, log param/metric/dataset stats
-  - luu artifact len MinIO qua MLflow
-  - dang ky model vao MLflow Model Registry (de inference-api load duoc)
-
-Teammate can dien vao 3 cho danh dau `TODO(model)`:
-  1. build_model()  - khoi tao estimator (S-learner / T-learner / X-learner /
-                      DESCN theo paper trong docs/2207.09920v3.pdf)
-  2. fit_model()    - huan luyen
-  3. evaluate()     - tinh AUUC / Qini / uplift@k
-
-Chay:
     python -m lzd_pipeline.training.train --dt 2026-08-05
-Hoac qua Airflow: DAG `30_train_uplift_model`.
-=========================================================================="""
+    Airflow: DAG `30_train_uplift_model`
+
+Duong ong (doc training data -> MLflow run -> log metric -> dang ky model) da
+co san. Bon hook model gio noi thang vao `training/uplift.py` — ban port
+nguyen van tu notebook `lzd-uplifting-model`.
+
+★ QUAN HE VOI MODEL DANG PHUC VU
+--------------------------------------------------------------------------
+`models/uplift_voucher/model_booster.txt` sinh ra tu notebook, KHONG phai tu
+file nay. Hai duong dung CUNG mot cai dat (`training/uplift.py`) nen ket qua
+so sanh duoc, nhung KHONG the trung khit: notebook train tren 76 dac trung
+(`train.parquet` + `val.parquet`, co 14 cot ma feature store khong cap), con
+file nay train tren dung tap cot ma `feature_spec.yml` khai bao.
+
+    huan luyen o day    => model MOI, phai benchmark lai truoc khi thay
+    nap artifact        => model DANG PHUC VU, xem `training/register.py`
+
+🚫 Dung `register.py` de dua model da chot vao registry. Dung `train.py` de
+   huan luyen ban moi. Gop hai viec lai se lam khong ai biet model dang chay
+   den tu dau.
+"""
 from __future__ import annotations
 
 import argparse
 import json
 import os
 import time
+from pathlib import Path
 from typing import Any
 
 from lzd_pipeline.common.config import get_settings
@@ -37,62 +42,68 @@ MODEL_NAME = "uplift_voucher"
 
 
 # ===========================================================================
-# 1) TODO(model): khoi tao model
+# 1) Khoi tao model
 # ===========================================================================
 def build_model(params: dict[str, Any]):
-    """Tra ve doi tuong model chua train.
+    """DR-Learner (Kennedy 2020) voi base learner LightGBM.
 
-    Goi y trien khai (chon 1):
-
-      a) T-learner voi LightGBM (don gian, chay duoc ngay):
-             from lightgbm import LGBMClassifier
-             return {"treated": LGBMClassifier(**params),
-                     "control": LGBMClassifier(**params)}
-
-      b) causalml:
-             from causalml.inference.meta import BaseXClassifier
-
-      c) DESCN (dung paper Lazada trong docs/2207.09920v3.pdf) - PyTorch,
-         multi-task: propensity + ESTR + ESCR + pseudo treatment effect.
-
-    Nho: them thu vien tuong ung vao docker/airflow/requirements.txt.
+    `params` mac dinh la bo Optuna da tim (`uplift.BEST_PARAMS`). Truyen bo
+    khac thi phai bench lai — sieu tham so duoc tune theo muc tieu `dr_qini`
+    tren chinh phan phoi nay.
     """
-    raise NotImplementedError(
-        "TODO(model): chon va khoi tao uplift model o day. "
-        "Xem goi y trong docstring cua build_model()."
+    from lzd_pipeline.training.uplift import BEST_PARAMS, DRLearner
+
+    return DRLearner(n_folds=5, params={**BEST_PARAMS, **(params or {})})
+
+
+# ===========================================================================
+# 2) Huan luyen
+# ===========================================================================
+def fit_model(model, x, y, treatment) -> Any:
+    """`DRLearner.fit(X, W, Y)` — chu y THU TU: treatment truoc, outcome sau.
+
+    Notebook dat chu ky la `fit(X, W, Y)`. Doi cho hai doi so nay se cho ra
+    mot model van chay, van co metric, chi la hoc nham bien — nen giu nguyen
+    thu tu va goi bang ten.
+    """
+    import numpy as np
+
+    return model.fit(
+        np.asarray(x, dtype=float),
+        np.asarray(treatment).astype(int),
+        np.asarray(y).astype(int),
     )
 
 
 # ===========================================================================
-# 2) TODO(model): huan luyen
-# ===========================================================================
-def fit_model(model, x, y, treatment) -> Any:
-    """Huan luyen model. Tra ve model da fit."""
-    raise NotImplementedError("TODO(model): huan luyen model o day.")
-
-
-# ===========================================================================
-# 3) TODO(model): danh gia
+# 3) Danh gia
 # ===========================================================================
 def evaluate(model, x, y, treatment) -> dict[str, float]:
-    """Tra ve dict metric. Toi thieu nen co:
+    """Qini / AUUC / uplift@k — cai dat port tu notebook (`uplift.evaluate_all`).
 
-        auuc              - Area Under Uplift Curve
-        qini              - Qini coefficient
-        uplift_at_10pct   - uplift trung binh o top 10% score cao nhat
-        auc_response      - AUC cua nhanh du doan conversion
-
-    Cac metric nay se tu dong duoc log len MLflow va hien tren dashboard.
+    Kem bon phep tu kiem cua notebook: metric uplift rat de cai dat sai ma van
+    cho ra so dep, nen no phai chung minh la no dung truoc khi ta tin con so.
     """
-    raise NotImplementedError("TODO(model): tinh AUUC/Qini o day.")
+    from lzd_pipeline.training.uplift import evaluate_all, sanity_checks
+
+    score = predict_uplift(model, x)
+    metrics = evaluate_all(y, treatment, score)
+
+    checks = sanity_checks(y, treatment, score)
+    metrics.update({f"sanity_{k}": float(v) for k, v in checks.items()})
+    failed = [k for k, v in checks.items() if not v]
+    if failed:
+        log.warning("thuoc do khong qua tu kiem",
+                    extra={"event": "metric_sanity_failed", "failed": failed})
+    return metrics
 
 
 def predict_uplift(model, x):
-    """Suy luan uplift score. inference-api se goi ham nay qua model_loader.
+    """CATE score. inference-api KHONG goi ham nay — no nap booster qua
+    `serving/model_loader.py`. Day chi dung trong huan luyen/danh gia."""
+    import numpy as np
 
-    Voi T-learner:  p_treated(x) - p_control(x)
-    """
-    raise NotImplementedError("TODO(model): tra ve uplift score.")
+    return model.predict_cate(np.asarray(x, dtype=float))
 
 
 # ===========================================================================
@@ -108,7 +119,11 @@ def run_training(
 
     settings = get_settings()
     spec = load_feature_spec()
-    params = params or {"n_estimators": 300, "learning_rate": 0.05, "num_leaves": 63}
+    # Mac dinh la bo Optuna da tim (12 trial, muc tieu `dr_qini`) — KHONG phai
+    # so tuy chon. Doi thi phai bench lai.
+    from lzd_pipeline.training.uplift import BEST_PARAMS, E_ALPHA
+
+    params = {**BEST_PARAMS, **(params or {})}
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(settings.mlflow_experiment)
@@ -123,6 +138,8 @@ def run_training(
         mlflow.log_params({
             **params,
             "dt": dt,
+            "model_type": "DRLearner",
+            "propensity_alpha": E_ALPHA,
             "feature_spec_version": spec.version,
             "n_features": len(ds.feature_columns(spec)),
             "n_train": len(train_df),
@@ -139,13 +156,15 @@ def run_training(
                  extra={"event": "train_start", "dt": dt, "mlflow_run_id": run.info.run_id,
                         **stats})
 
-        # -------- 2. Model (phan cua teammate) --------------------------
+        # -------- 2. Model ----------------------------------------------
         x_tr, y_tr, t_tr = ds.split_xyt(train_df, spec)
         x_te, y_te, t_te = ds.split_xyt(test_df, spec)
 
-        model = build_model(params)          # TODO(model)
-        model = fit_model(model, x_tr, y_tr, t_tr)   # TODO(model)
-        metrics = evaluate(model, x_te, y_te, t_te)  # TODO(model)
+        model = build_model(params)
+        model = fit_model(model, x_tr, y_tr, t_tr)
+        # Danh gia tren split='test' — day DUNG la cong dung cua no: tai san
+        # danh gia RCT. 🚫 Khong duoc dung no de chon sieu tham so.
+        metrics = evaluate(model, x_te, y_te, t_te)
 
         # -------- 3. Log & dang ky -------------------------------------
         mlflow.log_metrics(metrics)
@@ -153,13 +172,22 @@ def run_training(
 
         artifact_uri = None
         if register:
-            import mlflow.sklearn  # doi sang flavor tuong ung (pytorch/lightgbm...)
+            # ★ Log BOOSTER TEXT, khong phai pickle.
+            #
+            # `serving/model_loader.py` nap booster text. Log pickle o day se
+            # tao hai dinh dang cho cung mot vai tro, va ban pickle lai khoa
+            # cung phien ban Python (da do: nap ban 3.10 bang 3.14 thi do).
+            # Cung dinh dang => model tu `train.py` va model tu `register.py`
+            # thay the duoc cho nhau.
+            import tempfile
 
-            mlflow.sklearn.log_model(
-                sk_model=model,
-                artifact_path="model",
-                registered_model_name=MODEL_NAME,
-            )
+            with tempfile.TemporaryDirectory() as tmp:
+                booster_path = Path(tmp) / "model_booster.txt"
+                booster_path.write_text(model.booster_text(), encoding="utf-8")
+                mlflow.log_artifact(str(booster_path), artifact_path="model")
+
+            mlflow.register_model(
+                model_uri=f"runs:/{run.info.run_id}/model", name=MODEL_NAME)
             artifact_uri = f"runs:/{run.info.run_id}/model"
 
         log.info("train xong",
