@@ -14,6 +14,9 @@ airflow/logs/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+# dbt sinh file nay de gan mot anonymous-usage id cho tung may - khong phai
+# cau hinh cua du an, khong duoc commit.
+dbt/.user.yml
 *.duckdb
 *.duckdb.wal
 

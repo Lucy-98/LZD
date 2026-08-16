@@ -11,7 +11,7 @@
 > không đổi thì tài liệu sai — không phải code sai.
 >
 > **Trạng thái xác minh (2026-08-14):** `python -m pytest tests/ -q` →
-> `325 passed, 1 skipped`. Scope hiện hành: `fs_2026_08_v2` (**55 cột**). Xem §11.
+> `342 passed, 1 skipped`. Scope hiện hành: `fs_2026_08_v2` (**55 cột**). Xem §11.
 
 ---
 
@@ -83,18 +83,25 @@ nó thì Gate A không kiểm chứng gì cả (tautology, `RECONSTRUCTION_SPEC.
 
 ## 3. Runtime topology
 
-`docker-compose.yml` khai báo 21 service, chọn bằng **compose profile**:
+`docker-compose.yml` khai báo 24 service. 22 trong số đó **không có
+`profiles:`** nên `docker compose up -d` bật hết — không cần flag, không cần
+`.env` (mọi biến đều có mặc định trong file compose).
 
-| Profile | Service |
-|---|---|
-| `core` | `postgres` · `redis` · `minio` · `minio-init` · `kafka` · `kafka-init` · `airflow-init` · `airflow-webserver` · `airflow-scheduler` |
-| `obs` | `prometheus` · `pushgateway` · `statsd-exporter` · `redis-exporter` · `postgres-exporter` · `kafka-exporter` · `loki` · `promtail` · `grafana` · `redisinsight` · `kafka-ui` |
-| `stream` | `event-producer` · `stream-consumer` |
-| `serving` | `inference-api` |
-| `ml` | `mlflow` |
-| `all` | tất cả |
+| Nhóm | Service | Khi nào chạy |
+|---|---|---|
+| storage | `postgres` · `redis` · `minio` · `minio-init` | mặc định |
+| streaming | `kafka` · `kafka-init` · `kafka-ui` | mặc định |
+| orchestration | `airflow-init` · `airflow-webserver` · `airflow-scheduler` | mặc định |
+| ml + serving | `mlflow` · `inference-api` | mặc định |
+| observability | `prometheus` · `pushgateway` · `statsd-exporter` · `redis-exporter` · `postgres-exporter` · `kafka-exporter` · `loki` · `promtail` · `grafana` · `redisinsight` | mặc định |
+| realtime traffic | `event-producer` · `stream-consumer` | chỉ với `--profile all` |
 
-Reconstruction dry-run **không cần** profile nào — nó chạy hoàn toàn trên
+Hai service realtime nằm sau profile `stream` vì chúng bắn event liên tục:
+bật mặc định là đốt CPU của người chỉ muốn xem batch pipeline. Compose không
+có "profile trừ đi", nên muốn bỏ observability thì gọi tên service —
+`stack.ps1 up-core` / `make up-core` giữ sẵn danh sách đó.
+
+Reconstruction dry-run **không cần** container nào — nó chạy hoàn toàn trên
 DuckDB in-memory ở host (§10).
 
 Cổng và UI: xem [README §7](../README.md).
@@ -103,6 +110,89 @@ Cổng và UI: xem [README §7](../README.md).
 `lzd/mlflow:2.16.2`. `python-service` là image dùng chung cho
 `event-producer` / `stream-consumer` / `inference-api` — khác nhau ở command,
 không khác nhau ở image.
+
+### Hai điều kiện để model chạy được trong container
+
+`[MEASURED]` Cả hai từng thiếu, và cả hai đều hỏng **im lặng** — API vẫn xanh,
+`/decide` vẫn trả về số, chỉ là số của `StubModel`.
+
+1. **`./models` phải được mount.** `model_loader.LOCAL_MODEL_DIR` trỏ tới
+   `/opt/project/models/uplift_voucher`, mà `models/` không được bake vào image.
+   Thiếu mount → `FileNotFoundError: feature_contract.json` → tụt xuống stub.
+   Airflow cũng cần nó cho `training/register.py`. Mount `:ro` ở cả hai.
+2. **`libgomp1` phải được cài ở runtime.** Wheel LightGBM link động tới OpenMP
+   runtime; `python:slim` và image Airflow gốc đều không có. Thiếu nó →
+   `OSError: libgomp.so.1` → tụt xuống stub, **và** DAG 30 chết ngay ở bước
+   import.
+
+Cách kiểm nhanh sau khi `up`:
+
+```bash
+curl -s localhost:8000/store/info | jq .model
+# đúng:  {"name":"uplift_voucher","version":"1","is_stub":false}
+# sai :  {"name":"uplift_voucher","version":"stub-0","is_stub":true}
+```
+
+`is_stub: true` là tín hiệu duy nhất lộ ra ngoài — không có nó thì hai lỗi trên
+trông y hệt một hệ thống khỏe mạnh.
+
+### Bốn lỗi ghép nối đã sửa (2026-08-15)
+
+`[MEASURED]` Cả bốn đều chặn đường `DAG 20 → 40 → /decide`, và không lỗi nào
+lộ ra ở tầng test — chúng chỉ xuất hiện khi chạy thật trong container.
+
+| Triệu chứng | Nguyên nhân | Sửa ở |
+|---|---|---|
+| `dbt_debug` fail, cả DAG 20 dừng | `dbt debug` kiểm cả `git` như required dependency; image không có git. Repo không có `packages.yml` nên `dbt deps` không bao giờ chạy | `dbt debug --connection` trong [dag_20](../airflow/dags/dag_20_build_features_dbt.py) |
+| `IO Error: No files found that match the pattern` | DuckDB **ném lỗi** thay vì trả 0 dòng khi glob parquet không khớp file nào. Đường batch 55 cột chết chỉ vì stream chưa chạy lần nào | macro `external_source_is_empty()` |
+| `Cannot alter entry ... because there are entries that depend on it` | Bảng sót từ lần chạy hỏng trước, không phải lỗi code | drop rồi build lại |
+| DAG 40 `prepare` báo *"bảng chưa tồn tại"* dù DAG 20 vừa PASS=7 | dbt ghép `<target>_<custom>` → tạo `main_marts.*`, còn `feature_spec.yml` khai `marts.*` | macro `generate_schema_name()` |
+
+Lỗi cuối đáng chú ý nhất: thông báo của nó chỉ thẳng vào việc **vừa mới làm
+xong** (*"Chạy DAG 20_build_features_dbt trước"*), nên rất dễ dẫn người đọc đi
+sai hướng. Bắt tay DAG 20 → DAG 40 chưa từng hoạt động trước lần chạy này.
+
+---
+
+## 3b. Hợp đồng API và hợp đồng model
+
+`[MEASURED]` `/decide` và `/decide/batch` từng cho **hai score khác nhau cho
+cùng một user**: `-0.128802` và `+0.003643`.
+
+Nguyên nhân không nằm ở endpoint mà ở chỗ **hai tầng mặc định chồng lên nhau**:
+
+```
+spec.merge()              dien 0.0 cho cot thieu   (feature_spec.yml)
+feature_contract._num()   dien TRUNG VI cho cot thieu
+```
+
+0.0 là một giá trị **có mặt**, nên nó che mất trung vị của hợp đồng. Đo được
+**28/55 cột chung lệch nhau** — `f1` spec 0.0 vs trung vị `172.0`, `f2` 0.0 vs
+`166.0`. Mọi user cache-miss đều bị chấm trên vector nằm ngoài miền huấn luyện.
+
+Cách sửa: `_build_model_row()` trong [app.py](../src/lzd_pipeline/serving/app.py)
+là **đường duy nhất** dựng vector, dùng chung cho cả hai endpoint, và chỉ đưa
+vào model những giá trị **thực sự có** — cột thiếu để hợp đồng tự điền.
+
+### `realtime_applied` — sự thật về event
+
+Model 76 cột của notebook **không có ô nào cho `rt_*`**. Gửi
+`rt_order_1h=9, rt_gmv_1h=500` vào `context` thì score không đổi một chữ số,
+trong khi `features_missing` lại giảm 62→60 — trông y như event đã có tác dụng.
+
+`realtime_applied` đếm số tín hiệu realtime **thực sự vào được model**:
+
+| Model | cột | `realtime_applied` khả dĩ |
+|---|---|---|
+| notebook (registry v1) | 76 = 55 batch + 7 `fe_*` + 14 mặc định | **luôn 0** |
+| `train.py` | 62 = 55 batch + 7 `rt_*` | tới 7 |
+
+Toàn bộ hạ tầng realtime (Kafka → consumer → Redis overlay → `context`) hiện
+**không ảnh hưởng tới quyết định**. Đó là lý do sâu xa để có `train.py`, chứ
+không phải chỉ để repo tự train được.
+
+`context` cũng đã được validate: khóa lạ trả **422** kèm danh sách khóa sai,
+thay vì 200 OK rồi bỏ qua im lặng.
 
 ---
 
@@ -289,14 +379,44 @@ Bốn tính chất được thiết kế có chủ đích: consistency (validate
 freshness (version theo ngày), idempotency (HSET + shard marker), fault tolerance
 (shard độc lập, publish atomic ở bước cuối).
 
-### 5.4 `training/` — khung, chưa có model thật
+### 5.4 `training/` — sáu module, không còn khung
 
-`dataset.py` đọc `marts.training_dataset`; `feature_columns(spec)` định nghĩa
-**thứ tự cột dùng chung cho train và serve** — đây là điểm chống skew.
-`split_xyt()` trả `(X, y, treatment)`.
+| Module | Vai trò |
+|---|---|
+| `uplift.py` | DR-Learner + LightGBM, thước đo Qini/AUUC — port nguyên văn từ notebook |
+| `dataset.py` | đọc `marts.training_dataset` theo **cửa sổ tường minh** + `load_eval_holdout()` |
+| `train.py` | huấn luyện bản mới, log MLflow, đăng ký version kèm hợp đồng |
+| `contract.py` | sinh `feature_contract.json` cho model 62 cột do `train.py` tạo |
+| `register.py` | đưa artifact **đã chốt** từ notebook vào registry |
+| `promote.py` | ba cổng quyết định có đổi alias `Production` hay không |
 
-`train.py` là **khung cho teammate**: `build_model`, `fit_model`, `evaluate`,
-`predict_uplift`, `run_training`. Chưa có implementation model thật.
+`feature_columns(spec)` định nghĩa **thứ tự cột dùng chung cho train và serve** —
+điểm chống skew. `split_xyt()` trả `(X, y, treatment)`.
+
+★ **`train.py` và `register.py` không được gộp.** `register.py` đưa một artifact
+đã benchmark vào registry; `train.py` huấn luyện bản mới. Gộp lại thì không ai
+biết model đang chạy đến từ đâu.
+
+★ **Hai model ăn hai vector khác nhau** — sự thật về dữ liệu, không phải thứ để
+dùng nhất quán:
+
+```
+notebook  76 cot = 55 batch + 7 fe_* + 14 dien mac dinh
+train.py  62 cot = 55 batch + 7 rt_*  (khong co cot bu)
+```
+
+Siêu tham số thì khớp tuyệt đối (350 cây, lr `0.01777174904859463`, depth 4,
+`min_child_samples` 30, seed 42) và có 3 test đọc thẳng `metadata.json` canh
+không cho trôi. Nhưng **trùng siêu tham số không có nghĩa là trùng model**: khác
+không gian đặc trưng thì ra model khác.
+
+★ **Cửa sổ huấn luyện phải khớp hai nơi**: `training_window_weeks`
+(`dbt_project.yml`) và `TRAIN_WINDOW_WEEKS` (`train.py`). dbt chỉ giữ bấy nhiêu
+tuần trong bảng, nên đọc rộng hơn không được thêm dòng nào; đọc hẹp hơn thì âm
+thầm train trên ít hơn tưởng.
+
+Mỗi run log `dt_from`, `dt_to`, `n_train`, `holdout_version` vào MLflow params —
+trả lời được câu *"run này đã thấy dữ liệu gì"*, thứ mà trước đây không có.
 
 ### 5.5 `serving/` — inference API
 
@@ -314,9 +434,21 @@ FastAPI, 9 endpoint:
 | POST | `/admin/reload-model` | nạp model mới không cần restart |
 
 `model_loader.py` định nghĩa `UpliftModel` là **interface duy nhất** mà API phụ
-thuộc, cùng hai implementation: `StubModel` (để hệ thống chạy được trước khi có
-model) và `MlflowUpliftModel` (TODO). `is_stub()` được phơi ra để endpoint
-`/ready` và Grafana biết đang chạy stub.
+thuộc, cùng ba implementation nạp theo thứ tự:
+
+```
+1. MlflowUpliftModel    registry (artifact tren MinIO)   <- dang dung
+2. LightGBMUpliftModel  booster bundled trong models/
+3. StubModel            CUOI CUNG, luon kem canh bao
+```
+
+`is_stub()` được phơi ra vì nó là **tín hiệu duy nhất** phân biệt "model thật"
+với "score giả" từ bên ngoài — hai lỗi Docker từng làm chuỗi tụt xuống StubModel
+mà API vẫn xanh và `/decide` vẫn trả về số (xem §3).
+
+`decide_input.py` giữ toàn bộ logic dựng vector, **không import fastapi** — có
+chủ đích, vì `requirements-dev.txt` không cài fastapi nên logic nằm trong
+`app.py` sẽ không test được ở môi trường dev chuẩn.
 
 `inference_logger.py` đẩy log **ra khỏi đường request**: queue có giới hạn +
 worker thread + batch insert vào `ops.inference_log`. `log()` không bao giờ
@@ -687,7 +819,7 @@ Xem [README §13](../README.md). Ba file quan trọng nhất:
 | `00_bootstrap_lake` | manual | `create_schemas` → `seed_csv` → `verify_lake` → `next_steps` |
 | `10_ingest_stream_to_lake` | `@hourly` | `check_new_files` · `measure_ingestion_lag` · `compact_hour` · `dq_streaming_freshness` |
 | `20_build_features_dbt` | `0 1 * * *` | `dbt_debug` → `dbt_run` → `assert_spec_contract` → `dbt_test` → `publish_dbt_results` → `profile_features` |
-| `30_train_uplift_model` | `0 3 * * 1` | `check_training_data` → `train` → `promote_model` → `notify_serving` — **khung** |
+| `30_train_uplift_model` | `0 3 * * 1` | `check_training_data` → `train` → `promote_model` → `notify_serving` — paused khi tạo |
 | `40_sync_features_to_redis` | `30 1 * * *` | `prepare` → `sync_shard.expand(...)` → `summarize_shards` → `validate` → `activate` → [`cleanup`, `smoke_test_serving`] |
 | `50_data_quality` | `*/30 * * * *` | freshness · consistency · volume · streaming → `summarize` |
 | `60_reconstruction_e2e` | manual | `run_contract` (dry-run) |
@@ -703,6 +835,14 @@ Chi tiết vận hành:
 - `on_sync_failed` dùng `trigger_rule=ONE_FAILED` và nhận upstream từ **mọi** bước.
 - `publish_dbt_results` / `profile_features` dùng `ALL_DONE` để vẫn publish metric
   khi dbt test đỏ.
+- `30_train_uplift_model` **paused khi tạo** — lịch tuần chỉ chạy sau khi có người
+  bỏ pause, hoặc khi khai `AIRFLOW_UNPAUSE_DAGS=30_train_uplift_model` trong `.env`.
+- `promote_model` gọi `training/promote.py`, đổi alias `Production` chỉ khi qua
+  **cả ba cổng**: mọi `sanity_*` đúng · cùng `holdout_version` · `qini` cao hơn
+  bản đang giữ alias. Từ chối promote không làm đỏ DAG (model kém hơn là kết quả
+  bình thường); `notify_serving` bỏ qua reload khi alias không đổi.
+- Cổng `holdout_version` đứng **trước** cổng so `qini` có chủ đích: không so được
+  thì không được so, chứ không phải so rồi mới hỏi lại là có hợp lệ không.
 - Callback dùng chung: `lzd_utils/callbacks.py` → `ops.pipeline_run` + Pushgateway.
 
 Thứ tự chạy tay cho batch path: `00` → `20` → `40` → `50`.
@@ -721,10 +861,22 @@ Module chạy được bằng `python -m` (cần `PYTHONPATH=src`):
 | `python -m lzd_pipeline.features.spec` | in tóm tắt feature spec + ví dụ Redis key |
 | `python -m lzd_pipeline.ingestion.event_producer` | producer (container `event-producer`) |
 | `python -m lzd_pipeline.ingestion.stream_consumer` | consumer (container `stream-consumer`) |
-| `python -m lzd_pipeline.training.train` | training (khung) |
+| `python -m lzd_pipeline.reconstruction.track_ab_batch --limit N [--land DIR]` | Track A **+ B** trên user thật; `--land` đẩy Track B lên `raw/track_b_future/` |
+| `python -m lzd_pipeline.training.train --dt YYYY-MM-DD [--limit N] [--no-register]` | huấn luyện bản mới, log MLflow, đăng ký version |
+| `python -m lzd_pipeline.training.register` | đưa artifact notebook **đã chốt** vào registry |
+| `python -m lzd_pipeline.training.promote --run-id ID` | ba cổng → có/không đổi alias `Production` |
 
 `track_a_batch` **bắt buộc** chọn `--limit N` hoặc `--all`; không có default —
-`--all` trên 926,669 dòng sinh hàng chục triệu event.
+`--all` trên 926,669 dòng mất ~43 phút và sinh ~7.8 GB artifact / 17.3 triệu
+event (`[MEASURED]` ngoại suy từ 5,000 dòng = 14 s / 42 MB).
+
+Ba entry point reconstruction khác nhau ở phạm vi, dễ nhầm:
+
+| Entry point | User | Track |
+|---|---|---|
+| `e2e` | 1 target tổng hợp | A và B |
+| `track_a_batch` | thật, `--limit N` | chỉ A |
+| `track_ab_batch` | thật, `--limit N` | A và B |
 
 Wrapper: [`scripts/stack.ps1`](../scripts/stack.ps1) (Windows, ~20 lệnh:
 `doctor · init · build · up-core · up · up-all · down · reset · ps · status ·
@@ -735,7 +887,12 @@ và [`Makefile`](../Makefile) (bash/WSL, tập lệnh tương đương).
 
 ## 11. Test map & trạng thái xác minh
 
-**Chạy ngày 2026-08-14:** `python -m pytest tests/ -q` → **325 passed, 1 skipped**.
+**Chạy ngày 2026-08-16:** `.venv\Scripts\python -m pytest tests/ -q` → **342 passed,
+1 skipped** (2026-08-15: 332 · 2026-08-14: 325).
+
+⚠️ Phải chạy bằng **interpreter của `.venv`**. Dùng system Python thiếu
+`lightgbm` thì `test_uplift_model.py` skip cả module — mất luôn phép kiểm golden
+bit-for-bit, mà bộ test vẫn báo xanh.
 
 | File | Test | Kiểm gì |
 |---|---|---|
@@ -758,6 +915,8 @@ và [`Makefile`](../Makefile) (bash/WSL, tập lệnh tương đương).
 | `test_warehouse_bootstrap.py` | 9 | shell `biz.*` đúng cấu trúc VÀ rỗng một cách ồn ào |
 | `test_dbt_reconstruction_tags.py` | 5 | tag `reconstruction` khớp đúng tập model dùng source đó |
 | `test_snapshot.py` | 1 | snapshot writer sinh đủ artifact + manifest |
+| `test_training_contract.py` | 7 | hợp đồng do `train.py` sinh phải nạp được bằng loader của serving; thứ tự cột; mặc định là trung vị |
+| `test_decide_row.py` | 10 | ★ cột thiếu phải **vắng mặt** khỏi row để hợp đồng điền trung vị; `context` khoá lạ bị từ chối; model 76 cột không bao giờ nhận được realtime |
 
 Đặc điểm đáng chú ý của test suite:
 
