@@ -19,10 +19,14 @@ LABEL org.opencontainers.image.title="lzd-airflow" \
       org.opencontainers.image.description="Airflow + dbt-duckdb cho LZD uplift platform"
 
 USER root
-# curl: dung cho healthcheck cua webserver/scheduler.
-# Chi co the thoi - moi thu khac deu la wheel.
+# curl     : healthcheck cua webserver/scheduler.
+# libgomp1 : OpenMP runtime ma wheel LightGBM link dong toi. Khong co no thi
+#            `import lightgbm` do `OSError: libgomp.so.1`, tuc la DAG 30
+#            (train DRLearner) VA `training/register.py` deu chet ngay o buoc
+#            import — ca duong ML trong Airflow ngung hoat dong. ~150 KB.
+# Chi hai goi nay - moi thu khac deu la wheel.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl libgomp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

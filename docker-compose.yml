@@ -7,10 +7,18 @@
 #   Layer 4  ml          : mlflow + model registry (minio) + fastapi inference
 #   Layer 5  observe     : prometheus + grafana + loki + exporters + UIs
 #
-# Chay theo profile de khong phai bat het 1 luc:
-#   docker compose --profile core up -d          # ha tang bat buoc
-#   docker compose --profile core --profile obs up -d
+# CACH CHAY
+#   docker compose up -d           <- ca nen tang. Khong can .env, khong can
+#                                     build tay, khong can profile.
 #   docker compose --profile all up -d
+#                                  <- them event-producer + stream-consumer
+#                                     (traffic gia lap cho demo realtime)
+#
+# Moi bien duoi day deu co gia tri mac dinh chay duoc ngay. `.env` chi de
+# GHI DE (doi port, doi mat khau) — thieu no stack van len. Xem `.env.example`.
+#
+# Chi hai service realtime nam sau profile `stream`, vi chung ban event lien
+# tuc: bat mac dinh la dot CPU cua nguoi chi muon xem batch pipeline.
 # ==========================================================================
 
 name: ${COMPOSE_PROJECT_NAME:-lzd-uplift}
@@ -71,7 +79,10 @@ x-airflow-common: &airflow-common
     <<: *common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    # Khoa dev cong khai, co y de sau `:-`: thieu no Airflow khong khoi dong
+    # duoc, ma bat nguoi clone repo tu sinh khoa thi mat luon "up la chay".
+    # 🚫 Deploy that PHAI dat AIRFLOW_FERNET_KEY rieng trong .env.
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__PARALLELISM: "16"
     AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "8"
@@ -98,6 +109,9 @@ x-airflow-common: &airflow-common
     - ./config:/opt/project/config
     - ./sql:/opt/project/sql
     - ./data:/opt/project/data:ro
+    # `training/register.py` doc booster + hop dong tu day de dang ky vao
+    # MLflow Registry. `:ro` — DAG khong duoc sua artifact goc.
+    - ./models:/opt/project/models:ro
     - lakehouse:/opt/lakehouse
   user: "${AIRFLOW_UID:-50000}:0"
   logging: *default-logging
@@ -114,7 +128,6 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: lzd-postgres
-    profiles: ["core", "all"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lzd}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lzd_secret}
@@ -141,7 +154,6 @@ services:
   redis:
     image: redis:7.2-alpine
     container_name: lzd-redis
-    profiles: ["core", "all"]
     command: >
       redis-server
       --appendonly yes
@@ -169,7 +181,6 @@ services:
   minio:
     image: minio/minio:RELEASE.2024-10-13T13-34-11Z
     container_name: lzd-minio
-    profiles: ["core", "all"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -196,7 +207,6 @@ services:
   minio-init:
     image: minio/mc:RELEASE.2024-10-08T09-37-26Z
     container_name: lzd-minio-init
-    profiles: ["core", "all"]
     depends_on:
       minio:
         condition: service_healthy
@@ -216,7 +226,6 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: lzd-kafka
-    profiles: ["core", "all"]
     ports:
       - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
     environment:
@@ -259,7 +268,6 @@ services:
   kafka-init:
     image: confluentinc/cp-kafka:7.6.1
     container_name: lzd-kafka-init
-    profiles: ["core", "all"]
     depends_on:
       kafka:
         condition: service_healthy
@@ -274,7 +282,6 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
     container_name: lzd-kafka-ui
-    profiles: ["core", "obs", "all"]
     depends_on:
       kafka:
         condition: service_healthy
@@ -299,7 +306,6 @@ services:
   airflow-init:
     <<: *airflow-common
     container_name: lzd-airflow-init
-    profiles: ["core", "all"]
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
@@ -318,13 +324,21 @@ services:
         airflow connections add lzd_postgres --conn-uri \
           "postgresql://${POSTGRES_USER:-lzd}:${POSTGRES_PASSWORD:-lzd_secret}@postgres:5432/pipeline" || true
         airflow connections add lzd_redis --conn-type redis --conn-host redis --conn-port 6379 --conn-extra '{"db": 0}' || true
+        UNPAUSE="${AIRFLOW_UNPAUSE_DAGS:-none}"
+        if [ "$$UNPAUSE" != "none" ]; then
+          # `unpause` doc DagModel trong DB, ma luc nay scheduler chua chay lan
+          # nao nen bang con rong -> phai reserialize (parse dags/ ghi vao DB)
+          # truoc, neu khong se bao "Dag not found".
+          echo "[airflow-init] reserialize + unpause: $$UNPAUSE"
+          airflow dags reserialize || true
+          for d in $$UNPAUSE; do airflow dags unpause "$$d" || true; done
+        fi
         echo "[airflow-init] done."
     restart: "no"
 
   airflow-webserver:
     <<: *airflow-common
     container_name: lzd-airflow-webserver
-    profiles: ["core", "all"]
     command: webserver
     ports:
       - "${AIRFLOW_WEB_PORT:-8080}:8080"
@@ -349,7 +363,6 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     container_name: lzd-airflow-scheduler
-    profiles: ["core", "all"]
     command: scheduler
     # Scheduler chay ca task (LocalExecutor): dbt build + sync shard deu o day
     mem_limit: 2500m
@@ -460,7 +473,6 @@ services:
       dockerfile: docker/python-service/Dockerfile
     image: lzd/python-service:latest
     container_name: lzd-inference-api
-    profiles: ["serving", "all"]
     command: >
       uvicorn lzd_pipeline.serving.app:app
       --host 0.0.0.0 --port 8000 --workers ${INFERENCE_WORKERS:-1}
@@ -478,6 +490,15 @@ services:
     volumes:
       - ./src:/opt/project/src
       - ./config:/opt/project/config
+      # ★ BAT BUOC. `model_loader.LOCAL_MODEL_DIR` tro toi
+      # /opt/project/models/uplift_voucher — nhanh fallback "booster bundled".
+      # Thieu mount nay thi chuoi nap tut thang xuong StubModel, ma StubModel
+      # VAN tra ve score co ve hop ly => API chay xanh, /decide tra ve so, va
+      # khong ai biet dang phuc vu model gia. Da xay ra: xem `event=model_stub`
+      # voi ly do `FileNotFoundError: feature_contract.json`.
+      #
+      # `:ro` co y — serving khong bao gio duoc ghi vao artifact model.
+      - ./models:/opt/project/models:ro
       # CO Y KHONG mount `lakehouse` vao day: service serving khong duoc phep
       # cham vao file DuckDB. Chi can mo nham o che do ghi la khoa ca file va
       # lam chet dbt dang chay. Feature luc serve doc tu Redis, khong tu DuckDB.
@@ -504,7 +525,6 @@ services:
       dockerfile: docker/mlflow/Dockerfile
     image: lzd/mlflow:2.16.2
     container_name: lzd-mlflow
-    profiles: ["ml", "all"]
     command: >
       mlflow server
       --host 0.0.0.0 --port 5000
@@ -539,7 +559,6 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: lzd-prometheus
-    profiles: ["obs", "all"]
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -561,7 +580,6 @@ services:
   pushgateway:
     image: prom/pushgateway:v1.9.0
     container_name: lzd-pushgateway
-    profiles: ["obs", "all"]
     command: ["--persistence.file=/data/pushgateway.store"]
     ports:
       - "${PUSHGATEWAY_PORT:-9091}:9091"
@@ -577,7 +595,6 @@ services:
   statsd-exporter:
     image: prom/statsd-exporter:v0.27.1
     container_name: lzd-statsd-exporter
-    profiles: ["obs", "all"]
     command:
       - --statsd.mapping-config=/etc/statsd/mapping.yml
       - --statsd.listen-udp=:9125
@@ -594,7 +611,6 @@ services:
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
     container_name: lzd-redis-exporter
-    profiles: ["obs", "all"]
     environment:
       REDIS_ADDR: redis://redis:6379
       # Track truc tiep cac key quan trong cua feature store
@@ -613,7 +629,6 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: lzd-postgres-exporter
-    profiles: ["obs", "all"]
     environment:
       DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-lzd}:${POSTGRES_PASSWORD:-lzd_secret}@postgres:5432/pipeline?sslmode=disable
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/pg_exporter/queries.yml
@@ -632,7 +647,6 @@ services:
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.7.0
     container_name: lzd-kafka-exporter
-    profiles: ["obs", "all"]
     command: ["--kafka.server=kafka:9092", "--web.listen-address=:9308"]
     mem_limit: 128m
     depends_on:
@@ -647,7 +661,6 @@ services:
   loki:
     image: grafana/loki:3.1.1
     container_name: lzd-loki
-    profiles: ["obs", "all"]
     command: ["-config.file=/etc/loki/loki-config.yml"]
     ports:
       - "${LOKI_PORT:-3100}:3100"
@@ -665,7 +678,6 @@ services:
   promtail:
     image: grafana/promtail:3.1.1
     container_name: lzd-promtail
-    profiles: ["obs", "all"]
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     mem_limit: 256m
     volumes:
@@ -684,7 +696,6 @@ services:
   grafana:
     image: grafana/grafana:11.2.2
     container_name: lzd-grafana
-    profiles: ["obs", "all"]
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -715,7 +726,6 @@ services:
   redisinsight:
     image: redis/redisinsight:2.58
     container_name: lzd-redisinsight
-    profiles: ["obs", "all"]
     ports:
       - "${REDISINSIGHT_PORT:-5540}:5540"
     mem_limit: 512m

@@ -44,9 +44,22 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:${PATH}" \
     PYTHONPATH=/opt/project/src
 
-# Khong cai them apt package nao o runtime:
+# Runtime gan nhu khong can apt package nao:
 #   - healthcheck dung urllib cua Python thay vi curl
 #   - reaping process do `init: true` trong docker-compose lo
+#
+# NGOAI TRU `libgomp1`. Wheel cua LightGBM link dong toi OpenMP runtime, ma
+# `python:slim` khong co no. Thieu goi nay thi `import lightgbm` do
+#     OSError: libgomp.so.1: cannot open shared object file
+# va chuoi nap model tut xuong StubModel — API van xanh, /decide van tra ve
+# so, chi la so gia. Da xay ra that, xem `event=model_stub`.
+#
+# ~150 KB. Khong dung `libgomp1-*-dev`: runtime khong can header.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /opt/venv /opt/venv
 
 # Non-root ngay tu dau, va COPY --chown de khong sinh them layer trung file

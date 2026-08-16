@@ -1,10 +1,17 @@
 # Tuong duong scripts/stack.ps1 cho ai dung bash/WSL/Linux.
-.PHONY: help init build up up-all down reset ps status logs health test redis duckdb reconstruction track-a snapshot load-test
+#
+# Khong bat buoc dung Makefile nay: `docker compose up -d` la du.
+# Cac target duoi chi la loi tat + vai lenh tien ich.
+CORE_SERVICES = postgres redis minio minio-init kafka kafka-init \
+                airflow-init airflow-webserver airflow-scheduler mlflow inference-api
+
+.PHONY: help init build up up-core up-all down reset ps status logs health test redis duckdb reconstruction track-a snapshot load-test
 
 help:
-	@echo "make init      - tao .env + build image"
-	@echo "make up        - bat core + observability"
-	@echo "make up-all    - bat toan bo stack"
+	@echo "make up        - = docker compose up -d (ca nen tang)"
+	@echo "make up-core   - bo observability, chi ha tang + airflow + api"
+	@echo "make up-all    - them event-producer + stream-consumer"
+	@echo "make init      - tuy chon: tao .env de ghi de + build truoc"
 	@echo "make down      - dung (giu du lieu)"
 	@echo "make reset     - dung + xoa volume"
 	@echo "make status    - trang thai + link UI"
@@ -23,11 +30,21 @@ init:
 build:
 	docker compose --profile all build
 
+# Tren Linux, bind mount airflow/logs se do user trong container (uid 50000)
+# ghi vao; thu muc do host tao ra thuoc ve uid cua ban -> scheduler khong ghi
+# duoc log. Tao san + mo quyen group truoc khi up.
 up:
-	docker compose --profile core --profile obs up -d
+	@mkdir -p airflow/logs airflow/plugins && chmod -R g+w airflow/logs airflow/plugins 2>/dev/null || true
+	docker compose up -d
+	@$(MAKE) status
+
+up-core:
+	@mkdir -p airflow/logs airflow/plugins && chmod -R g+w airflow/logs airflow/plugins 2>/dev/null || true
+	docker compose up -d $(CORE_SERVICES)
 	@$(MAKE) status
 
 up-all:
+	@mkdir -p airflow/logs airflow/plugins && chmod -R g+w airflow/logs airflow/plugins 2>/dev/null || true
 	docker compose --profile all up -d
 	@$(MAKE) status
 

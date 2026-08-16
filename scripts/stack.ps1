@@ -2,12 +2,18 @@
 .SYNOPSIS
     Dieu khien stack LZD Uplift tren Windows.
 
+.DESCRIPTION
+    Khong bat buoc dung script nay. `docker compose up -d` la du — moi bien
+    trong compose deu co mac dinh, khong can .env, khong can build tay.
+    Script chi them: preflight TLS/registry, retry pull tuan tu, va cac lenh
+    tien ich (health, reconstruction, snapshot).
+
 .EXAMPLE
-    .\scripts\stack.ps1 init        # tao .env + build image (chua chay)
+    .\scripts\stack.ps1 up          # = docker compose up -d (ca nen tang)
+    .\scripts\stack.ps1 up-all      # them event-producer + stream-consumer
+    .\scripts\stack.ps1 up-core     # chi ha tang + airflow + api, bo observability
     .\scripts\stack.ps1 doctor      # chan doan Docker registry/proxy/CA
-    .\scripts\stack.ps1 up-core     # bat core toi thieu cho Airflow/reconstruction
-    .\scripts\stack.ps1 up          # bat core + observability
-    .\scripts\stack.ps1 up-all      # bat tat ca (them stream + serving + ml)
+    .\scripts\stack.ps1 init        # tuy chon: tao .env de ghi de + build truoc
     .\scripts\stack.ps1 status      # trang thai container + link UI
     .\scripts\stack.ps1 logs airflow-scheduler
     .\scripts\stack.ps1 health      # goi thu tung endpoint
@@ -31,6 +37,13 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+
+# Stack toi thieu cho ai khong muon bat 10 container observability.
+$CoreServices = @(
+    "postgres", "redis", "minio", "minio-init", "kafka", "kafka-init",
+    "airflow-init", "airflow-webserver", "airflow-scheduler",
+    "mlflow", "inference-api"
+)
 
 function Write-Section($text) {
     Write-Host ""
@@ -223,7 +236,7 @@ switch ($Command) {
     }
 
     "init" {
-        Write-Section "Tao .env"
+        Write-Section "Tao .env (tuy chon - chi de ghi de mac dinh)"
         if (-not (Test-Path ".env")) {
             Copy-Item ".env.example" ".env"
             Write-Host "  da tao .env tu .env.example" -ForegroundColor Green
@@ -259,14 +272,17 @@ switch ($Command) {
     }
 
     "up-core" {
-        Test-ImagesOrRegistry @("core")
-        Invoke-NativeChecked "docker" @("compose", "--profile", "core", "up", "-d") -DockerHint
+        # Compose khong co "profile tru di": muon bo observability thi phai
+        # goi ten service. Danh sach nay = stack mac dinh tru prometheus,
+        # grafana, loki, promtail, exporter va cac UI.
+        Test-ImagesOrRegistry @()
+        Invoke-NativeChecked "docker" (@("compose", "up", "-d") + $CoreServices) -DockerHint
         Show-Urls
     }
 
     "up" {
-        Test-ImagesOrRegistry @("core", "obs")
-        Invoke-NativeChecked "docker" @("compose", "--profile", "core", "--profile", "obs", "up", "-d") -DockerHint
+        Test-ImagesOrRegistry @()
+        Invoke-NativeChecked "docker" @("compose", "up", "-d") -DockerHint
         Show-Urls
     }
 
