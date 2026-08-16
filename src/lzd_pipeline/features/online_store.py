@@ -468,10 +468,42 @@ class OnlineFeatureStore:
         )
         return merged, missing, bool(batch_raw)
 
+    def mget_raw(
+        self, user_ids: Sequence[str], version: str | None = None
+    ) -> tuple[str | None, dict[str, tuple[dict[str, Any], dict[str, Any]]]]:
+        """Batch lookup tra ve gia tri THO: (version, {uid: (batch, realtime)}).
+
+        ★ VI SAO CAN BAN THO
+        ------------------------------------------------------------------
+        `mget_features()` tra ve ban da qua `spec.merge()`, tuc moi cot thieu
+        deu da bi dien 0.0. Duong suy luan KHONG duoc dung ban do: 0.0 la mot
+        gia tri CO MAT, no che mat gia tri mac dinh (trung vi) cua hop dong
+        model. 28/55 cot lech giua hai nguon — `f1` spec 0.0 vs trung vi 172.0.
+
+        Nen serving doc tho o day roi tu dung hang bang
+        `app._build_model_row()`.
+        """
+        version = version or self.get_active_version()
+        if not version:
+            return None, {uid: ({}, {}) for uid in user_ids}
+        pipe = self.r.pipeline(transaction=False)
+        for uid in user_ids:
+            pipe.hgetall(self.spec.batch_key(version, uid))
+            pipe.hgetall(self.spec.realtime_key(uid))
+        raw = pipe.execute()
+        out: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+        for idx, uid in enumerate(user_ids):
+            out[uid] = (raw[idx * 2] or {}, raw[idx * 2 + 1] or {})
+        return version, out
+
     def mget_features(
         self, user_ids: Sequence[str], version: str | None = None
     ) -> dict[str, dict[str, Any]]:
-        """Batch lookup cho nhieu user (dung cho scoring hang loat).
+        """Batch lookup cho nhieu user, tra ve ban DA MERGE (dien default spec).
+
+        🚫 KHONG dung ham nay cho duong suy luan — dung `mget_raw()`. Default
+        cua spec deu la 0.0 va se che mat trung vi cua hop dong model. Ham nay
+        danh cho DQ/validate, noi ta muon nhin dung hang ma spec mo ta.
 
         Doc active_version MOT lan roi dung cho ca lo -> toan bo lo cung mot
         phien ban feature, khong co chuyen nua lo v1 nua lo v2.

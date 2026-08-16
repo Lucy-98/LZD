@@ -44,6 +44,11 @@ from lzd_pipeline.common.metrics import (
 )
 from lzd_pipeline.features.online_store import OnlineFeatureStore
 from lzd_pipeline.features.spec import load_feature_spec
+from lzd_pipeline.serving.decide_input import (
+    ContextError,
+    build_model_row,
+    check_context,
+)
 from lzd_pipeline.serving.inference_logger import get_inference_logger
 from lzd_pipeline.serving.model_loader import get_model
 
@@ -102,7 +107,8 @@ def store() -> OnlineFeatureStore:
 # ===========================================================================
 class DecideRequest(BaseModel):
     user_id: str = Field(..., examples=["U0000123"])
-    # Cho phep client gui them tin hieu realtime chua kip qua Kafka
+    #: Tin hieu realtime chua kip qua Kafka. Khoa PHAI nam trong
+    #: `feature_spec.yml` — khoa la bi tu choi 422, xem `_check_context()`.
     context: dict[str, Any] = Field(default_factory=dict)
     debug: bool = False
 
@@ -115,13 +121,50 @@ class DecideResponse(BaseModel):
     feature_version: str | None
     model_version: str
     cache_hit: bool
+    #: So feature `feature_spec.yml` khai ma store KHONG cap duoc.
     features_missing: int
+    #: So cot model THUC SU nhan duoc gia tri that. Phan con lai model dien
+    #: bang mac dinh cua hop dong (trung vi tren train+val).
+    features_supplied: int
+    #: ★ So tin hieu realtime THUC SU vao duoc model.
+    #:
+    #: Bang 0 KHONG co nghia la client gui thieu — model 76 cot cua notebook
+    #: khong co o nao cho `rt_*`, nen realtime khong bao gio vao duoc no. Chi
+    #: model do `train.py` huan luyen (62 cot, co 7 cot rt_*) moi dung den.
+    #: Truong nay de cho su that do lo ra thay vi phai suy tu score.
+    realtime_applied: int
     latency_ms: float
     features: dict[str, Any] | None = None
 
 
 class BatchDecideRequest(BaseModel):
     user_ids: list[str]
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+# ===========================================================================
+# Dung hang dau vao model — logic nam o `serving/decide_input.py`, o day chi
+# dich loi sang HTTP.
+# ===========================================================================
+def _check_context(spec, context: dict[str, Any]) -> None:
+    try:
+        check_context(spec, context)
+    except ContextError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "context chua khoa khong co trong feature_spec.yml",
+                "unknown_keys": exc.unknown_keys,
+                "hint": "chi nhan ten feature khai trong feature_spec.yml, "
+                        "vd rt_events_1h, rt_order_1h",
+            },
+        ) from None
+
+
+def _build_model_row(
+    spec, model, batch_raw: dict, realtime: dict, context: dict
+) -> tuple[dict[str, Any], int, int, int]:
+    return build_model_row(spec, model.feature_order, batch_raw, realtime, context)
 
 
 # ===========================================================================
@@ -207,6 +250,7 @@ def decide(req: DecideRequest) -> DecideResponse:
     settings = get_settings()
     spec = load_feature_spec()
     model = get_model()
+    _check_context(spec, req.context)
     started = time.perf_counter()
 
     # ---- 1. Doc feature tu Redis --------------------------------------
@@ -226,11 +270,13 @@ def decide(req: DecideRequest) -> DecideResponse:
     cache_hit = bool(batch_raw)
     FEATURE_LOOKUP.labels(result="hit" if cache_hit else "miss").inc()
 
-    # ---- 2. Merge: batch <- realtime <- context tu client ---------------
+    # ---- 2. Dung hang dau vao model -------------------------------------
     # aggregate_realtime() gap cac o 5 phut thanh gia tri cua so 1 gio -
     # dung cong thuc ma dbt dung luc build training set.
     realtime = store().aggregate_realtime(rt_raw)
-    merged, missing = spec.merge(batch_raw, {**realtime, **req.context})
+    merged, missing, supplied, realtime_applied = _build_model_row(
+        spec, model, batch_raw, realtime, req.context
+    )
     FEATURES_MISSING.observe(missing)
 
     # ---- 3. Suy luan ---------------------------------------------------
@@ -278,7 +324,8 @@ def decide(req: DecideRequest) -> DecideResponse:
         extra={"event": "decision", "user_id": req.user_id, "decision": decision,
                "uplift_score": score, "feature_version": version,
                "model_version": model.version, "cache_hit": cache_hit,
-               "features_missing": missing, "latency_ms": latency_ms},
+               "features_missing": missing, "features_supplied": supplied,
+               "realtime_applied": realtime_applied, "latency_ms": latency_ms},
     )
 
     return DecideResponse(
@@ -290,6 +337,8 @@ def decide(req: DecideRequest) -> DecideResponse:
         model_version=model.version,
         cache_hit=cache_hit,
         features_missing=missing,
+        features_supplied=supplied,
+        realtime_applied=realtime_applied,
         latency_ms=latency_ms,
         features=merged if req.debug else None,
     )
@@ -297,11 +346,29 @@ def decide(req: DecideRequest) -> DecideResponse:
 
 @app.post("/decide/batch")
 def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
-    """Scoring hang loat - 1 pipeline Redis cho toan bo user."""
+    """Scoring hang loat - 1 pipeline Redis cho toan bo user.
+
+    Dung CHUNG `_build_model_row()` voi `/decide`. Truoc day hai endpoint
+    dung hai duong khac nhau va cho ra hai score khac nhau cho cung mot user
+    (do 0.0 vs trung vi) — mot khac biet khong ai co the giai thich tu ben
+    ngoai. Mot duong duy nhat thi chung khong the lech nua.
+    """
+    spec = load_feature_spec()
     model = get_model()
+    _check_context(spec, req.context)
     started = time.perf_counter()
-    features_map = store().mget_features(req.user_ids)
-    rows = [features_map[uid] for uid in req.user_ids]
+
+    version, raw_map = store().mget_raw(req.user_ids)
+    rows, per_user = [], []
+    for uid in req.user_ids:
+        batch_raw, rt_raw = raw_map[uid]
+        realtime = store().aggregate_realtime(rt_raw)
+        row, missing, supplied, rt_applied = _build_model_row(
+            spec, model, batch_raw, realtime, req.context
+        )
+        rows.append(row)
+        per_user.append((bool(batch_raw), missing, supplied, rt_applied))
+
     try:
         scores = model.predict_uplift(rows)
     except NotImplementedError:
@@ -309,11 +376,23 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
 
     threshold = get_settings().uplift_threshold
     results = []
-    for uid, score in zip(req.user_ids, scores):
+    for uid, score, (hit, missing, supplied, rt_applied) in zip(
+        req.user_ids, scores, per_user
+    ):
         decision = ("NO_DECISION" if score is None
                     else "SEND_VOUCHER" if score >= threshold else "NO_VOUCHER")
         INFERENCE_DECISIONS.labels(decision=decision).inc()
-        results.append({"user_id": uid, "uplift_score": score, "decision": decision})
+        FEATURES_MISSING.observe(missing)
+        FEATURE_LOOKUP.labels(result="hit" if hit else "miss").inc()
+        results.append({
+            "user_id": uid,
+            "uplift_score": score,
+            "decision": decision,
+            "cache_hit": hit,
+            "features_missing": missing,
+            "features_supplied": supplied,
+            "realtime_applied": rt_applied,
+        })
 
     latency = time.perf_counter() - started
     INFERENCE_LATENCY.observe(latency)
@@ -322,6 +401,7 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
         "count": len(results),
         "latency_ms": round(latency * 1000, 3),
         "per_user_ms": round(latency * 1000 / max(len(results), 1), 4),
+        "feature_version": version,
         "model_version": model.version,
         "results": results,
     }

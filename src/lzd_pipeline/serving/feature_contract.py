@@ -1,6 +1,15 @@
 """Hop dong dac trung cua model uplift — doc `models/uplift_voucher/feature_contract.json`.
 
-Model nhan **76 cot**, xep theo `thu_tu_dua_vao_mo_hinh`. Ba nguon:
+★ MODULE NAY PHUC VU HAI DANG HOP DONG
+--------------------------------------------------------------------------
+    76 cot   model tu notebook (artifact bundled) — mo ta ngay duoi day
+    62 cot   model do `train.py` huan luyen, sinh boi `training/contract.py`
+
+Ca hai deu di qua `load_contract()` va `build_matrix()` — do la ly do khong
+duoc hardcode con so 76 o bat ky dau trong duong suy luan.
+
+Hop dong bundled: model nhan **76 cot**, xep theo `thu_tu_dua_vao_mo_hinh`.
+Ba nguon:
 
     55  tu Redis           DE tinh va luu (dung bang scope fs_2026_08_v2)
      7  fe_* dan xuat      service TU TINH tu cot goc
@@ -206,12 +215,19 @@ def _validate(c: ModelFeatureContract, raw: Mapping[str, Any]) -> None:
             f"cot dan xuat lech: contract noi {sorted(declared)}, "
             f"doc duoc {sorted(c.derived_columns)}"
         )
-    # Cai dat cua `compute_derived` phai phu het cot dan xuat da khai bao.
+    # Cai dat cua `compute_derived` phai PHU HET cot dan xuat da khai bao.
+    #
+    # Chi kiem chieu "thieu", khong kiem "thua": model do `train.py` huan
+    # luyen an 62 cot doc thang tu store va KHONG dung cot fe_* nao, nen hop
+    # dong cua no khai bao 0 cot dan xuat. Doi hoi bang nhau se lam moi hop
+    # dong khong phai cua notebook deu bi tu choi. `build_row()` chi doc cot
+    # co trong hop dong, nen cai dat tinh du ra la vo hai.
     computed = set(compute_derived({}, c.defaults))
-    if computed != set(c.derived_columns):
+    uncomputable = set(c.derived_columns) - computed
+    if uncomputable:
         raise ContractError(
-            f"`compute_derived` khong khop hop dong: thieu "
-            f"{sorted(set(c.derived_columns) - computed)}, thua {sorted(computed - set(c.derived_columns))}"
+            f"hop dong khai bao cot dan xuat ma `compute_derived` khong tinh "
+            f"duoc: {sorted(uncomputable)}"
         )
 
 
