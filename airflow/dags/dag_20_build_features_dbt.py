@@ -54,9 +54,28 @@ def build_features_dbt():
     # dbt deps/run/test chay bang Bash de log cua dbt hien nguyen ven
     # trong Airflow UI (va tu do chay vao Loki).
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # `--connection` chu KHONG phai `dbt debug` tran.
+    #
+    # `dbt debug` tran kiem ca "required dependencies", trong do co `git`.
+    # Image Airflow khong cai git, nen check do do:
+    #     - git [ERROR]
+    #     1 check failed: Error from git --help: User does not have
+    #     permissions for this command: "git"
+    # va BashOperator thay exit code khac 0 -> dbt_debug fail -> ca DAG dung
+    # o buoc dau, du profiles.yml, adapter va ket noi DuckDB/MinIO deu OK.
+    #
+    # git chi can cho `dbt deps` keo package tu git. Repo nay KHONG co
+    # `dbt/packages.yml`, tuc la khong bao gio chay `dbt deps` — cai git vao
+    # image chi de lam vui long mot check khong lien quan la them ~50 MB cho
+    # thu khong ai dung.
+    #
+    # `--connection` kiem dung phan co y nghia: profiles.yml, dbt_project.yml,
+    # adapter, va ket noi that toi warehouse.
+    # ------------------------------------------------------------------
     dbt_debug = BashOperator(
         task_id="dbt_debug",
-        bash_command=f"cd {DBT_DIR} && dbt debug --no-version-check",
+        bash_command=f"cd {DBT_DIR} && dbt debug --connection --no-version-check",
         env=DBT_ENV,
         append_env=True,
         pool="duckdb_writer",

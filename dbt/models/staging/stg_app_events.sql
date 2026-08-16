@@ -5,9 +5,30 @@
 -- phia sau coi nhu exactly-once.
 {{ config(materialized='view') }}
 
+-- Lake co the con rong (stream chua chay lan nao). Xem
+-- `macros/external_source.sql`: DuckDB nem IO Error chu khong tra ve 0 dong,
+-- va no keo sap ca duong feature batch — thu khong can event nao.
 with source as (
 
+{% if external_source_is_empty('raw', 'app_events') %}
+    {{ typed_empty_relation({
+        'event_id':        'varchar',
+        'user_id':         'varchar',
+        'event_type':      'varchar',
+        'event_ts':        'double',
+        'ingested_at':     'double',
+        'session_id':      'varchar',
+        'platform':        'varchar',
+        'item_id':         'varchar',
+        'category_id':     'varchar',
+        'price':           'double',
+        'quantity':        'integer',
+        'kafka_partition': 'integer',
+        'kafka_offset':    'bigint'
+    }) }}
+{% else %}
     select * from {{ source('raw', 'app_events') }}
+{% endif %}
 
 ),
 

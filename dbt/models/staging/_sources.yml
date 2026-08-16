@@ -34,7 +34,17 @@ sources:
             description: "Epoch giay - thoi diem xay ra o client"
 
       - name: events_v2
-        description: "Event Track A/B co provenance, tach khoi app_events v1"
+        description: "Event Track A co provenance, tach khoi app_events v1"
+        # Tag `reconstruction` de `dbt test --exclude tag:reconstruction` (DAG
+        # 20) bo qua duoc. Prefix nay CHI ton tai sau khi Track A da land; khi
+        # chua co, DuckDB nem `IO Error: No files found` chu khong pass rong,
+        # nen 2 source test o duoi se lam do `dbt_test` moi ngay du chung
+        # khong lien quan gi toi duong feature production.
+        #
+        # 🚫 Track B KHONG ghi vao day. No co prefix rieng
+        # `raw/track_b_future/` va khong source dbt production nao doc —
+        # xem `sink.publish_track_b_to_lake()`.
+        tags: ["reconstruction"]
         meta:
           external_location: "s3://lakehouse/raw/events_v2/**/*.parquet"
         columns:
