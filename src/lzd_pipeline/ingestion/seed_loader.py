@@ -7,8 +7,13 @@ Dac diem dataset (DESCN - Lazada voucher distribution):
     data_id, label, is_treat, f0..f82
 
 Ta gan them:
-    user_id   : dan tu data_id (train_123 -> U0000123) de khop khong gian
-                user_id cua stream event -> feature batch + realtime gap nhau.
+    user_id   : dan tu data_id, tien to phu thuoc split
+                    train_123 -> U0000123   (trung khong gian voi stream event
+                                             => feature batch + realtime gap nhau)
+                    test_123  -> T0000123
+                🚫 KHONG duoc bo tien to train_/test_ khi sinh ID: hai file CSV
+                   danh so doc lap tu 0 nen se va cham va lam mat du lieu train.
+                   Xem giai thich day du trong `seed_split()`.
     split     : train | test
     dt        : ngay logic (partition)
     feature_ts: moc thoi gian snapshot (dung do freshness)
@@ -50,8 +55,33 @@ def load_csv_to_lake(
     sql = f"""
     COPY (
         SELECT
-            -- data_id: 'train_123' -> user_id 'U0000123'
-            'U' || lpad(regexp_extract(data_id, '\\d+'), 7, '0') AS user_id,
+            -- data_id -> user_id, TIEN TO PHU THUOC SPLIT:
+            --     train_123  ->  U0000123
+            --     test_123   ->  T0000123
+            --
+            -- ★ `[MEASURED]` Truoc day cong thuc la
+            --       'U' || lpad(regexp_extract(data_id, '\\d+'), 7, '0')
+            --   tuc chi lay CHU SO va vut bo tien to. Hai file CSV danh so
+            --   DOC LAP tu 0, nen `train_0` va `test_0` cung ra `U0000000` —
+            --   hai nguoi khac nhau, mot ID.
+            --
+            --   `stg_user_snapshot` khu trung theo `(user_id, dt)` giu ban
+            --   `feature_ts` moi nhat. test.parquet ghi sau nen thang, va
+            --   181,669 dong TRAIN bi xoa am tham:
+            --
+            --       381,669 dong nap vao  ->  200,000 user_id
+            --       train con lai 18,331 / 200,000  (mat 91.7%)
+            --
+            --   Model train tren phan sot lai cho qini 0.000128, gan nhu
+            --   khong hoc duoc gi. Khong co canh bao nao: DAG xanh, dbt
+            --   xanh, chi co con so cuoi cung la sai.
+            --
+            -- ★ Train giu tien to 'U' vi `event_producer` sinh `U{{idx:07d}}`
+            --   — trung khong gian LA CO Y, de realtime overlay join duoc voi
+            --   feature batch. Test khong can join voi stream (no chi dung de
+            --   danh gia) nen doi sang 'T' la an toan.
+            CASE WHEN lower(data_id) LIKE 'test%' THEN 'T' ELSE 'U' END
+                || lpad(regexp_extract(data_id, '\\d+'), 7, '0') AS user_id,
             data_id,
             '{split}'            AS split,
             DATE '{dt}'          AS dt,
