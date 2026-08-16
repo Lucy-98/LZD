@@ -7,8 +7,38 @@
 --
 -- Vi dung CHUNG nguon feature voi serving, model train tren dung nhung con so
 -- ma no se nhin thay luc chay that.
+--
+-- ★ CHI `split='train'`. Tap danh gia nam o `eval_holdout` va DONG BANG —
+--   xem docstring cua model do de biet vi sao.
+--
+-- ★ INCREMENTAL, KHONG PHAI TABLE
+-- ---------------------------------------------------------------------------
+-- Truoc day: `materialized='table'` + loc `dt = run_date`. Nghia la moi lan
+-- dbt chay la THAY SACH bang, va bang chi con dung MOT ngay. DAG 30 thi doc
+-- ca bang, nen "train hang tuan tren toan bo du lieu" thuc te la train tren
+-- mot ngay. Lich su van con trong lake (partition theo `dt`), nhung bang
+-- training thi khong giu.
+--
+-- Te hon nua: noi dung bang phu thuoc AM THAM vao viec dbt duoc goi the nao
+-- lan cuoi. Hai lan train co the thay hai luong du lieu khac han ma khong co
+-- gi ghi lai su khac biet do.
+--
+-- Gio bang cong don theo `dt`, va `train.py` phai NOI RO cua so no doc
+-- (`dt_from`/`dt_to`, log vao MLflow params).
+--
+-- ★ CUA SO TRUOT, KHONG PHAI TOAN BO LICH SU
+-- ---------------------------------------------------------------------------
+-- `training_window_weeks` trong `dbt_project.yml`. Hanh vi mua sam troi theo
+-- mua — du lieu hai nam truoc khong mo ta khach hang thang nay, ma con lam
+-- bang phinh vo han. Dong qua han bi xoa o cuoi file.
 -- ============================================================================
-{{ config(materialized='table') }}
+{{ config(
+    materialized='incremental',
+    unique_key=['user_id', 'dt'],
+    incremental_strategy='delete+insert'
+) }}
+
+{%- set window_weeks = var('training_window_weeks') | int -%}
 
 with serving as (
 
@@ -26,8 +56,10 @@ labels as (
 
     select user_id, dt, split, label, is_treat
     from {{ ref('stg_user_snapshot') }}
+    -- 🚫 Tap danh gia KHONG duoc lan vao day.
+    where split = 'train'
     {% if var('run_date') != '1970-01-01' %}
-    where dt = date '{{ var("run_date") }}'
+      and dt = date '{{ var("run_date") }}'
     {% endif %}
 
 )
@@ -53,3 +85,13 @@ left join realtime r
        on r.user_id = s.user_id and r.dt = s.dt
 inner join labels l
        on l.user_id = s.user_id and l.dt = s.dt
+
+{% if is_incremental() %}
+-- Cua so truot: bo dong cu hon `training_window_weeks` tinh tu ngay moi nhat
+-- CO TRONG BANG (khong phai `now()`) — de ket qua tai lap duoc khi chay lai
+-- tren du lieu cu.
+where s.dt > (
+    select coalesce(max(dt), date '1970-01-01') - interval '{{ window_weeks }} weeks'
+    from {{ this }}
+)
+{% endif %}

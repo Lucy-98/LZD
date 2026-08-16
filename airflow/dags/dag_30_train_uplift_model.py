@@ -1,11 +1,31 @@
-"""DAG 30 - TRAINING (KHUNG CHO TEAMMATE).
+"""DAG 30 - TRAINING. Chay 03:00 thu Hai hang tuan.
 
-Duong ong da noi day du: doc training_dataset -> train -> log MLflow ->
-dang ky model -> bao cho inference-api nap lai. Chi thieu phan model that
-(xem `src/lzd_pipeline/training/train.py`, cac ham danh dau TODO(model)).
+    kiem du lieu -> train -> promote co dieu kien -> bao API nap lai
 
-DAG dang o trang thai `is_paused_upon_creation=True`. Khi teammate dien xong
-3 ham TODO, bo pause la chay duoc ngay.
+Moi buoc deu that, khong con cho gi nua:
+
+    check_training_data   doc mart, tu choi neu thieu treated/control
+    train                 `training/train.py` -> DRLearner, log MLflow,
+                          dang ky version + `feature_contract.json`
+    promote_model         `training/promote.py` -> chi doi alias Production
+                          khi qua tu kiem VA hon `qini` cua ban dang chay
+    notify_serving        POST /admin/reload-model
+
+★ DAG NAY PAUSED KHI TAO RA (`is_paused_upon_creation=True`)
+--------------------------------------------------------------------------
+Lich tuan chi bat dau chay sau khi co nguoi bo pause — chu y la mot lan
+train doc het training mart, khong phai viec nen tu khoi dong tren may cua
+nguoi vua clone repo ve. Bat tu dong bang bien moi truong:
+
+    AIRFLOW_UNPAUSE_DAGS=30_train_uplift_model      # trong .env
+
+★ MODEL O DAY KHONG THAY THE MODEL NOTEBOOK MOT CACH TU DONG
+--------------------------------------------------------------------------
+Hai model an hai vector khac nhau (62 cot vs 76 cot — xem
+`training/contract.py`). `promote_model` se KHONG doi alias khi ban dang
+chay khong co metric `qini` de so, ma model dang ky tu notebook bang
+`register.py` chinh la truong hop do. Muon chuyen han sang model train
+trong repo thi phai quyet dinh bang tay, sau khi benchmark.
 """
 from __future__ import annotations
 
@@ -20,7 +40,7 @@ DOC = __doc__
 
 @dag(
     dag_id="30_train_uplift_model",
-    description="[KHUNG] Train uplift model + dang ky vao MLflow Registry",
+    description="Train uplift model hang tuan + promote co dieu kien vao MLflow Registry",
     schedule="0 3 * * 1",                     # 03:00 thu Hai hang tuan
     start_date=pendulum.datetime(2026, 8, 1, tz="Asia/Ho_Chi_Minh"),
     catchup=False,
@@ -77,45 +97,37 @@ def train_uplift_model():
 
     @task(execution_timeout=pendulum.duration(hours=3))
     def train(stats: dict, **context) -> dict:
-        """>>> TODO(model): ham nay se chay khi teammate dien xong train.py <<<"""
-        from lzd_pipeline.common.logging_setup import get_logger
+        """DRLearner + LightGBM, danh gia tren split='test'. Xem `train.py`."""
         from lzd_pipeline.training.train import run_training
 
-        log = get_logger(__name__)
         params = context["params"]
-        try:
-            return run_training(
-                dt=context["ds"],
-                sample_limit=int(params["sample_limit"]) or None,
-                register=bool(params["register_model"]),
-            )
-        except NotImplementedError as exc:
-            log.warning(
-                "phan model chua duoc trien khai - bo qua buoc train",
-                extra={"event": "train_not_implemented", "detail": str(exc)},
-            )
-            # Skip thay vi fail: DAG con lai van chay duoc de demo duong ong
-            from airflow.exceptions import AirflowSkipException
-
-            raise AirflowSkipException(
-                "train.py chua co model (TODO(model)). Dien xong roi bo pause DAG nay."
-            )
+        return run_training(
+            dt=context["ds"],
+            sample_limit=int(params["sample_limit"]) or None,
+            register=bool(params["register_model"]),
+        )
 
     @task
     def promote_model(result: dict) -> dict:
-        """TODO(model): dat alias Production cho model version vua train.
+        """Doi alias Production — chi khi model moi qua tu kiem VA hon ban cu.
 
-        Goi y:
-            client = MlflowClient()
-            client.set_registered_model_alias(name, "Production", version)
-        Nen co dieu kien: chi promote neu AUUC > model dang chay.
+        Tu choi promote KHONG phai loi: train ra model kem hon la chuyen binh
+        thuong. Bao cao quyet dinh nam trong log va trong XCom tra ve.
         """
         from lzd_pipeline.common.logging_setup import get_logger
+        from lzd_pipeline.training.promote import promote_if_better
 
         log = get_logger(__name__)
-        log.info("cho teammate dien promote_model",
-                 extra={"event": "promote_placeholder", "run_id": result.get("run_id")})
-        return result
+        run_id = result.get("run_id")
+        if not result.get("artifact_uri"):
+            # Chay voi register_model=False (che do thu) -> khong co version
+            # nao trong registry de gan alias.
+            log.info("bo qua promote: run nay khong dang ky model",
+                     extra={"event": "promote_skipped", "run_id": run_id})
+            return {**result, "promotion": {"promoted": False,
+                                            "reason": "register_model=False"}}
+
+        return {**result, "promotion": promote_if_better(run_id)}
 
     @task
     def notify_serving(result: dict) -> dict:
@@ -126,6 +138,15 @@ def train_uplift_model():
         from lzd_pipeline.common.logging_setup import get_logger
 
         log = get_logger(__name__)
+        promotion = result.get("promotion") or {}
+        if not promotion.get("promoted"):
+            # Alias khong doi => nap lai chi lam API doc lai dung model no dang
+            # giu. Bo qua de khong dung den serving ma chang duoc gi.
+            log.info("bo qua reload: alias Production khong doi",
+                     extra={"event": "model_reload_skipped",
+                            "reason": promotion.get("reason", "")})
+            return {"reloaded": False, "reason": promotion.get("reason", "")}
+
         url = "http://inference-api:8000/admin/reload-model"
         try:
             req = urllib.request.Request(url, method="POST", data=b"{}",

@@ -21,6 +21,14 @@ file nay train tren dung tap cot ma `feature_spec.yml` khai bao.
 🚫 Dung `register.py` de dua model da chot vao registry. Dung `train.py` de
    huan luyen ban moi. Gop hai viec lai se lam khong ai biet model dang chay
    den tu dau.
+
+★ RUN NAY PHUC VU DUOC — NHUNG KHONG TU DONG THAY MODEL CU
+--------------------------------------------------------------------------
+Moi run dang ky deu kem `feature_contract.json` mo ta dung 62 cot no an
+(`training/contract.py`), nen `MlflowUpliftModel` nap duoc thang tu registry.
+Con viec no CO duoc phuc vu hay khong la quyet dinh rieng cua
+`training/promote.py`: alias `Production` chi doi khi qua tu kiem va hon
+`qini` cua ban dang chay.
 """
 from __future__ import annotations
 
@@ -34,7 +42,7 @@ from typing import Any
 from lzd_pipeline.common.config import get_settings
 from lzd_pipeline.common.logging_setup import configure_logging, get_logger
 from lzd_pipeline.features.spec import load_feature_spec
-from lzd_pipeline.training import dataset as ds
+from lzd_pipeline.training import contract, dataset as ds
 
 log = get_logger(__name__)
 
@@ -109,11 +117,18 @@ def predict_uplift(model, x):
 # ===========================================================================
 # Duong ong huan luyen - DA HOAN CHINH, khong can sua
 # ===========================================================================
+#: Dai cua so huan luyen, PHAI khop `training_window_weeks` trong
+#: `dbt_project.yml` — dbt chi giu bay nhieu tuan trong bang, doc rong hon
+#: cung khong co them dong nao.
+TRAIN_WINDOW_WEEKS = 12
+
+
 def run_training(
     dt: str,
     params: dict[str, Any] | None = None,
     sample_limit: int | None = None,
     register: bool = True,
+    window_weeks: int = TRAIN_WINDOW_WEEKS,
 ) -> dict[str, Any]:
     import mlflow
 
@@ -131,8 +146,17 @@ def run_training(
     started = time.time()
     with mlflow.start_run(run_name=f"uplift-{dt}") as run:
         # -------- 1. Du lieu -------------------------------------------
-        train_df = ds.load_training_frame(split="train", limit=sample_limit, spec=spec)
-        test_df = ds.load_training_frame(split="test", limit=sample_limit, spec=spec)
+        # Cua so TUONG MINH. Doc ca bang thi luong du lieu phu thuoc am tham
+        # vao viec dbt duoc goi the nao lan cuoi — hai run co the thay hai
+        # luong khac han ma params nhin y het.
+        dt_from, dt_to = ds.training_window(dt, window_weeks)
+        train_df = ds.load_training_frame(
+            split="train", dt_from=dt_from, dt_to=dt_to,
+            limit=sample_limit, spec=spec,
+        )
+        # Danh gia tren tap DONG BANG, khong phai `split='test'` cua bang
+        # training. Xem `dbt/models/marts/eval_holdout.sql`.
+        test_df, holdout_version = ds.load_eval_holdout(limit=sample_limit, spec=spec)
         stats = ds.dataset_stats(train_df, spec)
 
         mlflow.log_params({
@@ -142,7 +166,15 @@ def run_training(
             "propensity_alpha": E_ALPHA,
             "feature_spec_version": spec.version,
             "n_features": len(ds.feature_columns(spec)),
+            # ★ Bon truong duoi day tra loi cau "run nay da thay du lieu gi".
+            # Thieu chung thi hai run khac nhau ve du lieu van nhin giong het
+            # nhau trong MLflow.
+            "train_window_weeks": window_weeks,
+            "dt_from": dt_from,
+            "dt_to": dt_to,
             "n_train": len(train_df),
+            # `promote.py` TU CHOI so hai run khac holdout_version.
+            "holdout_version": holdout_version,
             "n_test": len(test_df),
         })
         mlflow.log_metrics({f"data_{k}": v for k, v in stats.items()})
@@ -162,8 +194,9 @@ def run_training(
 
         model = build_model(params)
         model = fit_model(model, x_tr, y_tr, t_tr)
-        # Danh gia tren split='test' — day DUNG la cong dung cua no: tai san
-        # danh gia RCT. 🚫 Khong duoc dung no de chon sieu tham so.
+        # Danh gia tren tap RCT DONG BANG. 🚫 Khong duoc dung no de chon sieu
+        # tham so, va khong duoc de no lon len theo tung tuan — `promote.py`
+        # so qini giua cac run, phep so do chi co nghia tren cung mot tap.
         metrics = evaluate(model, x_te, y_te, t_te)
 
         # -------- 3. Log & dang ky -------------------------------------
@@ -179,12 +212,25 @@ def run_training(
             # cung phien ban Python (da do: nap ban 3.10 bang 3.14 thi do).
             # Cung dinh dang => model tu `train.py` va model tu `register.py`
             # thay the duoc cho nhau.
+            #
+            # ★ BOOSTER + HOP DONG PHAI CUNG MOT `artifact_path`.
+            # `MlflowUpliftModel.load()` tai ca hai tu cung run. Thieu hop dong
+            # thi no nem loi va API tut ve booster bundled — DAG van xanh, model
+            # moi khong bao gio duoc phuc vu.
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmp:
-                booster_path = Path(tmp) / "model_booster.txt"
-                booster_path.write_text(model.booster_text(), encoding="utf-8")
-                mlflow.log_artifact(str(booster_path), artifact_path="model")
+                (Path(tmp) / "model_booster.txt").write_text(
+                    model.booster_text(), encoding="utf-8")
+                contract.write_contract(
+                    contract.build_contract(
+                        train_df, spec,
+                        version=f"{dt}-{run.info.run_id[:8]}",
+                        run_id=run.info.run_id,
+                    ),
+                    tmp,
+                )
+                mlflow.log_artifacts(tmp, artifact_path="model")
 
             mlflow.register_model(
                 model_uri=f"runs:/{run.info.run_id}/model", name=MODEL_NAME)
@@ -200,6 +246,9 @@ def run_training(
             "artifact_uri": artifact_uri,
             "metrics": metrics,
             "data_stats": stats,
+            "train_window": {"dt_from": dt_from, "dt_to": dt_to,
+                             "weeks": window_weeks, "n_train": len(train_df)},
+            "holdout_version": holdout_version,
         }
 
 

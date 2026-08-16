@@ -16,6 +16,22 @@ clean-targets: ["target", "dbt_packages"]
 vars:
   # Ngay logic - Airflow truyen vao bang --vars '{"run_date": "2026-08-05"}'
   run_date: "1970-01-01"
+
+  # ── TAP DANH GIA DONG BANG ──────────────────────────────────────────────
+  # `eval_holdout` loc theo `holdout_dt`, KHONG theo `run_date`. Chay dbt bao
+  # nhieu lan cung ra dung bay nhieu dong.
+  #
+  # 🚫 Doi hai bien nay = moi so lieu lich su khong con so sanh duoc voi so
+  #    lieu sau do. `promote.py` tu choi so hai run khac `holdout_version`,
+  #    nen viec doi khong the xay ra am tham — nhung van phai la quyet dinh
+  #    co chu dich, khong phai buoc bao tri.
+  holdout_dt: "2026-08-05"
+  holdout_version: "h_20260805"
+
+  # Cua so truot cua `training_dataset`. Hanh vi mua sam troi theo mua nen
+  # du lieu qua cu vua khong mo ta khach hang hien tai, vua lam bang phinh
+  # vo han.
+  training_window_weeks: 12
   # Cua so tinh feature realtime (giay) - PHAI khop voi TTL overlay tren Redis
   realtime_window_seconds: 3600
   # Cua so lich su cho feature batch
