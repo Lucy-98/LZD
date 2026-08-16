@@ -140,20 +140,36 @@ def run_end_to_end(
     onehot_rows: Sequence[tuple[str, int, str]],
     config: RuntimeConfig,
     behaviour: RuleBasedBehaviour | None = None,
+    outcome: engine.SolveOutcome | None = None,
 ) -> EndToEndResult:
-    """Execute both tracks without writing Kafka, Redis, MinIO, or Postgres."""
+    """Execute both tracks without writing Kafka, Redis, MinIO, or Postgres.
+
+    `outcome` cho phep TRUYEN VAO mot nghiem da tinh san.
+
+    🚫 Khong phai toi uu hoa. `engine.solve()` bat dau bang
+    `feasible_candidates()` — liet ke TOAN BO khong gian nghiem. Voi target
+    demo (`window_days=4`) thi liet ke duoc, va lo la co y: no cho phep doi
+    chieu voi argmin exhaustive. Voi mot hang that trong `full_trainset.csv`
+    (`window_days=30`) thi khong gian la median 10^9.5 candidate moi target —
+    khong phai cham, la KHONG BAO GIO XONG.
+
+    Nen duong du lieu that (`track_a_batch.reconstruct_row`) dung solver
+    constructive `solve_h1`, roi dua nghiem do vao day. Moi buoc con lai —
+    dbt marts, Gate A..F, CustomerState(T0), Track B — chay y het.
+    """
     target.verify()
     solver_config = config.solver_config()
     branch = build_branch(solver_config.semantic_branch)
     generation_run_id = f"{config.version}:{target.target_id}:{config.semantic_branch}"
 
-    outcome = engine.solve(
-        decoded,
-        branch,
-        target_id=target.target_id,
-        seed=solver_config.generation_seed,
-        reference_ts=target.reference_ts,
-    )
+    if outcome is None:
+        outcome = engine.solve(
+            decoded,
+            branch,
+            target_id=target.target_id,
+            seed=solver_config.generation_seed,
+            reference_ts=target.reference_ts,
+        )
 
     with duckdb.connect(":memory:") as con:
         runner.seed(

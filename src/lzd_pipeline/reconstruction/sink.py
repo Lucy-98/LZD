@@ -147,6 +147,72 @@ def publish_events_to_lake(
     return {"target": target, "rows": rows, "dt": dt}
 
 
+#: Track B ghi sang PREFIX RIENG, khong dung chung `raw/events_v2/` voi
+#: Track A. Xem `publish_track_b_to_lake()`.
+TRACK_B_PREFIX = ("raw", "track_b_future")
+TRACK_B_FILE = "track_b_events.csv"
+
+
+def publish_track_b_to_lake(
+    output_dir: Path,
+    dt: str,
+    *,
+    con: "duckdb.DuckDBPyConnection | None" = None,
+    target_uri: str | None = None,
+) -> dict[str, Any]:
+    """`track_b_events.csv` -> parquet tren MinIO, PREFIX RIENG.
+
+    ★ VI SAO KHONG DUNG CHUNG `raw/events_v2/` VOI TRACK A
+    ----------------------------------------------------------------------
+    Hai Track khac nhau ve LOAI SU THAT, khong phai ve nhan:
+
+        Track A  tai dung hanh vi DA XAY RA tu feature co that
+                 -> du lieu huan luyen chinh dang
+        Track B  hanh vi do `RuleBasedBehaviour` BIA RA tu CustomerState(T0)
+                 -> train tren no la day model hoc lai luat cua chinh no
+
+    Neu hai loai nam chung mot prefix, moi dbt model moi ai do viet deu phai
+    nho them `where source_type != 'SYNTHETIC'`. Quen mot lan la nhiem, ma
+    nhiem kieu nay KHONG CO TRIEU CHUNG: metric van dep, co khi con dep hon,
+    vi model dang duoc cham tren chinh hanh vi ma luat cua no sinh ra.
+
+    Prefix rieng thi khong co dong loc nao de quen. Khong model dbt production
+    nao doc `raw/track_b_future/` — muon dung phai khai bao source moi, tuc la
+    mot hanh dong co y thuc.
+
+    🚫 Cung vi vay: KHONG replay Track B vao topic `app.user.events.v1`. Topic
+       do chay thang vao `raw/app_events` -> `feat_user_realtime_pit` ->
+       `training_dataset`. Muon thu tai thi dung topic rieng.
+    """
+    source = _require(output_dir / TRACK_B_FILE)
+    target = target_uri or lake_uri(*TRACK_B_PREFIX, f"dt={dt}", "events.parquet")
+
+    sql = f"""
+    COPY (SELECT * FROM read_csv_auto('{source.as_posix()}', header=true))
+    TO '{target}' (FORMAT PARQUET, COMPRESSION SNAPPY)
+    """
+
+    def _run(c: "duckdb.DuckDBPyConnection") -> int:
+        c.execute(sql)
+        return int(c.execute(
+            f"SELECT count(*) FROM read_parquet('{target}')").fetchone()[0])
+
+    if con is not None:
+        rows = _run(con)
+    else:
+        from lzd_pipeline.common.clients import duckdb_writer
+
+        with duckdb_writer() as owned:
+            rows = _run(owned)
+
+    expected = _row_count(source)
+    if rows != expected:
+        raise SinkError(
+            f"lake nhan {rows} event Track B nhung artifact co {expected} — nap thieu"
+        )
+    return {"target": target, "rows": rows, "dt": dt, "track": "B"}
+
+
 # ===========================================================================
 # BUOC 3a · Postgres — control plane
 # ===========================================================================
