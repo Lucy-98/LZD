@@ -75,14 +75,24 @@ class SyncContext:
 # ===========================================================================
 # BUOC 1: chuan bi
 # ===========================================================================
-def prepare_sync(logical_date: str, shards: int | None = None) -> dict[str, Any]:
-    """Khoa so lieu offline (row count + checksum) va mo phien sync."""
+def prepare_sync(
+    logical_date: str,
+    shards: int | None = None,
+    *,
+    table: str | None = None,
+) -> dict[str, Any]:
+    """Khoa so lieu offline (row count + checksum) va mo phien sync.
+
+    `table=None` giu nguyen duong production trong feature_spec.yml. Demo
+    Track A truyen mart reconstruction do dbt vua materialize; moi buoc sync
+    con lai van dung chung engine validate/activate, khong co duong ghi tat.
+    """
     settings = get_settings()
     shards = shards or settings.feature_store.shards
     version = make_version(logical_date)
     dt = dt_of(logical_date)
 
-    offline = OfflineFeatureStore()
+    offline = OfflineFeatureStore(table=table)
     online = OnlineFeatureStore()
 
     if not offline.table_exists():
@@ -131,14 +141,20 @@ def prepare_sync(logical_date: str, shards: int | None = None) -> dict[str, Any]
 # ===========================================================================
 # BUOC 2: ghi tung shard (chay song song duoc)
 # ===========================================================================
-def sync_shard(logical_date: str, shard_id: int, shards: int | None = None) -> dict[str, Any]:
+def sync_shard(
+    logical_date: str,
+    shard_id: int,
+    shards: int | None = None,
+    *,
+    table: str | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
     shards = shards or settings.feature_store.shards
     version = make_version(logical_date)
     dt = dt_of(logical_date)
 
     online = OnlineFeatureStore()
-    offline = OfflineFeatureStore()
+    offline = OfflineFeatureStore(table=table)
     slog = get_logger(__name__, feature_version=version, shard_id=shard_id)
 
     # Idempotency: shard da xong o lan chay truoc -> bo qua ngay
@@ -186,7 +202,12 @@ def sync_pending_shards(logical_date: str, shards: int | None = None) -> dict[st
 # ===========================================================================
 # BUOC 3: validate (offline vs online) truoc khi cong bo
 # ===========================================================================
-def validate_sync(logical_date: str, sample_size: int | None = None) -> dict[str, Any]:
+def validate_sync(
+    logical_date: str,
+    sample_size: int | None = None,
+    *,
+    table: str | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
     sample_size = sample_size or settings.feature_store.validation_sample
     tolerance = float(load_feature_spec().quality.get("online_offline_tolerance", 1e-4))
@@ -194,7 +215,7 @@ def validate_sync(logical_date: str, sample_size: int | None = None) -> dict[str
     dt = dt_of(logical_date)
 
     online = OnlineFeatureStore()
-    offline = OfflineFeatureStore()
+    offline = OfflineFeatureStore(table=table)
     spec = online.spec
 
     online.set_version_status(version, status="VALIDATING")

@@ -191,7 +191,6 @@ def test_feature_order_la_55_cot_DE_phai_cap(model, contract):
 
 def test_version_mang_thong_tin_hop_dong(model):
     assert model.version == "DRLearner-20260813"
-    assert not model.is_stub
 
 
 def test_suy_luan_ra_so_thuc(model, contract):

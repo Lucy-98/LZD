@@ -1,7 +1,7 @@
 # Uplift Model — DRLearner, 55 cột từ feature store
 
-> **Trạng thái: ĐÃ LẮP + verify.** Model chạy trong `inference-api`, thay
-> `StubModel`. Dự đoán **trùng khít bit-for-bit** với bản gốc.
+> **Trạng thái: ĐÃ LẮP + verify.** Model được bake trong image
+> `lzd-reconstruction/python-service` và dự đoán **trùng khít bit-for-bit** với bản gốc.
 >
 > Nhãn: `[FACT]` `[MEASURED]` `[ASSUMPTION]` `[UNKNOWN]`
 
@@ -137,7 +137,7 @@ def predict_cate(self, X):
 | Dependency | cloudpickle + sklearn + lightgbm | lightgbm |
 | Trên Python 3.14 | ❌ `TypeError: code() argument 13 must be str, not int` | ✅ |
 
-Dùng `.pkl` sẽ buộc hạ `PYTHON_VERSION` của image `lzd/python-service` từ
+Dùng `.pkl` sẽ buộc hạ `PYTHON_VERSION` của image `lzd-reconstruction/python-service` từ
 3.11.10 xuống 3.10.9 — image đó dùng chung cho `event-producer`,
 `stream-consumer` **và** `inference-api`. Không có lý do trả giá đó cho một
 model cho kết quả y hệt.
@@ -149,20 +149,22 @@ model cho kết quả y hệt.
 | File | Vai trò |
 |---|---|
 | [serving/feature_contract.py](../src/lzd_pipeline/serving/feature_contract.py) | đọc hợp đồng, dựng vector 76 chiều, tính 7 `fe_*` |
-| [serving/model_loader.py](../src/lzd_pipeline/serving/model_loader.py) | `LightGBMUpliftModel` · `MlflowUpliftModel` · chuỗi nạp |
-| [training/register.py](../src/lzd_pipeline/training/register.py) | đăng ký artifact vào MLflow Registry |
+| [serving/model_loader.py](../src/lzd_pipeline/serving/model_loader.py) | nạp duy nhất `LightGBMUpliftModel` từ image |
+| [docker/python-service/Dockerfile](../docker/python-service/Dockerfile) | copy booster + contract + metadata vào image |
 | `models/uplift_voucher/` | booster · contract · metadata · golden predictions |
 
-### 4.1 · Chuỗi nạp model
+### 4.1 · Nguồn model duy nhất
 
 ```
-1. MlflowUpliftModel     MLflow Registry (artifact trên MinIO)   ← production
-2. LightGBMUpliftModel   booster bundled trong repo              ← chạy ngay
-3. StubModel             CUỐI CÙNG, luôn kèm cảnh báo
+Docker image
+└── /opt/project/models/uplift_voucher/
+    ├── model_booster.txt
+    ├── feature_contract.json
+    └── metadata.json
 ```
 
-`StubModel` giữ lại có chủ đích — nó cho phép đo trễ Redis / cache hit / lưu
-lượng trước khi registry sẵn sàng. 🚫 Score của nó **không** dùng để ra quyết định.
+Không có registry, volume host, hot-reload hay model giả. Thiếu/hỏng artifact
+làm `/ready` trả 503 để lỗi deploy lộ ra ngay.
 
 ### 4.2 · ⚠️ Thứ tự cột là một phần của hợp đồng
 
@@ -171,7 +173,7 @@ LightGBM nhận mảng số, không nhận tên. Đó là lý do:
 
 - thứ tự đọc từ **artifact**, không chép tay
 - `build_matrix()` là đường **duy nhất** để dựng đầu vào
-- booster và contract log **cùng một `artifact_path`** trong MLflow
+- booster và contract được **copy cùng một lần build** vào image
 
 ### 4.3 · Ghi chú kỹ thuật: `model_str` chứ không `model_file`
 
@@ -199,84 +201,36 @@ công thức dẫn xuất. Lệch thì test chỉ ra sai ở dòng nào.
 
 ```
 tests/serving/test_uplift_model.py     25 passed
-toàn bộ suite                         305 passed
+tests/serving/test_model_packaging.py  3 passed
 ```
 
 ---
 
-## 6. Huấn luyện trong repo
+## 6. Vòng đời artifact
 
-`[FACT]` 4 hook `TODO(model)` của `train.py` **đã nối**, vào
-[training/uplift.py](../src/lzd_pipeline/training/uplift.py) — bản **port
-nguyên văn** từ notebook, không viết lại.
+Repo runtime không huấn luyện lại model. Dataset nghiên cứu hữu hạn và không có
+dữ liệu quan sát mới chạy liên tục, nên một lịch retrain hằng tuần chỉ tạo thêm
+model version mà không có cơ sở dữ liệu mới.
 
-```
-build_model()     -> DRLearner(n_folds=5, params=BEST_PARAMS)
-fit_model()       -> model.fit(X, W, Y)      ← thứ tự: treatment TRƯỚC outcome
-evaluate()        -> qini / auuc / uplift@{10,20,30} + 4 phép tự kiểm
-predict_uplift()  -> model.predict_cate(X)
-```
+Quy trình đổi model là:
 
-### 6.1 · Vì sao port chứ không viết lại
+1. Chọn và benchmark model trong notebook.
+2. Xuất booster, feature contract và metadata vào `models/uplift_voucher/`.
+3. Chạy `tests/serving/test_uplift_model.py`, đặc biệt golden test bit-for-bit.
+4. Build và deploy image tag mới; rollback bằng image tag cũ.
 
-Model đang phục vụ sinh ra từ chính đoạn code này. Viết một phiên bản "tương
-đương" sẽ làm hai thứ trôi khỏi nhau mà không ai biết — huấn luyện lại trong
-repo sẽ cho model **khác** model đang chạy, trong khi cả hai đều tự gọi là
-DRLearner. Hằng số cũng bị khoá bằng test:
-
-| Hằng số | Giá trị | Nguồn |
-|---|---|---|
-| `E_ALPHA` | 0.071 | `best_params.json: xu_ly_overlap.propensity_alpha` (quy tắc Crump) |
-| `BEST_PARAMS` | 350 cây, lr 0.01777, depth 4, min_child 30 | `metadata.json: sieu_tham_so` |
-| `SEED` | 42 | notebook |
-
-### 6.2 · `train.py` ≠ `register.py`
-
-```
-register.py   đưa model ĐÃ CHỐT (từ notebook) vào registry
-train.py      huấn luyện bản MỚI trong repo
-```
-
-🚫 Gộp hai việc lại sẽ làm không ai biết model đang chạy đến từ đâu.
-
-`[FACT]` Hai đường **không thể** cho kết quả trùng khít: notebook train trên
-**76** đặc trưng (`train.parquet` + `val.parquet`, có 14 cột feature store
-không cấp), còn `train.py` train trên đúng tập cột `feature_spec.yml` khai báo.
-⇒ Model từ `train.py` là bản **mới**, phải benchmark lại trước khi thay.
-
-Cả hai log **booster text** chứ không phải pickle, nên artifact của chúng thay
-thế được cho nhau ở tầng serving.
-
-### 6.3 · Bốn phép tự kiểm thước đo
-
-Thước đo uplift rất dễ cài đặt sai mà vẫn cho ra số đẹp. `sanity_checks()` giữ
-lại bốn phép của notebook, và `evaluate()` log cảnh báo nếu phép nào trượt:
-
-`[MEASURED]` trên RCT mô phỏng 60,000 dòng:
-
-```
-qini(biết trước)   = +1.00000     ← đúng bằng 1
-qini(ngẫu nhiên)   = -0.01733     ← ≈ 0
-qini(tau thật)     = +0.12044
-qini(tau đảo dấu)  = -0.12046     ← đối xứng
-nhiễu ×0 → ×5      : 0.120 → 0.107 → 0.093 → 0.049 → 0.041   (giảm đơn điệu)
-```
-
-> ⚠️ Tính đơn điệu theo nhiễu đúng **trong kỳ vọng**, không đúng cho từng lần
-> bốc: đo được nhiễu nhỏ (0.5×sd) đôi khi làm Qini tăng nhẹ vì nhiễu lấy mẫu
-> lấn át. Test lấy trung bình nhiều lần bốc thay vì nới lỏng ngưỡng.
+Artifact được nạp một lần cho mỗi worker. Cùng một image digest vì vậy luôn cho
+cùng một model version; không có endpoint đổi model trong process.
 
 ---
 
-## 7. Chưa làm
+## 7. Giới hạn còn lại
 
 | Hạng mục | Ghi chú |
 |---|---|
-| **Đăng ký thật vào MLflow** | `register.py` viết xong, `--verify-only` chạy được, nhưng **chưa chạy với MLflow server thật** (host không dựng được stack) |
-| **Chạy `train.py` end-to-end** | `DRLearner.fit` cần `scikit-learn`, mà proxy mạng ở đây chặn cài. `test_fit_va_xuat_booster` **SKIP** chứ không pass — đường huấn luyện chưa được thực thi lần nào |
-| Cấp giá trị thật cho 9 cột one-hot | Xem §2.2 — cần đo lại Qini trước |
-| `f36` là T3 ngoài scope | `f36` cần mặc định `0.965`, nhưng nó **không** nằm trong 55 cột. Nếu sau này muốn cấp thật thì phải mở scope |
-| DAG đăng ký model | Chưa có; `register.py` mới chỉ có CLI |
+| Cấp giá trị thật cho 9 cột one-hot | Xem §2.2 — cần benchmark lại trong notebook trước |
+| `f36` là T3 ngoài scope | `f36` cần mặc định `0.965`, nhưng nó **không** nằm trong 55 cột |
+| Realtime chưa vào model | Artifact notebook không có `rt_*`; API báo rõ bằng `realtime_applied=0` |
 
 ---
 

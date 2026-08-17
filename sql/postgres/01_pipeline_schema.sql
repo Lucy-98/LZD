@@ -81,7 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_dq_result_time ON ops.dq_result (checked_at DESC)
 CREATE INDEX IF NOT EXISTS idx_dq_result_name ON ops.dq_result (check_name, checked_at DESC);
 
 -- ---------------------------------------------------------------------------
--- 4) Log inference request (mau) - de sau nay do training/serving skew that su
+-- 4) Log inference request (mau) - de do feature/model skew luc serving
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ops.inference_log (
     id                BIGSERIAL   PRIMARY KEY,

@@ -10,7 +10,7 @@
 #   - confidence must stay SYNTHETIC_ASSUMPTION unless the true source is known.
 #   - T3 aliases are latent snapshot signals; they are not reconstructed events.
 # ==========================================================================
-version: business_aliases_2026_08_v2
+version: business_aliases_2026_08_v3
 feature_set_id: fs_2026_08_v2
 scope: selected_55_features
 semantic_status: SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT
@@ -542,23 +542,23 @@ feature_aliases:
 
 track_a_event_aliases:
   EVT_F5:
-    alias: CFS_PRODUCT_BROWSE_INTENSITY
-    note: Witness event for f5; not a Lazada domain event.
+    alias: ASSUMED_PRODUCT_VIEWED
+    note: Presentation-only product view witness for f5; no product_id and not a proven Lazada event.
   EVT_F11:
-    alias: CFS_CART_CHECKOUT_INTENT
-    note: Witness event for f11; not a Lazada domain event.
+    alias: ASSUMED_ITEM_ADDED_TO_CART
+    note: Presentation-only add-to-cart witness for f11; no sku_id and not a proven Lazada event.
   EVT_F18:
-    alias: CFS_PROMO_TOUCH
-    note: Witness event for f18; not a Lazada domain event.
+    alias: ASSUMED_VOUCHER_VIEWED
+    note: Presentation-only voucher-view witness for f18; no issuance_id and not a proven Lazada event.
   EVT_F19:
-    alias: CFS_PROMO_REDEMPTION
-    note: Witness event for f19; not a Lazada domain event.
+    alias: ASSUMED_VOUCHER_REDEEMED
+    note: Presentation-only voucher-redemption witness for f19; no voucher/order FK and not a proven Lazada event.
   EVT_F30:
-    alias: CFS_ACTIVE_DAY_MARKER
-    note: H2 witness event for f30; not used by H1.
+    alias: ASSUMED_APP_ACTIVE_DAY
+    note: Presentation-only active-day marker for H2 f30; not used by H1 and not a raw domain event.
   EVT_ORDER_PAID:
-    alias: CFS_RECENCY_MARKER
-    note: Recency witness for f1/f2; do not read as proven ORDER_PAID semantic.
+    alias: ASSUMED_ORDER_PAID
+    note: Presentation-only order-paid recency witness for f1/f2; no order_id and not a proven Lazada event.
   EVT_SESSION_STARTED:
-    alias: CFS_ACTIVE_DAY_FILLER
-    note: H1 active-day filler; not a real SESSION_STARTED claim.
+    alias: ASSUMED_SESSION_STARTED
+    note: Presentation-only session witness used to fill H1 active days; not a proven Lazada event.

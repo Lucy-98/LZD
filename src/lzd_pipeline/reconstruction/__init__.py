@@ -8,7 +8,7 @@ trong dry-run co lap, dong thoi giu dung RECONSTRUCTION_SPEC.md.
 Gioi han tuyet doi (RECONSTRUCTION_SPEC.md §13.0):
 
     KHONG ghi production data       KHONG chay full dataset
-    KHONG ghi Redis/Kafka/MinIO     KHONG dang ky model alias Production
+    KHONG ghi Redis/Kafka/MinIO     KHONG ghi de artifact model trong image
 
 Ba invariant khong duoc vi pham (§14.1):
 

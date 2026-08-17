@@ -73,11 +73,9 @@ def build_model_row(
 
     Thu tu uu tien: context > realtime > batch (moi hon thang cu).
 
-    `realtime_applied` dem tin hieu realtime THUC SU vao duoc model. Bang 0
-    KHONG co nghia la client gui thieu — model 76 cot cua notebook khong co o
-    nao cho `rt_*`, nen realtime khong bao gio vao duoc no. Chi model do
-    `train.py` huan luyen (62 cot, 7 cot rt_*) moi dung den. Truong nay de
-    cho su that do lo ra thay vi phai suy tu score.
+    `realtime_applied` dem tin hieu realtime THUC SU vao duoc model. Artifact
+    notebook hien tai khong co cot `rt_*`, nen gia tri nay luon bang 0; API
+    noi ro dieu do thay vi de client suy nham tu `features_missing`.
     """
     context = context or {}
     row: dict[str, Any] = {}

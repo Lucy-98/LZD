@@ -89,7 +89,7 @@ FEATURES_MISSING = Histogram(
 )
 MODEL_INFO = Gauge(
     "lzd_model_info", "Model dang duoc load (gia tri luon = 1)",
-    ["model_name", "model_version", "stage"],
+    ["model_name", "model_version", "source"],
 )
 
 
@@ -127,7 +127,6 @@ BATCH_METRIC_NAMES = {
     "feature_validation_mismatch_ratio": "lzd_feature_validation_mismatch_ratio",
     "feature_versions_present": "lzd_feature_versions_present",
     "table_freshness_hours": "lzd_table_freshness_hours",
-    "training_treatment_ratio": "lzd_training_treatment_ratio",
 }
 
 

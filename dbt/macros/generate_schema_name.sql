@@ -8,8 +8,7 @@
    `main_marts`. Nhung phia Python doc theo ten khai trong
    `config/features/feature_spec.yml`:
 
-       serving_table:  marts.feat_user_selected_serving
-       training_table: marts.training_dataset
+       serving_table: marts.feat_user_selected_serving
 
    Hai ben goi hai ten khac nhau cho cung mot bang. Hau qua da gap: DAG 20
    build xong 7/7 model, DAG 40 van do ngay o buoc `prepare`:
@@ -22,8 +21,8 @@
 
    ★ VI SAO SUA O DAY CHU KHONG SUA `feature_spec.yml`
    -------------------------------------------------------------------------
-   `feature_spec.yml` la hop dong dung chung cho training va serving, va ten
-   `marts.*` cung la ten dung trong tai lieu, SQL viet tay va cac DAG. Doi mot
+   `feature_spec.yml` la hop dong cua feature store va serving, va ten `marts.*`
+   cung la ten dung trong tai lieu, SQL viet tay va cac DAG. Doi mot
    dong macro re hon doi hop dong o nhieu noi.
 
    Tien to `<target>_` sinh ra de nhieu nguoi chia nhau mot warehouse ma khong

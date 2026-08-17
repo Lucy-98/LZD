@@ -46,4 +46,4 @@ def test_snapshot_writer_emits_review_artifacts(tmp_path):
         track_a = list(csv.DictReader(fh))
     assert track_a
     assert {row["event_family"] for row in track_a} == {"CFS_WITNESS"}
-    assert "CFS_" in track_a[0]["event_alias"]
+    assert all(row["event_alias"].startswith("ASSUMED_") for row in track_a)

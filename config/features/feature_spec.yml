@@ -16,7 +16,6 @@ offline:
   # Bang mart trong DuckDB dung lam nguon sync. Scope nay chi gom 55 selected
   # features cua fs_2026_08_v2, khong sync f0..f82 day du len Redis.
   serving_table: marts.feat_user_selected_serving
-  training_table: marts.training_dataset
   selected_feature_set_id: fs_2026_08_v2
   # Cot moc thoi gian de kiem tra freshness
   event_time_column: feature_ts
@@ -276,8 +275,8 @@ batch_features:
 # --------------------------------------------------------------------------
 # 2) REALTIME FEATURES - stream consumer ghi Redis overlay sau khi persist
 #    raw event xuong MinIO/lake. TTL ngan. Inference merge: batch <- overlay.
-#    Ban cung tinh lai chinh xac cac cot nay trong dbt de train khong bi skew
-#    (point-in-time join, xem models/marts/training_dataset.sql).
+#    Model notebook hien tai khong nhan rt_*; cac cot nay van duoc giu de
+#    quan sat luong streaming va san sang cho mot artifact notebook tuong lai.
 # --------------------------------------------------------------------------
 realtime_features:
   - name: rt_events_1h
@@ -305,13 +304,7 @@ realtime_features:
     description: "Epoch giay cua event cuoi - dung do freshness cua overlay"
 
 # --------------------------------------------------------------------------
-# 3) Cot khong phai feature nhung di kem trong training set
-# --------------------------------------------------------------------------
-label_column: label            # 1 = conversion
-treatment_column: is_treat     # 1 = duoc phat voucher
-
-# --------------------------------------------------------------------------
-# 4) Kiem tra chat luong ap dung cho feature
+# 3) Kiem tra chat luong ap dung cho feature
 # --------------------------------------------------------------------------
 quality:
   max_null_rate: 0.02          # >2% null tren 1 cot batch => FAIL

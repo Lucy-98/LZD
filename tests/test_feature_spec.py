@@ -1,7 +1,7 @@
 """Test khong can Docker - chay bang: pytest tests/ -v
 
 Kiem tra phan "hop dong" cua he thong: spec, key layout, merge logic,
-sinh version. Day la nhung cho ma sai se gay training/serving skew.
+sinh version. Day la nhung cho ma sai se gay offline/online serving skew.
 """
 from __future__ import annotations
 

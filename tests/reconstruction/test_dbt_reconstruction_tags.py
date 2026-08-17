@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DBT_MODELS = ROOT / "dbt" / "models"
 DBT_PROJECT = ROOT / "dbt" / "dbt_project.yml"
 DAG_20 = ROOT / "airflow" / "dags" / "dag_20_build_features_dbt.py"
+DAG_60 = ROOT / "airflow" / "dags" / "dag_60_reconstruction_e2e.py"
 
 RECONSTRUCTION_TAG = "reconstruction"
 
@@ -76,6 +77,14 @@ def test_dag_20_exclude_duong_reconstruction():
     assert body.count("DBT_SELECTOR") >= 3   # 1 dinh nghia + 2 lan dung
 
 
+def test_dag_60_build_va_kiem_mart_55_cot_sau_backfill():
+    body = DAG_60.read_text(encoding="utf-8")
+    assert '"--select", "tag:reconstruction"' in body
+    assert 'mart = "marts.feat_cfs_reconstructed_selected"' in body
+    assert "feature_columns != fs.columns" in body
+    assert "mart_rows != source_rows" in body
+
+
 # ===========================================================================
 # 2 · dbt_project.yml phai co tag
 # ===========================================================================
@@ -107,7 +116,7 @@ def test_model_production_khong_bi_gan_tag():
     """Duong feature hang ngay phai KHONG nam trong tag reconstruction."""
     tagged = _tagged_models()
     for name in ("feat_user_serving", "feat_user_selected_serving",
-                 "feat_user_behaviour", "training_dataset", "stg_user_snapshot"):
+                 "feat_user_behaviour", "stg_user_snapshot"):
         assert name not in tagged, f"{name} la model production, khong duoc tag"
 
 
@@ -116,4 +125,5 @@ def test_model_reconstruction_van_duoc_khai_bao_day_du():
     assert _models_using_reconstruction_sources() >= {
         "stg_events_v2", "feat_cfs_counter", "feat_cfs_recency",
         "feat_cfs_categorical", "feat_passthrough",
+        "feat_cfs_reconstructed_selected",
     }

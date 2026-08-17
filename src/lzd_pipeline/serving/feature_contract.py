@@ -1,14 +1,6 @@
 """Hop dong dac trung cua model uplift — doc `models/uplift_voucher/feature_contract.json`.
 
-★ MODULE NAY PHUC VU HAI DANG HOP DONG
---------------------------------------------------------------------------
-    76 cot   model tu notebook (artifact bundled) — mo ta ngay duoi day
-    62 cot   model do `train.py` huan luyen, sinh boi `training/contract.py`
-
-Ca hai deu di qua `load_contract()` va `build_matrix()` — do la ly do khong
-duoc hardcode con so 76 o bat ky dau trong duong suy luan.
-
-Hop dong bundled: model nhan **76 cot**, xep theo `thu_tu_dua_vao_mo_hinh`.
+Model notebook nhan **76 cot**, xep theo `thu_tu_dua_vao_mo_hinh`.
 Ba nguon:
 
     55  tu Redis           DE tinh va luu (dung bang scope fs_2026_08_v2)
@@ -215,19 +207,15 @@ def _validate(c: ModelFeatureContract, raw: Mapping[str, Any]) -> None:
             f"cot dan xuat lech: contract noi {sorted(declared)}, "
             f"doc duoc {sorted(c.derived_columns)}"
         )
-    # Cai dat cua `compute_derived` phai PHU HET cot dan xuat da khai bao.
-    #
-    # Chi kiem chieu "thieu", khong kiem "thua": model do `train.py` huan
-    # luyen an 62 cot doc thang tu store va KHONG dung cot fe_* nao, nen hop
-    # dong cua no khai bao 0 cot dan xuat. Doi hoi bang nhau se lam moi hop
-    # dong khong phai cua notebook deu bi tu choi. `build_row()` chi doc cot
-    # co trong hop dong, nen cai dat tinh du ra la vo hai.
+    # Artifact trong image la nguon duy nhat, nen code va contract phai khai
+    # bao DUNG cung mot tap cot dan xuat.
     computed = set(compute_derived({}, c.defaults))
-    uncomputable = set(c.derived_columns) - computed
-    if uncomputable:
+    declared_derived = set(c.derived_columns)
+    if declared_derived != computed:
         raise ContractError(
-            f"hop dong khai bao cot dan xuat ma `compute_derived` khong tinh "
-            f"duoc: {sorted(uncomputable)}"
+            "cot dan xuat lech giua code va contract: "
+            f"thieu trong code={sorted(declared_derived - computed)}, "
+            f"thua trong code={sorted(computed - declared_derived)}"
         )
 
 

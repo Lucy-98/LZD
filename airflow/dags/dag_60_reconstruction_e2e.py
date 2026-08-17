@@ -16,7 +16,9 @@ Sau `backfill`, model reconstruction build bang:
 
     dbt run --select tag:reconstruction
 
-(chung bi EXCLUDE khoi DAG 20 hang ngay — xem TECH_REFERENCE.md §12.2)
+DAG tu chay lenh nay sau khi source da land, roi kiem tra mart hop nhat co dung
+55 feature. Cac model van bi EXCLUDE khoi DAG 20 hang ngay — xem
+TECH_REFERENCE.md §12.2.
 """
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ DOC = __doc__
 #: Thu muc artifact cua Track A. Nam tren volume dung chung, KHONG phai /tmp
 #: cua container — task sau phai doc lai duoc.
 DEFAULT_OUTPUT_DIR = "/opt/lakehouse/track_a"
+DBT_DIR = "/opt/project/dbt"
 
 
 @dag(
@@ -159,7 +162,80 @@ def reconstruction_e2e():
         with duckdb_writer() as con:
             return assert_reconstruction_sources_ready(con)
 
-    contract_dry_run() >> backfill_train_split() >> assert_sources_ready()
+    @task(pool="duckdb_writer", execution_timeout=pendulum.duration(hours=2))
+    def build_reconstruction_marts(**context) -> dict:
+        """Build dbt Track A va xac nhan output hop nhat dung 55 feature.
+
+        Task tu bo qua o mode `contract`/`land=False`; vi vay DAG van dung duoc
+        de dry-run ma khong doi hoi source that trong MinIO/DuckDB.
+        """
+        import json
+        import os
+        import subprocess
+
+        from airflow.models import Variable
+
+        from lzd_pipeline.common.clients import duckdb_writer
+        from lzd_pipeline.reconstruction.feature_set import load_feature_set
+
+        params = context["params"]
+        if params["mode"] != "backfill" or not params["land"]:
+            return {"skipped": "khong land thi khong build reconstruction mart"}
+
+        dbt_env = {
+            **os.environ,
+            "DBT_PROFILES_DIR": DBT_DIR,
+            "DUCKDB_PATH": Variable.get(
+                "duckdb_path", default_var="/opt/lakehouse/warehouse.duckdb"
+            ),
+        }
+        dbt_vars = json.dumps({"run_date": params["dt"]})
+        for action in ("run", "test"):
+            subprocess.run(
+                [
+                    "dbt", action, "--no-version-check",
+                    "--select", "tag:reconstruction",
+                    "--vars", dbt_vars,
+                ],
+                cwd=DBT_DIR,
+                env=dbt_env,
+                check=True,
+            )
+
+        fs = load_feature_set()
+        mart = "marts.feat_cfs_reconstructed_selected"
+        with duckdb_writer() as con:
+            columns = [row[0] for row in con.execute(f"DESCRIBE {mart}").fetchall()]
+            feature_columns = tuple(
+                column for column in columns
+                if column.startswith("f") and column[1:].isdigit()
+            )
+            mart_rows = int(con.execute(f"SELECT count(*) FROM {mart}").fetchone()[0])
+            source_rows = int(con.execute(
+                "SELECT count(*) FROM biz.reconstruction_boundary"
+            ).fetchone()[0])
+
+        if feature_columns != fs.columns:
+            raise RuntimeError(
+                f"{mart} sai feature contract: actual={feature_columns}, "
+                f"expected={fs.columns}"
+            )
+        if mart_rows != source_rows:
+            raise RuntimeError(
+                f"{mart} co {mart_rows} dong nhung boundary co {source_rows}"
+            )
+        return {
+            "mart": mart,
+            "rows": mart_rows,
+            "feature_columns": len(feature_columns),
+            "feature_set_id": fs.id,
+        }
+
+    contract = contract_dry_run()
+    backfill = backfill_train_split()
+    sources = assert_sources_ready()
+    marts = build_reconstruction_marts()
+    contract >> backfill >> sources >> marts
 
 
 reconstruction_e2e()

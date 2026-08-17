@@ -19,14 +19,9 @@ LABEL org.opencontainers.image.title="lzd-airflow" \
       org.opencontainers.image.description="Airflow + dbt-duckdb cho LZD uplift platform"
 
 USER root
-# curl     : healthcheck cua webserver/scheduler.
-# libgomp1 : OpenMP runtime ma wheel LightGBM link dong toi. Khong co no thi
-#            `import lightgbm` do `OSError: libgomp.so.1`, tuc la DAG 30
-#            (train DRLearner) VA `training/register.py` deu chet ngay o buoc
-#            import — ca duong ML trong Airflow ngung hoat dong. ~150 KB.
-# Chi hai goi nay - moi thu khac deu la wheel.
+# curl: healthcheck cua webserver/scheduler.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libgomp1 \
+    && apt-get install -y --no-install-recommends curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,7 +34,7 @@ USER airflow
 COPY docker/airflow/requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/home/airflow/.cache/pip,uid=50000,gid=0 \
     pip install --no-compile -r /tmp/requirements.txt \
-    && pip check || echo "[canh bao] xung dot dependency - xem log phia tren"
+    && pip check
 
 # src/, dbt/, config/ duoc bind mount vao /opt/project luc runtime
 # (xem docker-compose.yml) -> sua code khong phai build lai image.

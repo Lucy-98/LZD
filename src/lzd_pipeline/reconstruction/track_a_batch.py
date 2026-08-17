@@ -21,6 +21,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import duckdb
 
+from lzd_pipeline.features.business_aliases import load_business_aliases
 from lzd_pipeline.reconstruction import engine, runner
 from lzd_pipeline.reconstruction.canonical import float_repr
 from lzd_pipeline.reconstruction.constructive import solve_h1
@@ -97,12 +98,33 @@ def _iter_rows(path: Path, limit: int | None = None) -> Iterable[dict[str, str]]
 def _write_csv(path: Path, rows: Iterable[Mapping[str, Any]], fields: Sequence[str]) -> int:
     count = 0
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(fields))
+        writer = csv.DictWriter(fh, fieldnames=list(fields), lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
             count += 1
     return count
+
+
+def write_event_business_aliases(output_dir: Path) -> tuple[Path, int]:
+    """Ghi lookup ten nghiep vu TRINH BAY; khong doi event contract cua dbt."""
+    aliases = load_business_aliases()
+    path = output_dir / "event_business_aliases.csv"
+    rows = (
+        {
+            "event_type": event_type,
+            "presentation_name": aliases.event_alias_of(event_type),
+            "event_family": "CFS_WITNESS",
+            "semantic_status": aliases.semantic_status,
+            "note": aliases.event_note_of(event_type),
+        }
+        for event_type in sorted(set(engine.EVENT_TYPE_OF.values()))
+    )
+    count = _write_csv(path, rows, (
+        "event_type", "presentation_name", "event_family",
+        "semantic_status", "note",
+    ))
+    return path, count
 
 
 def lzd_user_id(data_id: str) -> str:
@@ -467,7 +489,10 @@ def materialize_track_a(
                 samples.append(result)
             boundary_writer.writerow({
                 "target_id": result.target.target_id,
-                "customer_id_hint": result.target.target_id,
+                # Boundary la duong map duy nhat tu target reconstruction sang
+                # entity online. Dung cung quy tac voi seed_loader de mart dbt
+                # co the tao key Redis cho chinh user Track B se su dung.
+                "customer_id_hint": lzd_user_id(result.target.target_id),
                 "reference_ts": result.target.reference_ts.isoformat(),
             })
             for name, level in sorted(result.attributes.items()):
@@ -533,6 +558,8 @@ def materialize_track_a(
         "encoding_version", "attr_name", "level_index", "column_name",
     ])
 
+    event_alias_path, event_alias_rows_count = write_event_business_aliases(output_dir)
+
     gate_summary = verify_sample(
         samples,
         config=config,
@@ -565,6 +592,7 @@ def materialize_track_a(
         "raw_events": raw_events,
         "encoding_map_rows": encoding_rows_count,
         "onehot_layout_rows": onehot_rows_count,
+        "event_business_alias_rows": event_alias_rows_count,
         "gate_sample": {
             "checked_rows": gate_summary.checked_rows,
             "gate_a_passed": gate_summary.gate_a_passed,
@@ -580,6 +608,7 @@ def materialize_track_a(
             "biz_passthrough_source": str(pass_path),
             "biz_encoding_map": str(encoding_map_path),
             "biz_onehot_layout": str(onehot_path),
+            "event_business_aliases": str(event_alias_path),
             "biz_reconstruction_target": str(target_pg_path),
             "targets_selected_features": str(target_path),
             "quarantine": str(quarantine_path),

@@ -138,19 +138,6 @@ class OfflineFeatureStore:
             row = cursor.fetchone()
         return {n: float(v or 0.0) for n, v in zip(names, row)}
 
-    def treatment_ratio(self, table: str | None = None) -> float | None:
-        table = table or self.spec.offline.get("training_table")
-        if not table:
-            return None
-        with duckdb_conn(read_only=True) as con:
-            try:
-                row = con.execute(
-                    f"SELECT AVG({self.spec.treatment_column}::DOUBLE) FROM {table}"
-                ).fetchone()
-            except Exception:
-                return None
-        return float(row[0]) if row and row[0] is not None else None
-
     def table_exists(self, table: str | None = None) -> bool:
         table = table or self.table
         schema, _, name = table.rpartition(".")

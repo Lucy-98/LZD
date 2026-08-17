@@ -79,6 +79,15 @@ def create_biz_shell(
         CREATE TABLE IF NOT EXISTS {BIZ_SCHEMA}.reconstruction_boundary(
             target_id VARCHAR, customer_id_hint VARCHAR, reference_ts TIMESTAMPTZ)
     """)
+    # `_sources.yml` dung identifier `v_reconstruction_boundary` de giong
+    # Postgres control plane. DuckDB giu bang phang de sink nap nhanh, sau do
+    # expose cung ten view cho dbt production — neu thieu view nay harness van
+    # xanh nhung `dbt run --select tag:reconstruction` se CatalogException.
+    con.execute(f"""
+        CREATE OR REPLACE VIEW {BIZ_SCHEMA}.v_reconstruction_boundary AS
+        SELECT target_id, customer_id_hint, reference_ts
+        FROM {BIZ_SCHEMA}.reconstruction_boundary
+    """)
     con.execute(f"""
         CREATE TABLE IF NOT EXISTS {BIZ_SCHEMA}.customer_attribute(
             target_id VARCHAR, attr_name VARCHAR, level_id INTEGER)

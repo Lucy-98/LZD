@@ -5,7 +5,7 @@ Spec la HOP DONG giua 3 ben:
   - sync  : ghi dung cac field nay len Redis
   - API   : doc dung cac field nay, thieu thi dung default
 
-Nho vay khong bi training/serving skew kieu "luc train co f42, luc serve khong".
+Nho vay khong bi offline/online serving skew kieu "mart co f42, Redis lai thieu".
 """
 from __future__ import annotations
 
@@ -50,8 +50,6 @@ class FeatureSpec:
     entity_key: str
     batch_features: tuple[Feature, ...]
     realtime_features: tuple[Feature, ...]
-    label_column: str
-    treatment_column: str
     offline: dict[str, Any]
     online: dict[str, Any]
     quality: dict[str, Any]
@@ -180,8 +178,6 @@ def load_feature_spec(path: str | None = None) -> FeatureSpec:
         entity_key=raw.get("entity_key", "user_id"),
         batch_features=tuple(batch),
         realtime_features=tuple(realtime),
-        label_column=raw.get("label_column", "label"),
-        treatment_column=raw.get("treatment_column", "is_treat"),
         offline=raw.get("offline", {}),
         online=raw.get("online", {}),
         quality=raw.get("quality", {}),

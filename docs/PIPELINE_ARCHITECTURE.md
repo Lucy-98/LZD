@@ -49,8 +49,9 @@
 | **Transformation** | dbt | project `lzd_uplift` | — | staging (view) → marts (table) |
 | **Downstream feature sink** | Redis | `7.2-alpine` | `core` | representation ngoài scope |
 | **Metadata / ops** | PostgreSQL | `16-alpine` | `core` | DB `airflow` + DB `pipeline` |
-| **Orchestration** | Apache Airflow | `2.10.5` | `core` | 8 DAG |
-| **Model registry** | MLflow | `2.16.2` | `ml` | artifact store = MinIO |
+| **Database UI** | pgAdmin | `9.16` | `core` | server `LZD Postgres` provisioned sẵn |
+| **Orchestration** | Apache Airflow | `2.10.5` | `core` | 7 DAG |
+| **Model serving** | LightGBM + FastAPI | `4.7.0` | mặc định | artifact notebook bake trong image |
 | **Metrics** | Prometheus + Pushgateway + statsd-exporter | `2.54.1` | `obs` | + redis/postgres/kafka exporter |
 | **Logs** | Loki + Promtail | `3.1.1` | `obs` | |
 | **Dashboard** | Grafana | `11.2.2` | `obs` | 5 dashboard provisioned |
@@ -73,9 +74,8 @@ phải shortcut.
 ### 1.2 · Profiles — bật từng phần
 
 ```
-core     postgres · redis · minio · kafka · airflow
+core     postgres · pgadmin · redis · minio · kafka · airflow
 stream   event-producer · stream-consumer
-ml       mlflow
 obs      prometheus · grafana · loki · exporters
 all      tất cả
 ```
@@ -91,7 +91,6 @@ s3://lakehouse/
 ├── raw/
 │   ├── user_snapshot/dt=YYYY-MM-DD/{train,test}.parquet     ← từ CSV, 1 lần
 │   └── app_events/dt=YYYY-MM-DD/hour=HH/part-*.parquet      ← stream-consumer ghi
-└── (mlflow artifacts)
 ```
 
 ### 2.2 · DuckDB — warehouse
@@ -105,8 +104,7 @@ warehouse.duckdb
 │   ├── feat_user_behaviour       ← hist_* từ event, cửa sổ 30 ngày
 │   ├── feat_user_realtime_pit    ← rt_* point-in-time, ô 5 phút
 │   ├── feat_user_serving         ← baseline/full mart: f0..f82 + hist_*
-│   ├── feat_user_selected_serving← 55 selected cột  ← BẢNG ĐƯỢC SYNC
-│   └── training_dataset          ← serving + rt_* + label + is_treat + split
+│   └── feat_user_selected_serving← 55 selected cột  ← BẢNG ĐƯỢC SYNC
 └── dq_failures/      ← dbt test store_failures
 ```
 
@@ -182,8 +180,6 @@ stream_consumer.py
                          │ DAG 20: stg_app_events (dedup event_id)
                          ▼
               feat_user_behaviour  +  feat_user_realtime_pit
-                         │
-                         └──────► marts.training_dataset
 
    ──✖──► app.user.events.dlq   (validate fail, theo reason)
 ```
@@ -196,7 +192,7 @@ dư khi consumer replay, nên chỉ là tín hiệu gần đúng; lake vẫn là
 
 ## 4. Orchestration
 
-`[FACT]` — 8 DAG:
+`[FACT]` — 7 DAG:
 
 | DAG | Schedule | Vai trò |
 |---|---|---|
@@ -204,7 +200,6 @@ dư khi consumer replay, nên chỉ là tín hiệu gần đúng; lake vẫn là
 | `10_ingest_stream_to_lake` | `@hourly` | Đăng ký partition event mới |
 | `20_build_features_dbt` | `0 1 * * *` | dbt run + dbt test |
 | `40_sync_features_to_redis` | `30 1 * * *` | Export marts sang downstream sink |
-| `30_train_uplift_model` | `0 3 * * 1` | Train hằng tuần (thứ Hai) |
 | `50_data_quality` | `*/30 * * * *` | DQ check → `ops.dq_result` |
 | `60_reconstruction_e2e` | **manual** | Dry-run Track A → dbt SQL → Gate A-F → T0 → Track B |
 | `99_ops_toolbox` | **manual** | Công cụ vận hành |
@@ -298,7 +293,7 @@ Comment trong SQL ghi rõ: nếu offline dùng `feature_ts - interval '1 hour'` 
 | **A4** | `voucher_used_30d` tên nói "used", công thức đếm **claim** trong legacy/full mart; không thuộc selected Redis sync v2 | 🟠 | `feat_user_behaviour.sql` |
 | **A5** | Producer pool 20,000 user vs 1,108,338 đã seed ⇒ ~98% không bao giờ nhận event | 🟠 | `event_producer._pick_user()` |
 | **A6** | DAG 20→40 coupling theo thời gian, không theo sensor | 🟡 | `dag_40` |
-| **A7** | Model chưa tồn tại — `NotImplementedError` ×5, đang chạy `StubModel` | 🔴 | `train.py`, `model_loader.py` |
+| **A7** | Model notebook đã được bake trong image; `/ready` fail nếu artifact hỏng | ✅ | `Dockerfile`, `model_loader.py` |
 | **A9** | Không có Layer 1 (business entity) — event sinh từ `random()` | 🔴 | `event_producer.py` |
 
 ---
@@ -385,14 +380,14 @@ provenance
 
 | Mục đích | `source_type` được phép |
 |---|---|
-| Train model production | **`REAL` only** |
+| Tạo/benchmark artifact notebook để phục vụ | **`REAL` only** |
 | Đánh giá RCT (test set) | **`REAL` only**, không đụng |
 | GATE A validation | `RECONSTRUCTED` |
 | Kịch bản future simulation | `RECONSTRUCTED` (seed) + `SYNTHETIC` (live) |
-| Train model **thí nghiệm** | được, nhưng **phải** ghi `parent_run_id` và không được đăng ký alias `Production` |
+| Thí nghiệm trên synthetic | phải ghi `parent_run_id` và không được ghi đè artifact trong `models/` |
 
-> **Assertion:** một dataset train không được chứa đồng thời `SYNTHETIC` và
-> `parent_run_id` trỏ về model đang được train. Đây là vòng lặp — fail cứng.
+> **Assertion:** dataset dùng để tạo artifact serving không được chứa
+> `SYNTHETIC`. Đây là vòng lặp phản hồi — fail cứng.
 
 ---
 
@@ -517,6 +512,7 @@ biz.reconstruction_target       ← IMMUTABLE
 ┌─ MỚI ────────────────────────────────────────────────────┐
 │ dbt: stg_events_v2 · feat_cfs_counter · feat_cfs_recency  │
 │      feat_cfs_categorical · feat_passthrough              │
+│      → feat_cfs_reconstructed_selected (55 f)             │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -638,16 +634,15 @@ live_generator(state: CustomerState, behaviour_model, t_from, t_to) -> Iterator[
                         │  ③ FEATURE ENGINE THẬT (dbt)
                         ▼
    feat_cfs_counter · feat_cfs_recency · feat_cfs_categorical
-                        │
-                        ▼
-              reconstructed 31 cột (T1+T2)
-                        │
-              ┌─────────┴──────────┐
-              ▼                    ▼
-        ④ GATE A            feat_passthrough (24 cột T3)
-     so với LZD row                │
+              │                    │
+              │             feat_passthrough (24 cột T3)
               └─────────┬──────────┘
                         ▼
+         feat_cfs_reconstructed_selected (55 cột)
+                        │
+                        ▼
+              ④ GATE A so với LZD row
+                        │
                  CustomerState(T0)
                         │
    ┌────────────────────┴─────────────────────────────┐
@@ -888,7 +883,7 @@ model downstream cần cái thứ hai, nhưng API/policy không thuộc scope n�
 🚫 Nới dung sai LN từ 1e-15 lên cho "dễ pass"
 🚫 Nâng FREE_EVENT từ hypothesis lên primitive khi taxonomy chưa xác nhận
 🚫 ÉP chọn nhánh H1/H2 khi R3 ra SEMANTICALLY_UNIDENTIFIED
-🚫 Train model production trên event source_type != REAL
+🚫 Tạo/benchmark artifact serving trên event source_type != REAL
 🚫 Diễn giải GATE A pass thành "đã khôi phục lịch sử thật"  (L1 ≠ L4, §7.2)
 🚫 feature_ts = now()  — phải là REFERENCE_TS khai báo tường minh
 ```

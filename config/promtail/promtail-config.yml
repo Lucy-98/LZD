@@ -21,7 +21,9 @@ scrape_configs:
         refresh_interval: 10s
         filters:
           - name: label
-            values: ["com.docker.compose.project"]
+            # Chi doc container do repo LZD gan nhan; neu chi loc theo label
+            # Compose thi Promtail se hut log cua moi project Docker tren may.
+            values: ["com.lzd.component"]
     relabel_configs:
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"
@@ -35,6 +37,11 @@ scrape_configs:
       - target_label: job
         replacement: docker
     pipeline_stages:
+      # Loki local chi giu 7 ngay. Container cu van co the con log tu nhieu
+      # thang truoc; bo chung truoc khi push de tranh Loki tra HTTP 400.
+      - drop:
+          older_than: 168h
+          drop_counter_reason: line_too_old
       # Service Python cua minh log JSON -> parse ra field de query duoc
       - json:
           expressions:

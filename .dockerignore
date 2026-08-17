@@ -27,12 +27,22 @@ dbt/
 airflow/
 sql/
 
+# --- chi dua artifact notebook can cho serving vao image
+# Model la mot phan cua image: doi model = build/tag/deploy image moi.
+models/*
+!models/uplift_voucher/
+models/uplift_voucher/*
+!models/uplift_voucher/model_booster.txt
+!models/uplift_voucher/feature_contract.json
+!models/uplift_voucher/metadata.json
+
 # --- tai lieu
 docs/
 *.md
 !README.md
 
 # --- state cua runtime
+.tmp/
 airflow/logs/
 dbt/target/
 dbt/logs/

@@ -8,7 +8,7 @@ RECONSTRUCTION_SPEC.md INVARIANT 4 / TEST-10b.
 `CustomerState.source_target_id` la lineage identifier hop le, NHUNG no tro
 thanh lo hong neu Track B co the giai no:
 
-    source_target_id -> target repository -> reconstruction_target -> 36 features
+    source_target_id -> target repository -> reconstruction_target -> 55 features
 
 Luc do DU chu ky ham sach, Track B van "nhin trom" duoc target.
 

@@ -2,10 +2,10 @@
 #
 # Khong bat buoc dung Makefile nay: `docker compose up -d` la du.
 # Cac target duoi chi la loi tat + vai lenh tien ich.
-CORE_SERVICES = postgres redis minio minio-init kafka kafka-init \
-                airflow-init airflow-webserver airflow-scheduler mlflow inference-api
+CORE_SERVICES = postgres pgadmin redis minio minio-init kafka kafka-init \
+                airflow-init airflow-webserver airflow-scheduler inference-api
 
-.PHONY: help init build up up-core up-all down reset ps status logs health test redis duckdb reconstruction track-a snapshot load-test
+.PHONY: help init build up up-core up-all down reset ps status logs health test redis duckdb reconstruction track-a track-b-online-demo show-inference-demo snapshot load-test
 
 help:
 	@echo "make up        - = docker compose up -d (ca nen tang)"
@@ -20,6 +20,8 @@ help:
 	@echo "make test      - chay unit test"
 	@echo "make snapshot  - ghi reconstruction snapshot vao docs/"
 	@echo "make track-a   - gen Track A raw events tu data/full_trainset.csv (limit=1000)"
+	@echo "make track-b-online-demo - 10 user: Track A -> Kafka/MinIO/dbt/Redis/API"
+	@echo "make show-inference-demo - in bang uplift rank + Top-K rt policy cho mentor"
 	@echo "make load-test - ban traffic vao inference API"
 
 init:
@@ -59,10 +61,10 @@ ps status:
 	@docker compose --profile all ps
 	@echo ""
 	@echo "Airflow       http://localhost:8080   (admin/admin)"
+	@echo "pgAdmin       http://localhost:5050   (admin@lzd.example/admin123)"
 	@echo "Grafana       http://localhost:3000   (admin/admin)"
 	@echo "Kafka UI      http://localhost:8082"
 	@echo "MinIO         http://localhost:9001   (minioadmin/minioadmin123)"
-	@echo "MLflow        http://localhost:5000"
 	@echo "Prometheus    http://localhost:9090"
 	@echo "RedisInsight  http://localhost:5540"
 	@echo "Inference API http://localhost:8000/docs"
@@ -71,7 +73,8 @@ logs:
 	docker compose logs -f --tail=200 $(s)
 
 health:
-	@for u in http://localhost:8080/health http://localhost:3000/api/health \
+	@for u in http://localhost:8080/health http://localhost:5050/misc/ping \
+	          http://localhost:3000/api/health \
 	          http://localhost:9090/-/healthy http://localhost:9000/minio/health/live \
 	          http://localhost:3100/ready http://localhost:8000/health; do \
 		printf "%-45s" "$$u"; \
@@ -86,6 +89,12 @@ reconstruction:
 
 track-a:
 	PYTHONPATH=src python -m lzd_pipeline.reconstruction.track_a_batch --limit 1000 --verify-limit 50
+
+track-b-online-demo:
+	sh scripts/run_track_b_online_demo.sh --users 10
+
+show-inference-demo:
+	sh scripts/show_inference_demo.sh
 
 snapshot:
 	PYTHONPATH=src python -m lzd_pipeline.reconstruction.snapshot

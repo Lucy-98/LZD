@@ -312,7 +312,7 @@ active_day|distinct_day|log10|ln(|exp(`:
 | Hit | Nội dung | Có phải evidence? |
 |---|---|---|
 | `tests/test_sync_logic.py:47`, `tests/test_feature_spec.py:72` | dùng `f0`,`f1`,`f2` làm tên giả trong fixture | ❌ Không |
-| `src/lzd_pipeline/serving/model_loader.py:67` | `StubModel` cộng `("f30","f31","f37","rt_events_1h","rt_order_1h")` rồi băm | ❌ **Không** — hàm băm placeholder, không phải transformation |
+| `src/lzd_pipeline/serving/feature_contract.py` | đọc `f30` như đầu vào model hoặc dùng median khi thiếu | ❌ **Không** — không cho biết semantics hay aggregation gốc |
 | **Không hit nào khác** | | |
 
 `[FACT]` **Không có một dòng code nào trong repo tính `f1`,`f2`,`f5`,`f11`,`f18`,`f30`.**

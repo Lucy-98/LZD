@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tao bucket cho lakehouse / model registry / mlflow artifacts.
+# Tao bucket cho lakehouse.
 # Idempotent: chay lai nhieu lan khong loi.
 set -e
 
@@ -8,7 +8,7 @@ until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSW
   sleep 2
 done
 
-for BUCKET in "$MINIO_BUCKET_LAKE" "$MINIO_BUCKET_MODELS" "$MINIO_BUCKET_MLFLOW"; do
+for BUCKET in "$MINIO_BUCKET_LAKE"; do
   if mc ls "local/$BUCKET" >/dev/null 2>&1; then
     echo "[minio-init] bucket '$BUCKET' da ton tai -> bo qua"
   else

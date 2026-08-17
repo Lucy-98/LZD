@@ -1,7 +1,7 @@
 {
   "uid": "lzd-dq-skew",
-  "title": "04 · Data Quality & Training-Serving Skew",
-  "description": "Freshness, null rate, phan bo feature offline vs online, va do lech giua luc train va luc serve",
+  "title": "04 · Data Quality & Serving Consistency",
+  "description": "Freshness, null rate va do lech giua feature offline voi Redis luc serving",
   "tags": ["lzd", "data-quality"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -14,7 +14,7 @@
       "type": "stat",
       "title": "DQ check FAIL trong 24h",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short",
         "thresholds": { "mode": "absolute", "steps": [
           { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
@@ -27,7 +27,7 @@
       "type": "stat",
       "title": "Freshness bang mart (gio)",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "h", "decimals": 1,
         "thresholds": { "mode": "absolute", "steps": [
           { "color": "green", "value": null }, { "color": "yellow", "value": 24 }, { "color": "red", "value": 26 } ] } }, "overrides": [] },
@@ -40,25 +40,13 @@
       "type": "stat",
       "title": "Null rate cao nhat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3,
         "thresholds": { "mode": "absolute", "steps": [
           { "color": "green", "value": null }, { "color": "red", "value": 0.02 } ] } }, "overrides": [] },
       "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         { "refId": "A", "expr": "max(lzd_feature_null_rate)", "legendFormat": "{{feature}}" }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Ty le treatment (is_treat=1)",
-      "description": "Bien dong manh => thay doi chinh sach phat voucher, model can retrain",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3 }, "overrides": [] },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [
-        { "refId": "A", "expr": "max(lzd_training_treatment_ratio)", "legendFormat": "treated" }
       ]
     },
     {
@@ -74,7 +62,7 @@
     {
       "type": "timeseries",
       "title": "Trung binh feature: offline (DuckDB) vs online (Redis)",
-      "description": "2 duong phai trung nhau. Lech = training/serving skew.",
+      "description": "2 duong phai trung nhau. Lech = offline/online feature skew.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "fieldConfig": { "defaults": { "custom": { "fillOpacity": 0, "lineWidth": 2 } }, "overrides": [] },
@@ -106,7 +94,7 @@
     {
       "type": "table",
       "title": "Inference log gan nhat (do skew that su)",
-      "description": "Doi chieu feature_version dung luc serve voi version dung luc train",
+      "description": "Doi chieu feature_version va model_version tai thoi diem phuc vu",
       "datasource": { "type": "postgres", "uid": "pipeline_pg" },
       "gridPos": { "h": 10, "w": 10, "x": 14, "y": 12 },
       "options": { "showHeader": true, "cellHeight": "sm" },

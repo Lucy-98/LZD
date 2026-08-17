@@ -194,6 +194,9 @@ def test_nap_duckdb_dung_so_dong(con, artifact):
     for relation, n in loaded.items():
         assert n == expected[relation], relation
     assert verify_duckdb_matches_artifact(con, artifact)
+    assert con.execute(
+        "SELECT count(*) FROM biz.v_reconstruction_boundary"
+    ).fetchone()[0] == expected["reconstruction_boundary"]
 
 
 def test_khong_nap_reconstruction_target_vao_warehouse(con, artifact):
@@ -240,6 +243,10 @@ def test_publish_lake_ghi_parquet_dung_so_dong(con, artifact, tmp_path):
 # ===========================================================================
 PROD_RELATIONS = {
     ("ref", "stg_events_v2"): "staging.stg_events_v2",
+    ("ref", "feat_cfs_counter"): "marts.feat_cfs_counter",
+    ("ref", "feat_cfs_recency"): "marts.feat_cfs_recency",
+    ("ref", "feat_cfs_categorical"): "marts.feat_cfs_categorical",
+    ("ref", "feat_passthrough"): "marts.feat_passthrough",
     ("source", "raw", "events_v2"): "raw.events_v2",
     ("source", "biz", "reconstruction_boundary"): f"{BIZ_SCHEMA}.reconstruction_boundary",
     ("source", "biz", "customer_attribute"): f"{BIZ_SCHEMA}.customer_attribute",
@@ -266,6 +273,8 @@ def test_gate_a_pass_qua_duong_production_shaped(con, artifact, monkeypatch):
         ("marts.feat_cfs_recency", DBT / "marts" / "feat_cfs_recency.sql"),
         ("marts.feat_cfs_categorical", DBT / "marts" / "feat_cfs_categorical.sql"),
         ("marts.feat_passthrough", DBT / "marts" / "feat_passthrough.sql"),
+        ("marts.feat_cfs_reconstructed_selected",
+         DBT / "marts" / "feat_cfs_reconstructed_selected.sql"),
     ):
         sql = runner.render_model(path, {
             "f30_semantic_branch": cfg.semantic_branch,
@@ -280,20 +289,26 @@ def test_gate_a_pass_qua_duong_production_shaped(con, artifact, monkeypatch):
         targets = list(csv.DictReader(fh))
     assert targets
 
+    joined = "marts.feat_cfs_reconstructed_selected"
+    joined_columns = [c[0] for c in con.execute(f"DESCRIBE {joined}").fetchall()]
+    actual_features = [
+        column for column in joined_columns
+        if column.startswith("f") and column[1:].isdigit()
+    ]
+    assert actual_features == list(fs.columns)
+    assert con.execute(f"SELECT count(*) FROM {joined}").fetchone()[0] == len(targets)
+
     checked = 0
     for row in targets[:25]:
-        actual: dict[str, float] = {}
-        for table in ("marts.feat_cfs_counter", "marts.feat_cfs_recency",
-                      "marts.feat_cfs_categorical", "marts.feat_passthrough"):
-            names = [c[0] for c in con.execute(f"DESCRIBE {table}").fetchall()]
-            want = [c for c in names if c.startswith("f") and c[1:].isdigit()]
-            got = con.execute(
-                f"SELECT {', '.join(want)} FROM {table} WHERE target_id = ?",
-                [row["target_id"]],
-            ).fetchone()
-            assert got is not None, f"{table} thieu {row['target_id']}"
-            actual.update({c: (float(v) if v is not None else None)
-                           for c, v in zip(want, got)})
+        got = con.execute(
+            f"SELECT {', '.join(actual_features)} FROM {joined} WHERE target_id = ?",
+            [row["target_id"]],
+        ).fetchone()
+        assert got is not None, f"{joined} thieu {row['target_id']}"
+        actual = {
+            column: (float(value) if value is not None else None)
+            for column, value in zip(actual_features, got)
+        }
 
         expected = {c: float(row[c]) for c in fs.columns}
         report = runner.gate_a(expected, actual, fs)

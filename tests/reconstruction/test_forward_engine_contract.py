@@ -4,7 +4,7 @@ RECONSTRUCTION_SPEC.md §12 (tautology prevention) TA-1 · TA-2 · TA-3 · TA-6
 
 Day la mat xich bien Gate A tu "hop dong" thanh "chay duoc":
 
-    Track A  ->  E*  ->  [ 4 dbt model ]  ->  F'  ->  so voi target
+    Track A  ->  E*  ->  [ 4 dbt model ]  ->  joined 55 F'  ->  so voi target
 
 Neu mat xich nay doc duoc target hoac doc duoc metadata cua solver, thi
 `F' == F` tro thanh so dau ra cua mot ham voi CHINH NO.
@@ -27,6 +27,9 @@ FEATURE_MODELS = {
     "feat_cfs_recency": DBT / "marts" / "feat_cfs_recency.sql",
     "feat_cfs_categorical": DBT / "marts" / "feat_cfs_categorical.sql",
     "feat_passthrough": DBT / "marts" / "feat_passthrough.sql",
+    "feat_cfs_reconstructed_selected": (
+        DBT / "marts" / "feat_cfs_reconstructed_selected.sql"
+    ),
 }
 
 #: Metadata noi bo cua solver. Feature engine THAY duoc chung => vong tron.
@@ -51,6 +54,16 @@ def test_moi_model_ton_tai():
     for name, p in FEATURE_MODELS.items():
         assert p.is_file(), f"thieu model {name}"
     assert STG.is_file()
+
+
+def test_joined_mart_doc_du_bon_component_va_khong_doc_target(models):
+    body = models["feat_cfs_reconstructed_selected"]
+    for upstream in (
+        "feat_cfs_counter", "feat_cfs_recency",
+        "feat_cfs_categorical", "feat_passthrough",
+    ):
+        assert f"ref('{upstream}')" in body
+    assert "reconstruction_target" not in _strip_comments(body)
 
 
 # ===========================================================================

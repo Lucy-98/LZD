@@ -1,6 +1,6 @@
 # Dung cho image `lzd/python-service` (producer + consumer + inference API).
 # Nguyen tac: chi cai thu 3 service nay THAT SU can luc runtime.
-# Moi thu chi dung trong Airflow (duckdb, dbt, mlflow server...) nam o
+# Moi thu chi dung trong Airflow (duckdb, dbt...) nam o
 # docker/airflow/requirements.txt.
 
 # --- API -------------------------------------------------------------------
@@ -28,9 +28,6 @@ boto3==1.35.36
 numpy==1.26.4
 pandas==2.2.3
 lightgbm==4.7.0
-# skinny = chi client cua MLflow, khong keo theo server + scipy + alembic.
-# Doi sang `mlflow` day du neu can log_model tu trong API (thuong khong can).
-mlflow-skinny==2.16.2
 
 # --- observability ---------------------------------------------------------
 prometheus-client==0.21.0

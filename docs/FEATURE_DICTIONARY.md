@@ -489,7 +489,7 @@ Cửa sổ 1h chia **12 ô 5 phút** ở cả hai phía — thiết kế chống
 | `rt_last_event_ts` | mọi event | `MAX(event_ts)` | ✅ | ✅ | **CONFIRMED** |
 
 **`rt_session_len_sec`:** offline tính thật, online luôn nhận default `0.0`.
-Đây là training/serving skew có thật (audit C16).
+Đây là offline/online feature skew có thật (audit C16).
 
 > **Khi sửa:** chốt **một** định nghĩa trước — từ `SESSION.started_at` hay từ
 > `min(event_ts)` trong cửa sổ 1h? Hai công thức khác nhau với phiên > 1 giờ.

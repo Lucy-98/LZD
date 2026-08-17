@@ -26,9 +26,9 @@ Vi du:
 | `f38` | `promo_affinity_segment_241_encoded` | T2 attribute alias |
 | `f79..f82` | `preferred_leaf_category_515_enc_*` | mot latent category, bon encoding |
 
-Track A event trong reconstruction la `CFS_WITNESS`. Neu thay `EVT_ORDER_PAID`
-trong artifact, doc no la `CFS_RECENCY_MARKER`, khong phai bang chung rang
-`f1/f2` that su la order-paid recency cua Lazada.
+Track A event trong reconstruction la `CFS_WITNESS`. Report gan alias trinh bay
+`ASSUMED_*`, vi du `EVT_ORDER_PAID` -> `ASSUMED_ORDER_PAID`; day khong phai
+bang chung rang `f1/f2` that su la order-paid recency cua Lazada.
 
 ## Nhieu nhat nen chay cai gi?
 
@@ -179,6 +179,7 @@ File quan trong:
 
 - `raw_events_v2.csv`: raw events schema cho `stg_events_v2`.
 - `track_a_events_audit.csv`: raw events kem cot audit solver.
+- `event_business_aliases.csv`: lookup `EVT_*` sang ten trinh bay `ASSUMED_*`.
 - `biz_customer_attribute.csv`: decoded T2 attribute levels.
 - `biz_encoding_map.csv`: categorical value encoding map.
 - `biz_passthrough_source.csv`: T3 frozen/pass-through values.

@@ -88,3 +88,18 @@ def test_track_a_batch_materializes_real_csv_shape(tmp_path):
         rows = list(csv.DictReader(fh))
     assert {row["source_type"] for row in rows} == {"RECONSTRUCTED"}
     assert "gen_reason" not in rows[0]
+
+    boundary_path = Path(manifest["files"]["biz_reconstruction_boundary"])
+    with boundary_path.open(encoding="utf-8") as fh:
+        boundary = next(csv.DictReader(fh))
+    assert boundary["target_id"] == "train_fixture_0"
+    assert boundary["customer_id_hint"] == "U0000000"
+
+    alias_path = Path(manifest["files"]["event_business_aliases"])
+    with alias_path.open(encoding="utf-8") as fh:
+        event_aliases = {row["event_type"]: row for row in csv.DictReader(fh)}
+    assert event_aliases["EVT_F5"]["presentation_name"] == "ASSUMED_PRODUCT_VIEWED"
+    assert event_aliases["EVT_ORDER_PAID"]["presentation_name"] == "ASSUMED_ORDER_PAID"
+    assert {
+        row["semantic_status"] for row in event_aliases.values()
+    } == {"SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT"}

@@ -38,7 +38,7 @@ from lzd_pipeline.common.metrics import (
     REALTIME_OVERLAY_KEYS,
     start_metrics_server,
 )
-from lzd_pipeline.features.online_store import OnlineFeatureStore
+from lzd_pipeline.features.online_store import OnlineFeatureStore, rt_bucket_start
 from lzd_pipeline.ingestion.schemas import EVENT_TO_COUNTER, LAKE_COLUMNS, validate_event
 
 log = get_logger(__name__)
@@ -110,27 +110,35 @@ class StreamConsumer:
 
         Gop theo user truoc roi moi ghi => 1 pipeline thay vi N lenh Redis.
         """
-        counters: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        # Gom theo CA user va bucket event-time. Neu gom moi user roi goi
+        # `incr_realtime_counters()` khong truyen `now`, event replay/den tre se
+        # bi tinh vao bucket THOI DIEM CONSUME thay vi thoi diem xay ra.
+        counters: dict[tuple[str, int], dict[str, float]] = defaultdict(
+            lambda: defaultdict(float)
+        )
         last_seen: dict[str, float] = {}
 
         for row in rows:
             user_id = row["user_id"]
-            counters[user_id]["rt_events_1h"] += 1
+            event_ts = float(row["event_ts"])
+            key = (user_id, rt_bucket_start(event_ts))
+            counters[key]["rt_events_1h"] += 1
             field = EVENT_TO_COUNTER.get(row["event_type"])
             if field:
-                counters[user_id][field] += 1
+                counters[key][field] += 1
             if row["event_type"] == "order":
-                counters[user_id]["rt_gmv_1h"] += float(row.get("price") or 0) * int(row.get("quantity") or 0)
-            ts = float(row["event_ts"])
-            last_seen[user_id] = max(last_seen.get(user_id, 0.0), ts)
+                counters[key]["rt_gmv_1h"] += (
+                    float(row.get("price") or 0) * int(row.get("quantity") or 0)
+                )
+            last_seen[user_id] = max(last_seen.get(user_id, 0.0), event_ts)
 
-        for user_id, fields in counters.items():
-            self.store.incr_realtime_counters(user_id, dict(fields))
+        for (user_id, bucket), fields in counters.items():
+            self.store.incr_realtime_counters(user_id, dict(fields), now=float(bucket))
         # rt_last_event_ts la gia tri tuyet doi -> set chu khong cong don
         self.store.update_realtime_bulk(
             {uid: {"rt_last_event_ts": int(ts)} for uid, ts in last_seen.items()}
         )
-        return len(counters)
+        return len(last_seen)
 
     # ------------------------------------------------------------------
     def _flush(self) -> None:

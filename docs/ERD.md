@@ -283,7 +283,7 @@ về `SKU.list_price` cùng discount đã áp.
 | `ended_at` | TIMESTAMPTZ | | NULL khi đang mở |
 | `entry_channel` | TEXT | | 🟨 `ORGANIC,PUSH,ADS,EMAIL` |
 
-**Biện minh:** `rt_session_len_sec` **hiện đang là một training/serving skew có thật**
+**Biện minh:** `rt_session_len_sec` **hiện đang là một offline/online feature skew có thật**
 (audit C16) một phần vì online không có khái niệm session — chỉ có counter theo user.
 Có entity SESSION với `started_at` rõ ràng thì độ dài phiên trở thành đại lượng có
 định nghĩa duy nhất ở cả hai phía. `entry_channel` là biến exposure marketing (§6 yêu cầu).

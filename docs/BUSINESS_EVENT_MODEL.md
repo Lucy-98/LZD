@@ -248,34 +248,36 @@ Không phải journey nào cũng đi hết. Các nhánh thoát hợp lệ:
 Đây là thứ scenario driver sẽ chạy. **Yêu cầu: mỗi mốc có event cụ thể và có thể
 quan sát được feature + decision thay đổi.**
 
-### 6.1 · Kịch bản S1 — "warming up" (kỳ vọng score tăng)
+### 6.1 · Kịch bản S1 — intent timing (score giữ nguyên, policy đổi)
 
 | Mốc | Δt | Event | Feature đổi | Quan sát |
 |---|---|---|---|---|
-| **T0** | 0 | *(chưa có event)* | tất cả `rt_* = 0` | `score₀`, `decision₀` |
-| **T1** | +2' | `SESSION_STARTED`, `PRODUCT_VIEWED ×3` | `rt_events_1h`=4, `rt_page_view_1h`=3 | `score₁` |
-| **T2** | +5' | `ITEM_ADDED_TO_CART ×2` | `rt_add_to_cart_1h`=2, `rt_events_1h`=6 | `score₂` |
-| **T3** | +8' | `CHECKOUT_STARTED` | `rt_events_1h`=7 | `score₃` |
-| **T4** | +9' | *(decision)* | — | **kỳ vọng `SEND_VOUCHER`** |
-| **T5** | +12' | `VOUCHER_CLAIMED`, `ORDER_PAID` | `rt_order_1h`=1, `rt_gmv_1h`=458k | `score₅` |
+| **T0** | 0 | *(chưa có event)* | tất cả `rt_* = 0` | uplift rank cố định, `WAIT_FOR_INTENT` nếu ở Top-K |
+| **T1** | +2' | `SESSION_STARTED`, `PRODUCT_VIEWED ×3` | `rt_events_1h`=4, `rt_page_view_1h`=3 | score giữ nguyên, vẫn chờ intent |
+| **T2** | +5' | `ITEM_ADDED_TO_CART ×2` | `rt_add_to_cart_1h`=2, `rt_events_1h`=6 | score giữ nguyên, Top-K → `SEND_VOUCHER` |
+| **T3** | +8' | `CHECKOUT_STARTED` | `rt_events_1h`=7 | score giữ nguyên |
+| **T4** | +9' | *(decision)* | — | action do Top-K + realtime timing policy |
+| **T5** | +12' | `VOUCHER_CLAIMED`, `ORDER_PAID` | `rt_order_1h`=1, `rt_gmv_1h`=458k | score giữ nguyên, `SUPPRESS_ALREADY_PURCHASED` |
 
-**Assert:** `score₀ < score₃`. Nếu không đổi ⇒ gặp đúng rủi ro **G2** trong audit —
-model không nhạy với feature event-derived, scenario vô nghĩa. **Phải kiểm trước
-khi xây driver, không phải sau.**
+**Assert đúng với artifact hiện tại:** `score₀ = score₁ = ... = score₅` và
+`realtime_applied=0`; chỉ `campaign_action` đổi. DRLearner không có `rt_*` trong
+contract, nên ép score tăng để demo sẽ là phát biểu sai. Scenario này kiểm tra
+timing policy và hạ tầng Kafka/Redis, không kiểm tra độ nhạy của model.
 
-### 6.2 · Kịch bản S2 — "cooling down" (kỳ vọng score giảm)
+### 6.2 · Kịch bản S2 — "cooling down" (policy reset, score giữ nguyên)
 
 Bắt đầu từ trạng thái cuối của S1, **không** sinh event nào trong 65 phút, gọi
 đánh giá state lại ở downstream. Các `rt_*` phải rơi về 0 theo cửa sổ trượt 1h.
 
-**Assert:** `score_sau ≈ score₀`. Đây là bài test **cửa sổ trượt hoạt động đúng** —
-và cần điều khiển được thời gian (gap **G6**).
+**Assert:** `rt_*` rơi về 0, score vẫn bằng score ban đầu, user Top-K quay về
+`WAIT_FOR_INTENT`. Đây là bài test **cửa sổ trượt + policy timing** — và cần
+điều khiển được thời gian (gap **G6**).
 
 ### 6.3 · Kịch bản S3 — "closed loop" (bài test §12 thật sự)
 
 ```
-T0  user duyệt                    → score thấp   → NO_VOUCHER
-T1  user thêm giỏ 3 món           → score tăng   → SEND_VOUCHER
+T0  user duyệt                    → score/rank cố định → WAIT_FOR_INTENT
+T1  user thêm giỏ 3 món           → score giữ nguyên  → SEND_VOUCHER
                                                  → VOUCHER_ISSUED ──┐
 T2  event VOUCHER_ISSUED quay về Kafka ◄──────────────────────────┘
 T3  feature `rt_voucher_active` = 1  (feature MỚI, xem FEATURE_DICTIONARY §5)

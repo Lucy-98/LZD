@@ -423,7 +423,7 @@ biz.encoding_map_64          ← (level_id, f37)
 biz.encoding_map_241         ← (level_id, f38)
 ```
 
-### 9.2 · Model feature engineering — tách 4, không gộp
+### 9.2 · Model feature engineering — 4 nhánh độc lập, 1 mart hợp nhất
 
 | Model | Nguồn | Sinh ra | Chịu GATE A? |
 |---|---|---|---|
@@ -431,8 +431,10 @@ biz.encoding_map_241         ← (level_id, f38)
 | `feat_cfs_recency` | `stg_events` | `f1`, `f2` | ✅ |
 | `feat_cfs_categorical` | `biz.customer` + `encoding_map_*` | 24 cột T2 | ✅ |
 | `feat_passthrough` | `raw.customer_snapshot` | 24 cột T3 | ❌ (không phải FE) |
+| `feat_cfs_reconstructed_selected` | 4 model trên + `reconstruction_boundary` | 55 cột theo đúng thứ tự feature contract | Gate A đọc từ đây |
 
-Tách vì **contract validation khác nhau** (§13).
+Bốn nhánh vẫn tách vì **contract validation khác nhau** (§13). Model cuối chỉ
+`LEFT JOIN` chúng theo `target_id`/`reference_ts`; nó không đọc payload target.
 
 ---
 
@@ -474,7 +476,7 @@ Tách vì **contract validation khác nhau** (§13).
                       │                    │
                       └────────┬───────────┘
                                ▼
-                    feat_user_selected_serving (55 cột)
+                 feat_cfs_reconstructed_selected (55 cột)
                                │
                     ┌──────────┴──────────┐
                     ▼                     ▼

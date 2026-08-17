@@ -45,12 +45,14 @@ mappings:
     labels:
       pool: "$1"
 
-  - match: "airflow.operator_failures_*"
+  - match: "^airflow\\.operator_failures_(.+)$"
+    match_type: regex
     name: "airflow_operator_failures_total"
     labels:
       operator: "$1"
 
-  - match: "airflow.operator_successes_*"
+  - match: "^airflow\\.operator_successes_(.+)$"
+    match_type: regex
     name: "airflow_operator_successes_total"
     labels:
       operator: "$1"

@@ -344,9 +344,8 @@ class OnlineFeatureStore:
         LOI CU (da sua): chi HINCRBY vao mot field roi EXPIRE lai key sau moi
         lan ghi. Voi user hoat dong lien tuc, TTL bi day lui mai mai nen key
         khong bao gio het han va rt_events_1h cong don ca ngay. Trong khi do
-        dbt tinh dung cua so 1 gio -> luc train model thay 12, luc serve thay
-        400. Day CHINH LA training/serving skew, chi khac la no nam o nhanh
-        realtime chu khong phai nhanh batch.
+        dbt tinh dung cua so 1 gio de doi chieu voi Redis overlay. Neu chi
+        cong don mot hash thi duong realtime se thay 400 thay vi 12.
         """
         now = now or time.time()
         bucket = rt_bucket_start(now)

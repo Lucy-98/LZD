@@ -16,12 +16,7 @@ redis==5.1.1
 PyYAML==6.0.3
 prometheus-client==0.21.0
 python-json-logger==2.0.7
-# Model uplift (DR-Learner + LightGBM). Can de test duong serving that thay
-# vi chi test StubModel.
+# Model uplift da chot tu notebook. LightGBM chi can de test duong serving that.
 lightgbm==4.7.0
-numpy==2.5.2
-# CHI can cho `test_fit_va_xuat_booster` (DRLearner.fit dung StratifiedKFold).
-# Thieu chung thi test do SKIP chu khong do — phan thuoc do va phan serving
-# van duoc kiem day du bang numpy thuan.
-scikit-learn==1.7.2
-scipy==1.15.3
+# Ghim trung image serving va van ho tro Python 3.10 cua notebook/venv local.
+numpy==1.26.4

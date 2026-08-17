@@ -6,7 +6,7 @@
   "customer_id": "demo-customer-001",
   "selected_feature_set_id": "fs_2026_08_v2",
   "selected_feature_count": 55,
-  "business_alias_version": "business_aliases_2026_08_v2",
+  "business_alias_version": "business_aliases_2026_08_v3",
   "business_alias_semantic_status": "SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT",
   "runtime": {
     "config_version": "reconstruction_runtime_v2",
@@ -43,37 +43,37 @@
   },
   "files": {
     "README.md": {
-      "bytes": 1181,
-      "sha256": "8678f8bb935b7fb9d729305e376f245585370b452259a38a6571d5c2e3b288f4"
+      "bytes": 1146,
+      "sha256": "df7e2842b734eb61d4e05e947c247f7baff4480b47dd043c89cda065d158fa25"
     },
     "feature_pass.svg": {
       "bytes": 1099,
       "sha256": "85d8c03f0b12c4c56282ff9f56142e0a32a99b2d2068e271579ad1d5d54c4830"
     },
     "features_expected_actual.csv": {
-      "bytes": 15293,
-      "sha256": "82ad1290cd79171b74e3af87d40d7c6665f820a5a3d3cfe367e48c249c4ff1a6"
+      "bytes": 15237,
+      "sha256": "5df365ce30cf59aedb2a57ce5c002c0d28d78598a103cfedb18df0dec702724a"
     },
     "report.html": {
-      "bytes": 26223,
-      "sha256": "2592a6ad7a4b0b80c969e8eb6688823a3843c988a335d38611ed023a0df48456"
+      "bytes": 26068,
+      "sha256": "2b887a652a96ae355ed9feb2ab7f0dcd8336ae4db1da44a4f7ae0013aa5d00ea"
     },
     "summary.json": {
-      "bytes": 878,
-      "sha256": "22e68f40e0c42cfe2a139aa3d598ffe9d5d9e5fbf9207fbd8feb6d9aa180393b"
+      "bytes": 851,
+      "sha256": "e3d66c512022eec110bf6950900b163e445f97d1cb0d9cc16cf30263b7eb757d"
     },
     "timeline.svg": {
       "bytes": 2129,
       "sha256": "552843dde05748db9f9c0fbce8c9db75ecfa04a86193e1b7d54a8d78ddbfe673"
     },
     "track_a_events.csv": {
-      "bytes": 1747,
-      "sha256": "a536b9ff5f3cc538d715557d197ce60985bc4bb21c60c1aa66fe06ebe8f1c1ad"
+      "bytes": 1993,
+      "sha256": "75efcb18e032cecd053ded793c2074812794f7731ec2c88ae4268063dac5f93b"
     },
     "track_b_events.csv": {
-      "bytes": 3279,
-      "sha256": "b55094dfec71677dac5ee49d36b8c0e8c49c544e5ec519a5c90941962ac5739e"
+      "bytes": 3270,
+      "sha256": "71f1d41c8fa5ed69b99b3555496a59b3a16acafa720cc407dfc3135bb742e7d3"
     }
   },
-  "output_dir": "docs\\reconstruction_snapshot"
+  "output_dir": "docs/reconstruction_snapshot"
 }

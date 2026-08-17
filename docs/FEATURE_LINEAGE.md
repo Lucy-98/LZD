@@ -466,7 +466,7 @@ Lưu ý: `f23` và `f25` nằm trong nhóm này và **trùng nhau 99.78%** (`cor
 tự động canh giữ (gap G7, chưa có).
 
 **Chỗ đứt:** `rt_session_len_sec` chỉ có nhánh (1). Online không bao giờ ghi ⇒
-training/serving skew có thật (audit C16).
+offline/online feature skew có thật (audit C16).
 
 ### 8.2 · Nhóm batch `hist_*`
 
@@ -709,8 +709,7 @@ Trường hợp giữa là **cái bẫy nguy hiểm nhất** và là lý do §3.
 | `feat_user_behaviour.sql` | ❌ | dùng `now()` lúc dbt build — **D4** |
 | `feat_user_serving.sql` | ⚠️ | baseline/full mart join behaviour `using (user_id)`, không theo `dt` |
 | `feat_user_selected_serving.sql` | ✅ | selected 55-column sync source; không chứa label/is_treat |
-| `training_dataset.sql` | ✅ | join `(user_id, dt)`; label từ snapshot |
-| `offline_store.iter_shard()` | ✅ | chỉ đọc `entity_key + batch_names` ⇒ **label không rời training dataset** |
+| `offline_store.iter_shard()` | ✅ | chỉ đọc `entity_key + batch_names` ⇒ **label không rời staging snapshot** |
 
 Dòng cuối: **ranh giới label đang đúng** — nhiều team làm sai chỗ này. Đừng phá khi migrate.
 

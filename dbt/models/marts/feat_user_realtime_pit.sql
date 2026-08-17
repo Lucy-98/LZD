@@ -1,5 +1,5 @@
 -- ============================================================================
--- POINT-IN-TIME realtime features (chong training/serving skew).
+-- POINT-IN-TIME realtime features (chong offline/online feature skew).
 --
 -- Van de: luc SERVE, model nhan rt_events_1h lay tu Redis - tuc la "1 gio
 -- truoc THOI DIEM request". Neu luc TRAIN ta tinh rt_events_1h tren toan bo

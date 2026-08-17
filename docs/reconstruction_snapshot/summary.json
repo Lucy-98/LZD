@@ -19,7 +19,7 @@
   "runtime_config_version": "reconstruction_runtime_v2",
   "selected_feature_set_id": "fs_2026_08_v2",
   "selected_feature_count": 55,
-  "business_alias_version": "business_aliases_2026_08_v2",
+  "business_alias_version": "business_aliases_2026_08_v3",
   "business_alias_semantic_status": "SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT",
   "reference_ts": "2026-08-01T23:59:59+00:00",
   "generation_seed": 42,

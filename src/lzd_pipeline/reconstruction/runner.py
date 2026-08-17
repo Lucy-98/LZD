@@ -34,6 +34,10 @@ DBT_ROOT = Path(__file__).resolve().parents[3] / "dbt" / "models"
 #: Model dbt -> bang DuckDB. `ref()` / `source()` deu tro vao day.
 RELATIONS = {
     ("ref", "stg_events_v2"): "stg_events_v2",
+    ("ref", "feat_cfs_counter"): "feat_cfs_counter",
+    ("ref", "feat_cfs_recency"): "feat_cfs_recency",
+    ("ref", "feat_cfs_categorical"): "feat_cfs_categorical",
+    ("ref", "feat_passthrough"): "feat_passthrough",
     ("source", "raw", "events_v2"): "raw_events_v2",
     ("source", "biz", "reconstruction_boundary"): "biz_reconstruction_boundary",
     ("source", "biz", "customer_attribute"): "biz_customer_attribute",
@@ -82,7 +86,7 @@ class RunInput:
     decoded: DecodedTarget
     reference_ts: datetime
     attributes: Mapping[str, int]          # attr_name -> level_id
-    passthrough: Mapping[str, float]       # 18 cot T3
+    passthrough: Mapping[str, float]       # 24 cot T3
     generation_run_id: str = "run-1"
 
 
@@ -168,6 +172,8 @@ def build_marts(
         ("feat_cfs_recency", DBT_ROOT / "marts" / "feat_cfs_recency.sql"),
         ("feat_cfs_categorical", DBT_ROOT / "marts" / "feat_cfs_categorical.sql"),
         ("feat_passthrough", DBT_ROOT / "marts" / "feat_passthrough.sql"),
+        ("feat_cfs_reconstructed_selected",
+         DBT_ROOT / "marts" / "feat_cfs_reconstructed_selected.sql"),
     ):
         sql = render_model(path, {
             "f30_semantic_branch": semantic_branch,
@@ -210,8 +216,8 @@ def compare(
 
 @dataclass(frozen=True)
 class GateAReport:
-    gate_a: tuple[ColumnResult, ...]        # 18 cot T1+T2
-    gate_a_t3: tuple[ColumnResult, ...]     # 18 cot T3 — ti le RIENG
+    gate_a: tuple[ColumnResult, ...]        # 31 cot T1+T2
+    gate_a_t3: tuple[ColumnResult, ...]     # 24 cot T3 — ti le RIENG
 
     @property
     def gate_a_pass(self) -> bool:
@@ -242,17 +248,16 @@ def gate_a(
 
 
 def read_reconstructed(con: duckdb.DuckDBPyConnection, target_id: str) -> dict[str, float]:
-    """Gom 36 cot tu bon mart."""
-    out: dict[str, float] = {}
-    for tbl in ("feat_cfs_counter", "feat_cfs_recency",
-                "feat_cfs_categorical", "feat_passthrough"):
-        cols = [c[0] for c in con.execute(f"DESCRIBE {tbl}").fetchall()]
-        want = [c for c in cols if c.startswith("f") and c[1:].isdigit()]
-        if not want:
-            continue
-        row = con.execute(
-            f"SELECT {', '.join(want)} FROM {tbl} WHERE target_id = ?", [target_id]
-        ).fetchone()
-        if row:
-            out.update({c: (float(v) if v is not None else None) for c, v in zip(want, row)})
-    return out
+    """Doc 55 cot tu mart hop nhat, dung nhu consumer/auditor se doc."""
+    table = "feat_cfs_reconstructed_selected"
+    cols = [c[0] for c in con.execute(f"DESCRIBE {table}").fetchall()]
+    want = [c for c in cols if c.startswith("f") and c[1:].isdigit()]
+    row = con.execute(
+        f"SELECT {', '.join(want)} FROM {table} WHERE target_id = ?", [target_id]
+    ).fetchone()
+    if row is None:
+        return {}
+    return {
+        column: (float(value) if value is not None else None)
+        for column, value in zip(want, row)
+    }

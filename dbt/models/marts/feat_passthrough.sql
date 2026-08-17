@@ -10,7 +10,7 @@
 --
 -- 🚫 Ket qua cua no KHONG duoc tinh vao ti le pass cua Gate A.
 --    Gop hai ti le se lam Gate A luon >= 50% nho copy — con so vo nghia.
---    => Gate A (18 cot T1+T2) va Gate A-T3 (18 cot nay) bao cao RIENG.
+--    => Gate A (31 cot T1+T2) va Gate A-T3 (24 cot nay) bao cao RIENG.
 --
 -- Vi sao van can model nay: tong reconstruction target la 55 cot. Neu khong
 -- kiem T3, 24 cot co the hong tren duong truyen ma khong ai biet.

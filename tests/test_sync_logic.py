@@ -116,7 +116,7 @@ def test_realtime_has_ttl(store):
 # ------------------------------------------- cua so truot 1 gio (regression)
 # Loi cu: HINCRBY vao 1 field + EXPIRE lai key sau moi lan ghi -> user hoat
 # dong lien tuc thi key khong bao gio het han va counter cong don vo han,
-# trong khi dbt van tinh dung 1 gio => training/serving skew.
+# trong khi dbt van tinh dung 1 gio => offline/online feature skew.
 def test_realtime_counter_only_counts_last_hour(store):
     from lzd_pipeline.features.online_store import RT_WINDOW_SECONDS
 

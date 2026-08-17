@@ -49,12 +49,6 @@ def model_76(spec):
     return _FakeModel([n for n in spec.all_names if not n.startswith("rt_")])
 
 
-@pytest.fixture
-def model_62(spec):
-    """Model `train.py`: 55 batch + 7 rt_*."""
-    return _FakeModel(spec.all_names)
-
-
 # ===========================================================================
 # Cot thieu phai VANG MAT, khong duoc dien 0.0
 # ===========================================================================
@@ -83,18 +77,18 @@ def test_gia_tri_rong_cung_tinh_la_thieu(spec, model_76):
 # ===========================================================================
 # Thu tu uu tien: context > realtime > batch
 # ===========================================================================
-def test_context_ghi_de_realtime_va_batch(spec, model_62):
+def test_context_ghi_de_realtime_va_batch(spec, model_76):
     row, _, _, _ = build_model_row(
-        spec, model_62.feature_order,
+        spec, model_76.feature_order,
         {"rt_order_1h": "1"}, {"rt_order_1h": "2"}, {"rt_order_1h": 3},
     )
     assert row["rt_order_1h"] == 3
 
 
-def test_realtime_ghi_de_batch(spec, model_62):
+def test_realtime_ghi_de_batch(spec, model_76):
     """Du lieu moi hon thang du lieu cu."""
     row, _, _, _ = build_model_row(
-        spec, model_62.feature_order, {"rt_order_1h": "1"}, {"rt_order_1h": "2"}, {}
+        spec, model_76.feature_order, {"rt_order_1h": "1"}, {"rt_order_1h": "2"}, {}
     )
     assert row["rt_order_1h"] == 2
 
@@ -113,14 +107,6 @@ def test_model_76_cot_khong_bao_gio_nhan_duoc_realtime(spec, model_76):
     assert realtime_applied == 0
     assert any(n.startswith("rt_") for n in row)   # co trong row, nhung...
     assert not any(n.startswith("rt_") for n in model_76.feature_order)  # ...model khong doi
-
-
-def test_model_62_cot_dem_duoc_realtime(spec, model_62):
-    rt = {n: 9 for n in spec.all_names if n.startswith("rt_")}
-    _, _, _, realtime_applied = build_model_row(spec, model_62.feature_order, {}, rt, {})
-    assert realtime_applied == 7
-
-
 # ===========================================================================
 # context validation
 # ===========================================================================

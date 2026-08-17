@@ -6,11 +6,11 @@ Duong di 1 request (SLA < 100ms):
       -> doc fs:meta:active_version                     (Redis, ~0.2ms)
       -> HGETALL fs:{v}:u:{uid} + rt:u:{uid} (1 RTT)    (Redis, ~1-3ms)
       -> merge theo feature_spec.yml, dien default
-      -> model.predict_uplift()                          (TODO teammate)
+      -> model notebook trong image .predict_uplift()
       -> so voi nguong -> SEND_VOUCHER / NO_VOUCHER
 
-Phan feature (doc Redis, merge, do latency, log) DA XONG.
-Phan model la khung - xem serving/model_loader.py.
+Model va feature contract duoc bake cung Docker image; khong co registry,
+hot-reload hay fallback sang score gia.
 
 Endpoint:
     GET  /health          - liveness
@@ -19,6 +19,7 @@ Endpoint:
     GET  /features/{uid}  - DEBUG: xem dung feature ma model se nhan
     POST /decide          - quyet dinh phat voucher cho 1 user
     POST /decide/batch    - cho nhieu user
+    POST /campaign/decide - xep hang Top-K + rt_* gate thoi diem phat
     GET  /store/info      - trang thai feature store (version, so key, tuoi)
 """
 from __future__ import annotations
@@ -30,7 +31,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from lzd_pipeline.common.config import get_settings
 from lzd_pipeline.common.logging_setup import configure_logging, get_logger
@@ -49,6 +50,7 @@ from lzd_pipeline.serving.decide_input import (
     build_model_row,
     check_context,
 )
+from lzd_pipeline.serving.campaign_policy import apply_top_k_realtime_policy
 from lzd_pipeline.serving.inference_logger import get_inference_logger
 from lzd_pipeline.serving.model_loader import get_model
 
@@ -114,6 +116,8 @@ class DecideRequest(BaseModel):
 
 
 class DecideResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     user_id: str
     decision: str
     uplift_score: float | None
@@ -128,10 +132,8 @@ class DecideResponse(BaseModel):
     features_supplied: int
     #: ★ So tin hieu realtime THUC SU vao duoc model.
     #:
-    #: Bang 0 KHONG co nghia la client gui thieu — model 76 cot cua notebook
-    #: khong co o nao cho `rt_*`, nen realtime khong bao gio vao duoc no. Chi
-    #: model do `train.py` huan luyen (62 cot, co 7 cot rt_*) moi dung den.
-    #: Truong nay de cho su that do lo ra thay vi phai suy tu score.
+    #: Model notebook 76 cot khong co o nao cho `rt_*`, nen gia tri nay hien
+    #: luon bang 0. Truong duoc giu de API noi ro gioi han cua artifact.
     realtime_applied: int
     latency_ms: float
     features: dict[str, Any] | None = None
@@ -139,6 +141,14 @@ class DecideResponse(BaseModel):
 
 class BatchDecideRequest(BaseModel):
     user_ids: list[str]
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class CampaignDecideRequest(BaseModel):
+    """Policy demo bounded; `budget` la so slot xep hang, khong phai threshold."""
+
+    user_ids: list[str] = Field(min_length=1, max_length=1000)
+    budget: int = Field(default=3, ge=1)
     context: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -167,6 +177,18 @@ def _build_model_row(
     return build_model_row(spec, model.feature_order, batch_raw, realtime, context)
 
 
+def _model_or_503():
+    """Model thieu/hong la loi deploy image, khong duoc thay bang score gia."""
+    try:
+        return get_model()
+    except Exception as exc:
+        log.error(
+            "khong nap duoc model trong Docker image",
+            extra={"event": "model_unavailable", "error": str(exc)[:300]},
+        )
+        raise HTTPException(status_code=503, detail=f"model khong san sang: {exc}") from None
+
+
 # ===========================================================================
 # Health / readiness / metrics
 # ===========================================================================
@@ -188,7 +210,7 @@ def ready() -> dict[str, Any]:
             detail="chua co fs:meta:active_version - chay DAG 40_sync_features_to_redis truoc",
         )
     return {"status": "ready", "feature_version": version,
-            "model_version": get_model().version}
+            "model_version": _model_or_503().version}
 
 
 @app.get("/metrics")
@@ -237,8 +259,8 @@ def store_info() -> dict[str, Any]:
         "age_seconds": s.feature_store_age_seconds(),
         "realtime_keys": s.count_keys(s.spec.realtime_key("*")),
         "batch_keys": s.count_keys(s.spec.batch_key(version, "*")) if version else 0,
-        "model": {"name": get_model().name, "version": get_model().version,
-                  "is_stub": get_model().is_stub},
+        "model": {"name": _model_or_503().name, "version": _model_or_503().version,
+                  "source": "docker_image"},
     }
 
 
@@ -249,7 +271,7 @@ def store_info() -> dict[str, Any]:
 def decide(req: DecideRequest) -> DecideResponse:
     settings = get_settings()
     spec = load_feature_spec()
-    model = get_model()
+    model = _model_or_503()
     _check_context(spec, req.context)
     started = time.perf_counter()
 
@@ -354,7 +376,7 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
     ngoai. Mot duong duy nhat thi chung khong the lech nua.
     """
     spec = load_feature_spec()
-    model = get_model()
+    model = _model_or_503()
     _check_context(spec, req.context)
     started = time.perf_counter()
 
@@ -407,9 +429,61 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
     }
 
 
-@app.post("/admin/reload-model")
-def reload_model() -> dict[str, Any]:
-    """Nap lai model sau khi co ban moi tren Registry (khong can restart)."""
-    model = get_model(force_reload=True)
-    return {"model_name": model.name, "model_version": model.version,
-            "is_stub": model.is_stub}
+@app.post("/campaign/decide")
+def campaign_decide(req: CampaignDecideRequest) -> dict[str, Any]:
+    """Demo campaign: uplift xep hang, realtime synthetic gate thoi diem.
+
+    Model artifact khong nhan `rt_*`; endpoint khong sua score de lam demo.
+    `rt_*` duoc doc tu Redis sau khi Track B di qua Kafka/consumer va chi tao
+    action cua policy: SEND, WAIT, SUPPRESS, hoac khong nam trong budget.
+    """
+    started = time.perf_counter()
+    batch = decide_batch(BatchDecideRequest(
+        user_ids=req.user_ids,
+        context=req.context,
+    ))
+    _, raw_map = store().mget_raw(req.user_ids, version=batch["feature_version"])
+    realtime_by_user = {
+        user_id: store().aggregate_realtime(raw_map[user_id][1])
+        for user_id in req.user_ids
+    }
+    try:
+        policy = apply_top_k_realtime_policy(
+            batch["results"], realtime_by_user, budget=req.budget
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    for action, count in policy["action_counts"].items():
+        INFERENCE_DECISIONS.labels(decision=action).inc(count)
+
+    latency_ms = round((time.perf_counter() - started) * 1000, 3)
+    log.info(
+        "campaign decision",
+        extra={
+            "event": "campaign_decision",
+            "model_version": batch["model_version"],
+            "feature_version": batch["feature_version"],
+            "budget": req.budget,
+            "action_counts": policy["action_counts"],
+            "latency_ms": latency_ms,
+        },
+    )
+    return {
+        "count": len(req.user_ids),
+        "latency_ms": latency_ms,
+        "feature_version": batch["feature_version"],
+        "model_version": batch["model_version"],
+        "model_contract": {
+            "redis_batch_features": 55,
+            "service_derived_features": 7,
+            "fixed_default_features": 14,
+            "model_input_features": 76,
+            "realtime_features_in_model": 0,
+        },
+        **policy,
+        "disclaimer": (
+            "rt_* la synthetic demo signal va chi anh huong campaign_action; "
+            "DRLearner score khong dung realtime feature."
+        ),
+    }

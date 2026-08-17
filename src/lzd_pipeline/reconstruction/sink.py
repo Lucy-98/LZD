@@ -167,7 +167,7 @@ def publish_track_b_to_lake(
     Hai Track khac nhau ve LOAI SU THAT, khong phai ve nhan:
 
         Track A  tai dung hanh vi DA XAY RA tu feature co that
-                 -> du lieu huan luyen chinh dang
+                 -> du lieu quan sat chinh dang
         Track B  hanh vi do `RuleBasedBehaviour` BIA RA tu CustomerState(T0)
                  -> train tren no la day model hoc lai luat cua chinh no
 
@@ -181,8 +181,8 @@ def publish_track_b_to_lake(
     mot hanh dong co y thuc.
 
     🚫 Cung vi vay: KHONG replay Track B vao topic `app.user.events.v1`. Topic
-       do chay thang vao `raw/app_events` -> `feat_user_realtime_pit` ->
-       `training_dataset`. Muon thu tai thi dung topic rieng.
+       do chay thang vao `raw/app_events` -> `feat_user_realtime_pit` va Redis
+       overlay. Muon thu tai thi dung topic rieng.
     """
     source = _require(output_dir / TRACK_B_FILE)
     target = target_uri or lake_uri(*TRACK_B_PREFIX, f"dt={dt}", "events.parquet")

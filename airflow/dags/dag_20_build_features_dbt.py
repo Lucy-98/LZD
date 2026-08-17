@@ -1,14 +1,13 @@
 """DAG 20 - TRANSFORM: RAW -> CLEANED -> BUSINESS READY bang dbt.
 
     stg_user_snapshot ─┐
-    stg_app_events ────┼─> feat_user_behaviour ─┐
-                       │                        ├─> feat_user_serving  (=> Redis)
-                       └─> feat_user_realtime_pit ┘        │
-                                                  └────────┴─> training_dataset
+    stg_app_events ────┼─> feat_user_behaviour ─> feat_user_serving
+                       └─> feat_user_realtime_pit          │
+                               feat_user_selected_serving ─┘ => Redis
 
 Sau khi dbt build xong:
-  - kiem tra cot cua feat_user_serving co khop feature_spec.yml khong
-    (day la hang rao chong training/serving skew, fail som con hon sai am tham)
+  - kiem tra cot cua feat_user_selected_serving co khop feature_spec.yml khong
+    (hang rao chong feature-store/serving skew)
   - day so lieu (row count, null rate, freshness) len Grafana
   - ghi ket qua dbt test vao ops.dq_result
 
@@ -121,7 +120,7 @@ def build_features_dbt():
 
     @task
     def assert_spec_contract() -> dict:
-        """HANG RAO CHONG SKEW: cot cua mart phai phu het spec.
+        """HANG RAO CHONG SKEW: cot cua mart serving phai phu het spec.
 
         Thieu cot -> fail ngay tai day, khong de sync ghi len Redis mot bo
         feature khong khop voi luc train.
@@ -137,24 +136,18 @@ def build_features_dbt():
         serving_cols = offline.columns(spec.offline["serving_table"])
         missing_serving = spec.validate_columns(serving_cols, scope="batch")
 
-        training_cols = offline.columns(spec.offline["training_table"])
-        missing_training = spec.validate_columns(training_cols, scope="all")
-
         result = {
             "spec_version": spec.version,
             "serving_columns": len(serving_cols),
-            "training_columns": len(training_cols),
             "missing_in_serving": missing_serving,
-            "missing_in_training": missing_training,
         }
         log.info("kiem tra hop dong feature",
                  extra={"event": "spec_contract_check", **result})
 
-        if missing_serving or missing_training:
+        if missing_serving:
             raise ValueError(
                 "Mart khong khop feature_spec.yml.\n"
                 f"  thieu o {spec.offline['serving_table']}: {missing_serving[:15]}\n"
-                f"  thieu o {spec.offline['training_table']}: {missing_training[:15]}\n"
                 "Sua dbt model hoac sua feature_spec.yml roi chay lai."
             )
         return result
@@ -259,8 +252,6 @@ def build_features_dbt():
         null_rates = offline.null_rates(spec.batch_names[:20], dt=dt)
         worst_feature = max(null_rates, key=null_rates.get) if null_rates else None
         worst_null = null_rates.get(worst_feature, 0.0) if worst_feature else 0.0
-        treatment_ratio = offline.treatment_ratio()
-
         audit.record_dq(dt, "mart_row_count", spec.offline["serving_table"],
                         rows >= quality.get("min_row_count", 1000),
                         observed=float(rows),
@@ -279,8 +270,6 @@ def build_features_dbt():
         metrics = {"mart_rows": rows}
         if freshness is not None:
             metrics["table_freshness_hours"] = freshness
-        if treatment_ratio is not None:
-            metrics["training_treatment_ratio"] = treatment_ratio
         push_batch_metrics("build_features",
                            metrics,
                            labels={"table": spec.offline["serving_table"]})
@@ -290,8 +279,7 @@ def build_features_dbt():
                                labels={"feature": feature})
 
         result = {"rows": rows, "freshness_hours": freshness,
-                  "worst_null_feature": worst_feature, "worst_null_rate": worst_null,
-                  "treatment_ratio": treatment_ratio}
+                  "worst_null_feature": worst_feature, "worst_null_rate": worst_null}
         log.info("profile mart", extra={"event": "mart_profiled", **result})
         return result
 

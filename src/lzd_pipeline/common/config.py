@@ -52,7 +52,6 @@ class MinioConfig:
     access_key: str = field(default_factory=lambda: _env("MINIO_ROOT_USER", "minioadmin"))
     secret_key: str = field(default_factory=lambda: _env("MINIO_ROOT_PASSWORD", "minioadmin123"))
     bucket_lake: str = field(default_factory=lambda: _env("MINIO_BUCKET_LAKE", "lakehouse"))
-    bucket_models: str = field(default_factory=lambda: _env("MINIO_BUCKET_MODELS", "models"))
 
     @property
     def host_no_scheme(self) -> str:
@@ -98,8 +97,6 @@ class Settings:
     lake_root: str = field(default_factory=lambda: _env("LAKE_ROOT", "s3://lakehouse"))
     pushgateway_url: str = field(default_factory=lambda: _env("PUSHGATEWAY_URL", "http://pushgateway:9091"))
     metrics_port: int = field(default_factory=lambda: _env_int("METRICS_PORT", 9105))
-    mlflow_tracking_uri: str = field(default_factory=lambda: _env("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
-    mlflow_experiment: str = field(default_factory=lambda: _env("MLFLOW_EXPERIMENT", "uplift-descn"))
     uplift_threshold: float = field(default_factory=lambda: _env_float("UPLIFT_DECISION_THRESHOLD", 0.02))
 
     kafka: KafkaConfig = field(default_factory=KafkaConfig)

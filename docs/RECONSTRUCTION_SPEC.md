@@ -1377,7 +1377,7 @@ event liên tục (§0). Chạy nó lặp lại trong vòng streaming là hiểu
 ```
 🚫 không ghi production data          🚫 không chạy full dataset
 🚫 không ghi Kafka/MinIO/downstream state   ✅ Track B chạy dry-run
-🚫 không đăng ký model alias Production
+🚫 không ghi đè artifact trong models/uplift_voucher
 ```
 
 ### 13.1 · GATE cho PILOT & PRODUCTION

@@ -55,7 +55,7 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]], fields: Sequence[str]) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(fields))
+        writer = csv.DictWriter(fh, fieldnames=list(fields), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

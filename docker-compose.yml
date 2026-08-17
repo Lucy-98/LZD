@@ -4,7 +4,7 @@
 #   Layer 1  ingest      : event-producer -> kafka -> stream-consumer -> minio/redis
 #   Layer 2  lakehouse   : minio (parquet) + duckdb + dbt
 #   Layer 3  orchestrate : airflow (postgres metadata)
-#   Layer 4  ml          : mlflow + model registry (minio) + fastapi inference
+#   Layer 4  serving     : fastapi inference + model notebook bake trong image
 #   Layer 5  observe     : prometheus + grafana + loki + exporters + UIs
 #
 # CACH CHAY
@@ -21,7 +21,7 @@
 # tuc: bat mac dinh la dot CPU cua nguoi chi muon xem batch pipeline.
 # ==========================================================================
 
-name: ${COMPOSE_PROJECT_NAME:-lzd-uplift}
+name: ${COMPOSE_PROJECT_NAME:-lzd-reconstruction}
 
 # ---------------------------------------------------------------- anchors
 x-common-env: &common-env
@@ -39,13 +39,9 @@ x-common-env: &common-env
   MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
   MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
   MINIO_BUCKET_LAKE: ${MINIO_BUCKET_LAKE:-lakehouse}
-  MINIO_BUCKET_MODELS: ${MINIO_BUCKET_MODELS:-models}
   AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
   AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
   AWS_DEFAULT_REGION: us-east-1
-  MLFLOW_TRACKING_URI: http://mlflow:5000
-  MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-  MLFLOW_EXPERIMENT: ${MLFLOW_EXPERIMENT:-uplift-descn}
   DUCKDB_PATH: ${DUCKDB_PATH:-/opt/lakehouse/warehouse.duckdb}
   LAKE_ROOT: ${LAKE_ROOT:-s3://lakehouse}
   PUSHGATEWAY_URL: http://pushgateway:9091
@@ -74,7 +70,7 @@ x-airflow-common: &airflow-common
   build:
     context: .
     dockerfile: docker/airflow/Dockerfile
-  image: lzd/airflow:2.10.5
+  image: lzd-reconstruction/airflow:2.10.5
   environment:
     <<: *common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -109,9 +105,7 @@ x-airflow-common: &airflow-common
     - ./config:/opt/project/config
     - ./sql:/opt/project/sql
     - ./data:/opt/project/data:ro
-    # `training/register.py` doc booster + hop dong tu day de dang ky vao
-    # MLflow Registry. `:ro` — DAG khong duoc sua artifact goc.
-    - ./models:/opt/project/models:ro
+    - ./.tmp:/opt/project/.tmp
     - lakehouse:/opt/lakehouse
   user: "${AIRFLOW_UID:-50000}:0"
   logging: *default-logging
@@ -127,7 +121,6 @@ services:
   # ------------------------------------------------------------ STORAGE
   postgres:
     image: postgres:16-alpine
-    container_name: lzd-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lzd}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lzd_secret}
@@ -139,7 +132,7 @@ services:
     cpus: 1.0
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Chay 1 lan khi volume con trong: tao db airflow/mlflow/pipeline + schema audit
+      # Chay 1 lan khi volume con trong: tao db airflow/pipeline + schema audit
       - ./sql/postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lzd} -d ${POSTGRES_DB:-lzd}"]
@@ -151,9 +144,34 @@ services:
       com.lzd.layer: storage
     logging: *default-logging
 
+  # UI quan tri Postgres cho local/demo. Server "LZD Postgres" duoc import
+  # san; mat khau DB khong ghi trong servers.json, nhap POSTGRES_PASSWORD khi
+  # pgAdmin hoi lan ket noi dau tien.
+  pgadmin:
+    image: dpage/pgadmin4:9.16
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@lzd.example}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGADMIN_DISABLE_POSTFIX: "True"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    mem_limit: 512m
+    cpus: 0.5
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./config/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      com.lzd.component: pgadmin
+      com.lzd.layer: storage
+    logging: *default-logging
+
   redis:
     image: redis:7.2-alpine
-    container_name: lzd-redis
     command: >
       redis-server
       --appendonly yes
@@ -180,7 +198,6 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2024-10-13T13-34-11Z
-    container_name: lzd-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
@@ -206,7 +223,6 @@ services:
   # Tao bucket + policy 1 lan roi thoat
   minio-init:
     image: minio/mc:RELEASE.2024-10-08T09-37-26Z
-    container_name: lzd-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -215,8 +231,6 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MINIO_BUCKET_LAKE: ${MINIO_BUCKET_LAKE:-lakehouse}
-      MINIO_BUCKET_MODELS: ${MINIO_BUCKET_MODELS:-models}
-      MINIO_BUCKET_MLFLOW: ${MINIO_BUCKET_MLFLOW:-mlflow}
     volumes:
       - ./scripts:/scripts:ro
     logging: *default-logging
@@ -225,11 +239,11 @@ services:
   # KRaft mode: khong can zookeeper
   kafka:
     image: confluentinc/cp-kafka:7.6.1
-    container_name: lzd-kafka
     ports:
       - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
     environment:
-      CLUSTER_ID: lzd-uplift-cluster-0001
+      # KRaft bat buoc cluster id la UUID 16 byte dang base64-url (22 ky tu).
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -255,7 +269,7 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:9092 >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 12
@@ -267,7 +281,6 @@ services:
 
   kafka-init:
     image: confluentinc/cp-kafka:7.6.1
-    container_name: lzd-kafka-init
     depends_on:
       kafka:
         condition: service_healthy
@@ -281,7 +294,6 @@ services:
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
-    container_name: lzd-kafka-ui
     depends_on:
       kafka:
         condition: service_healthy
@@ -305,7 +317,6 @@ services:
   # ------------------------------------------------------------ AIRFLOW
   airflow-init:
     <<: *airflow-common
-    container_name: lzd-airflow-init
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
@@ -338,7 +349,6 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
-    container_name: lzd-airflow-webserver
     command: webserver
     ports:
       - "${AIRFLOW_WEB_PORT:-8080}:8080"
@@ -362,7 +372,6 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    container_name: lzd-airflow-scheduler
     command: scheduler
     # Scheduler chay ca task (LocalExecutor): dbt build + sync shard deu o day
     mem_limit: 2500m
@@ -388,8 +397,7 @@ services:
     build:
       context: .
       dockerfile: docker/python-service/Dockerfile
-    image: lzd/python-service:latest
-    container_name: lzd-event-producer
+    image: lzd-reconstruction/python-service:${PYTHON_SERVICE_IMAGE_TAG:-drlearner-20260813}
     profiles: ["stream", "all"]
     command: ["python", "-m", "lzd_pipeline.ingestion.event_producer"]
     environment:
@@ -427,8 +435,7 @@ services:
     build:
       context: .
       dockerfile: docker/python-service/Dockerfile
-    image: lzd/python-service:latest
-    container_name: lzd-stream-consumer
+    image: lzd-reconstruction/python-service:${PYTHON_SERVICE_IMAGE_TAG:-drlearner-20260813}
     profiles: ["stream", "all"]
     command: ["python", "-m", "lzd_pipeline.ingestion.stream_consumer"]
     environment:
@@ -436,7 +443,7 @@ services:
       SERVICE_NAME: stream-consumer
       METRICS_PORT: "9106"
       CONSUMER_BATCH_MAX_RECORDS: "2000"
-      CONSUMER_BATCH_MAX_SECONDS: "30"
+      CONSUMER_BATCH_MAX_SECONDS: ${CONSUMER_BATCH_MAX_SECONDS:-30}
     depends_on:
       kafka:
         condition: service_healthy
@@ -471,8 +478,7 @@ services:
     build:
       context: .
       dockerfile: docker/python-service/Dockerfile
-    image: lzd/python-service:latest
-    container_name: lzd-inference-api
+    image: lzd-reconstruction/python-service:${PYTHON_SERVICE_IMAGE_TAG:-drlearner-20260813}
     command: >
       uvicorn lzd_pipeline.serving.app:app
       --host 0.0.0.0 --port 8000 --workers ${INFERENCE_WORKERS:-1}
@@ -481,7 +487,6 @@ services:
       <<: *common-env
       SERVICE_NAME: inference-api
       UPLIFT_DECISION_THRESHOLD: ${UPLIFT_DECISION_THRESHOLD:-0.02}
-      MODEL_STAGE: Production
     ports:
       - "${INFERENCE_API_PORT:-8000}:8000"
     depends_on:
@@ -490,15 +495,8 @@ services:
     volumes:
       - ./src:/opt/project/src
       - ./config:/opt/project/config
-      # ★ BAT BUOC. `model_loader.LOCAL_MODEL_DIR` tro toi
-      # /opt/project/models/uplift_voucher — nhanh fallback "booster bundled".
-      # Thieu mount nay thi chuoi nap tut thang xuong StubModel, ma StubModel
-      # VAN tra ve score co ve hop ly => API chay xanh, /decide tra ve so, va
-      # khong ai biet dang phuc vu model gia. Da xay ra: xem `event=model_stub`
-      # voi ly do `FileNotFoundError: feature_contract.json`.
-      #
-      # `:ro` co y — serving khong bao gio duoc ghi vao artifact model.
-      - ./models:/opt/project/models:ro
+      # Model KHONG mount tu host: model_booster.txt + feature_contract.json
+      # da duoc COPY vao image. Cung mot image tag thi luon cung mot model.
       # CO Y KHONG mount `lakehouse` vao day: service serving khong duoc phep
       # cham vao file DuckDB. Chi can mo nham o che do ghi la khoa ca file va
       # lam chet dbt dang chay. Feature luc serve doc tu Redis, khong tu DuckDB.
@@ -519,46 +517,9 @@ services:
       com.lzd.layer: serving
     logging: *default-logging
 
-  mlflow:
-    build:
-      context: .
-      dockerfile: docker/mlflow/Dockerfile
-    image: lzd/mlflow:2.16.2
-    container_name: lzd-mlflow
-    command: >
-      mlflow server
-      --host 0.0.0.0 --port 5000
-      --backend-store-uri postgresql+psycopg2://${POSTGRES_USER:-lzd}:${POSTGRES_PASSWORD:-lzd_secret}@postgres:5432/mlflow
-      --default-artifact-root s3://${MINIO_BUCKET_MLFLOW:-mlflow}/
-      --serve-artifacts
-    environment:
-      <<: *common-env
-    ports:
-      - "${MLFLOW_PORT:-5000}:5000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio-init:
-        condition: service_completed_successfully
-    mem_limit: 768m
-    cpus: 1.0
-    healthcheck:
-      test: ["CMD", "python", "-c",
-             "import urllib.request;urllib.request.urlopen('http://localhost:5000/health',timeout=4)"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
-    restart: unless-stopped
-    labels:
-      com.lzd.component: mlflow
-      com.lzd.layer: ml
-    logging: *default-logging
-
   # ------------------------------------------------------ OBSERVABILITY
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: lzd-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -579,7 +540,9 @@ services:
 
   pushgateway:
     image: prom/pushgateway:v1.9.0
-    container_name: lzd-pushgateway
+    # Image chay non-root trong khi named volume moi thuoc root. Demo local
+    # can ghi persistence file de metric khong mat khi container restart.
+    user: "0:0"
     command: ["--persistence.file=/data/pushgateway.store"]
     ports:
       - "${PUSHGATEWAY_PORT:-9091}:9091"
@@ -594,7 +557,6 @@ services:
 
   statsd-exporter:
     image: prom/statsd-exporter:v0.27.1
-    container_name: lzd-statsd-exporter
     command:
       - --statsd.mapping-config=/etc/statsd/mapping.yml
       - --statsd.listen-udp=:9125
@@ -610,7 +572,6 @@ services:
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
-    container_name: lzd-redis-exporter
     environment:
       REDIS_ADDR: redis://redis:6379
       # Track truc tiep cac key quan trong cua feature store
@@ -628,7 +589,6 @@ services:
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: lzd-postgres-exporter
     environment:
       DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-lzd}:${POSTGRES_PASSWORD:-lzd_secret}@postgres:5432/pipeline?sslmode=disable
       PG_EXPORTER_EXTEND_QUERY_PATH: /etc/pg_exporter/queries.yml
@@ -646,7 +606,6 @@ services:
 
   kafka-exporter:
     image: danielqsj/kafka-exporter:v1.7.0
-    container_name: lzd-kafka-exporter
     command: ["--kafka.server=kafka:9092", "--web.listen-address=:9308"]
     mem_limit: 128m
     depends_on:
@@ -660,7 +619,6 @@ services:
 
   loki:
     image: grafana/loki:3.1.1
-    container_name: lzd-loki
     command: ["-config.file=/etc/loki/loki-config.yml"]
     ports:
       - "${LOKI_PORT:-3100}:3100"
@@ -677,7 +635,6 @@ services:
 
   promtail:
     image: grafana/promtail:3.1.1
-    container_name: lzd-promtail
     command: ["-config.file=/etc/promtail/promtail-config.yml"]
     mem_limit: 256m
     volumes:
@@ -695,7 +652,6 @@ services:
 
   grafana:
     image: grafana/grafana:11.2.2
-    container_name: lzd-grafana
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -725,7 +681,6 @@ services:
 
   redisinsight:
     image: redis/redisinsight:2.58
-    container_name: lzd-redisinsight
     ports:
       - "${REDISINSIGHT_PORT:-5540}:5540"
     mem_limit: 512m
@@ -742,6 +697,7 @@ services:
 
 volumes:
   postgres-data:
+  pgadmin-data:
   redis-data:
   minio-data:
   kafka-data:
@@ -756,4 +712,4 @@ volumes:
 
 networks:
   default:
-    name: lzd-net
+    name: ${COMPOSE_PROJECT_NAME:-lzd-reconstruction}-net

@@ -40,9 +40,9 @@ Set-Location $Root
 
 # Stack toi thieu cho ai khong muon bat 10 container observability.
 $CoreServices = @(
-    "postgres", "redis", "minio", "minio-init", "kafka", "kafka-init",
+    "postgres", "pgadmin", "redis", "minio", "minio-init", "kafka", "kafka-init",
     "airflow-init", "airflow-webserver", "airflow-scheduler",
-    "mlflow", "inference-api"
+    "inference-api"
 )
 
 function Write-Section($text) {
@@ -210,10 +210,10 @@ function Show-Urls {
     Write-Section "Giao dien"
     @(
         @{ Name = "Airflow      "; Url = "http://localhost:8080"; Note = "admin/admin" },
+        @{ Name = "pgAdmin      "; Url = "http://localhost:5050"; Note = "admin@lzd.local/admin123" },
         @{ Name = "Grafana      "; Url = "http://localhost:3000"; Note = "admin/admin" },
         @{ Name = "Kafka UI     "; Url = "http://localhost:8082"; Note = "topic, message, consumer lag" },
         @{ Name = "MinIO Console"; Url = "http://localhost:9001"; Note = "minioadmin/minioadmin123" },
-        @{ Name = "MLflow       "; Url = "http://localhost:5000"; Note = "experiment + model registry" },
         @{ Name = "Prometheus   "; Url = "http://localhost:9090"; Note = "metric + alert" },
         @{ Name = "RedisInsight "; Url = "http://localhost:5540"; Note = "them ket noi redis:6379" },
         @{ Name = "Inference API"; Url = "http://localhost:8000/docs"; Note = "swagger" }
@@ -274,7 +274,8 @@ switch ($Command) {
     "up-core" {
         # Compose khong co "profile tru di": muon bo observability thi phai
         # goi ten service. Danh sach nay = stack mac dinh tru prometheus,
-        # grafana, loki, promtail, exporter va cac UI.
+        # grafana, loki, promtail, exporter va cac UI observability. pgAdmin
+        # van o core vi day la UI quan tri truc tiep cho Postgres.
         Test-ImagesOrRegistry @()
         Invoke-NativeChecked "docker" (@("compose", "up", "-d") + $CoreServices) -DockerHint
         Show-Urls
@@ -295,7 +296,7 @@ switch ($Command) {
     "down"  { Invoke-NativeChecked "docker" @("compose", "--profile", "all", "down") -DockerHint }
 
     "reset" {
-        Write-Host "XOA TOAN BO du lieu (postgres, redis, minio, kafka, grafana)." -ForegroundColor Red
+        Write-Host "XOA TOAN BO du lieu (postgres, pgadmin, redis, minio, kafka, grafana)." -ForegroundColor Red
         $ans = Read-Host "Go 'yes' de xac nhan"
         if ($ans -eq "yes") {
             Invoke-NativeChecked "docker" @("compose", "--profile", "all", "down", "-v") -DockerHint
@@ -326,11 +327,11 @@ switch ($Command) {
         Write-Section "Kiem tra suc khoe"
         $checks = @(
             @{ Name = "Airflow      "; Url = "http://localhost:8080/health" },
+            @{ Name = "pgAdmin      "; Url = "http://localhost:5050/misc/ping" },
             @{ Name = "Grafana      "; Url = "http://localhost:3000/api/health" },
             @{ Name = "Prometheus   "; Url = "http://localhost:9090/-/healthy" },
             @{ Name = "Kafka UI     "; Url = "http://localhost:8082/actuator/health" },
             @{ Name = "MinIO        "; Url = "http://localhost:9000/minio/health/live" },
-            @{ Name = "MLflow       "; Url = "http://localhost:5000/health" },
             @{ Name = "Loki         "; Url = "http://localhost:3100/ready" },
             @{ Name = "Inference API"; Url = "http://localhost:8000/health" }
         )

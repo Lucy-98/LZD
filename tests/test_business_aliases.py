@@ -26,6 +26,10 @@ def test_business_aliases_do_not_claim_true_lazada_semantics():
 def test_track_a_event_aliases_make_witness_boundary_explicit():
     aliases = load_business_aliases()
 
-    assert aliases.event_alias_of("EVT_ORDER_PAID") == "CFS_RECENCY_MARKER"
+    assert aliases.event_alias_of("EVT_ORDER_PAID") == "ASSUMED_ORDER_PAID"
+    assert all(
+        item.alias.startswith("ASSUMED_")
+        for item in aliases.event_aliases.values()
+    )
     assert "not" in aliases.event_note_of("EVT_ORDER_PAID").lower()
     assert aliases.event_alias_of("PRODUCT_VIEWED") == "PRODUCT_VIEWED"

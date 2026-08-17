@@ -9,8 +9,7 @@
 
        IO Error: No files found that match the pattern
 
-   Hau qua da gap: `stg_app_events` do -> `feat_user_realtime_pit` do ->
-   `training_dataset` do -> `feat_user_selected_serving` khong ton tai -> ca
+   Hau qua da gap: `stg_app_events` do -> `feat_user_realtime_pit` do, va ca
    DAG 20 fail. Tuc la duong feature BATCH (55 cot, khong can event nao) chet
    chi vi duong STREAM chua chay lan nao. Do la loi ghep noi, khong phai loi
    du lieu.

@@ -128,7 +128,7 @@ class Event:
 
 def _intra_day_ts(reference_ts: datetime, day_offset: int, seed: int,
                   gen_reason: str, sub_index: int) -> datetime:
-    """Gio-trong-ngay la TU DO (T-6) — khong feature nao trong 36 cot phu thuoc.
+    """Gio-trong-ngay la TU DO (T-6) — khong feature selected nao phu thuoc.
 
     Ham THUAN cua (seed, reason, day, sub_index) => khong phu thuoc traversal.
     """

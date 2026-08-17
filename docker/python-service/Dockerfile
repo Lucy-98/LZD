@@ -29,7 +29,7 @@ COPY docker/python-service/requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip setuptools wheel \
     && pip install -r /tmp/requirements.txt \
-    && pip check || echo "[canh bao] co xung dot dependency - xem log phia tren"
+    && pip check
 
 # ------------------------------------------------------------- RUNTIME ----
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
@@ -51,8 +51,7 @@ ENV PYTHONUNBUFFERED=1 \
 # NGOAI TRU `libgomp1`. Wheel cua LightGBM link dong toi OpenMP runtime, ma
 # `python:slim` khong co no. Thieu goi nay thi `import lightgbm` do
 #     OSError: libgomp.so.1: cannot open shared object file
-# va chuoi nap model tut xuong StubModel — API van xanh, /decide van tra ve
-# so, chi la so gia. Da xay ra that, xem `event=model_stub`.
+# va inference-api khong the ready. Service co y KHONG fallback sang score gia.
 #
 # ~150 KB. Khong dung `libgomp1-*-dev`: runtime khong can header.
 RUN apt-get update \
@@ -70,7 +69,16 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
 WORKDIR /opt/project
 
 # Code/config duoc bind mount trong docker-compose de tranh bake OneDrive
-# reparse-point files vao build context. Standalone image chi chua runtime deps.
+# reparse-point files vao build context.
+
+# Model da chot tu notebook la mot phan bat bien cua image. Serving KHONG bind
+# mount artifact tu host va KHONG tai model tu registry. Muon doi model phai
+# thay ba file nay, build image moi va deploy bang tag image moi.
+COPY --chown=appuser:appuser \
+     models/uplift_voucher/model_booster.txt \
+     models/uplift_voucher/feature_contract.json \
+     models/uplift_voucher/metadata.json \
+     /opt/project/models/uplift_voucher/
 
 USER appuser
 

@@ -4,10 +4,10 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
-.tmp/
 .ipynb_checkpoints/
 
 # Runtime state (docker named volumes van la nguon chinh, day la fallback)
+.tmp/
 lakehouse/
 logs/
 airflow/logs/

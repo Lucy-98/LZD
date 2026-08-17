@@ -32,7 +32,7 @@ models:
 
   - name: feat_user_selected_serving
     description: >
-      Selected 36-feature mart duoc sync len Redis theo feature_spec.yml
+      Selected 55-feature mart duoc sync len Redis theo feature_spec.yml
       (batch_features). Khong chua label/is_treat va khong sync f0..f82 day du.
     columns:
       - name: user_id
@@ -49,26 +49,41 @@ models:
         tests: [not_null]
 
   - name: feat_user_realtime_pit
-    description: "Feature realtime tinh point-in-time - dung cho training"
+    description: "Feature realtime tinh point-in-time de doi chieu voi Redis overlay"
     columns:
       - name: user_id
         tests: [not_null]
       - name: rt_events_1h
         tests: [not_null]
 
-  - name: training_dataset
-    description: "Dataset cuoi cung cho uplift model"
+  - name: feat_cfs_reconstructed_selected
+    description: >
+      Mart audit hop nhat 55 selected feature sau reconstruction: 7 T1 tu
+      event, 24 T2 tu attribute/encoding map va 24 T3 pass-through.
+    columns:
+      - name: target_id
+        tests: [not_null, unique]
+      - name: reference_ts
+        tests: [not_null]
+      - name: f1
+        tests: [not_null]
+      - name: f82
+        tests: [not_null]
+      - name: f35
+        tests: [not_null]
+
+  - name: feat_cfs_reconstructed_user_serving
+    description: >
+      Mart serving Track A: map target_id sang user_id va giu dung 55 feature
+      reconstruction de sync DuckDB -> Redis.
     columns:
       - name: user_id
+        tests: [not_null, unique]
+      - name: dt
         tests: [not_null]
-      - name: label
-        tests:
-          - not_null
-          - accepted_values: {values: [0, 1], quote: false}
-      - name: is_treat
-        tests:
-          - not_null
-          - accepted_values: {values: [0, 1], quote: false}
-      - name: split
-        tests:
-          - accepted_values: {values: ['train', 'test']}
+      - name: feature_ts
+        tests: [not_null]
+      - name: f1
+        tests: [not_null]
+      - name: f82
+        tests: [not_null]

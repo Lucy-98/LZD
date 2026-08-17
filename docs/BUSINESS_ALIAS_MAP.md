@@ -52,7 +52,7 @@ business, khong gan theo fact.
 | `f30` | `active_days_30d_log10` | recent activity frequency | H1 distinct active days or H2 marker count |
 
 Important: `EVT_ORDER_PAID` in Track A is not a proven Lazada `ORDER_PAID`.
-It is aliased as `CFS_RECENCY_MARKER` in reports.
+It is displayed as `ASSUMED_ORDER_PAID`: a presentation alias, not a fact.
 
 ## T2 - Synthetic Customer Attributes
 
@@ -104,13 +104,18 @@ and are not converted to Track A events.
 
 | Current event_type | Report alias | Meaning |
 |---|---|---|
-| `EVT_F5` | `CFS_PRODUCT_BROWSE_INTENSITY` | witness event for `f5` |
-| `EVT_F11` | `CFS_CART_CHECKOUT_INTENT` | witness event for `f11` |
-| `EVT_F18` | `CFS_PROMO_TOUCH` | witness event for `f18` |
-| `EVT_F19` | `CFS_PROMO_REDEMPTION` | witness event for `f19` |
-| `EVT_F30` | `CFS_ACTIVE_DAY_MARKER` | H2 witness event for `f30` |
-| `EVT_ORDER_PAID` | `CFS_RECENCY_MARKER` | witness event for `f1/f2`, not real order proof |
-| `EVT_SESSION_STARTED` | `CFS_ACTIVE_DAY_FILLER` | H1 active-day filler |
+| `EVT_F5` | `ASSUMED_PRODUCT_VIEWED` | product-view witness for `f5` |
+| `EVT_F11` | `ASSUMED_ITEM_ADDED_TO_CART` | add-to-cart witness for `f11` |
+| `EVT_F18` | `ASSUMED_VOUCHER_VIEWED` | voucher-view witness for `f18` |
+| `EVT_F19` | `ASSUMED_VOUCHER_REDEEMED` | voucher-redemption witness for `f19` |
+| `EVT_F30` | `ASSUMED_APP_ACTIVE_DAY` | H2 active-day witness for `f30` |
+| `EVT_ORDER_PAID` | `ASSUMED_ORDER_PAID` | recency witness for `f1/f2` |
+| `EVT_SESSION_STARTED` | `ASSUMED_SESSION_STARTED` | H1 active-day filler |
+
+`ASSUMED_` la ranh gioi bat buoc: ten sau no giup trinh bay vocabulary ecommerce,
+nhung event van thuoc family `CFS_WITNESS`, khong co cac FK/payload nghiep vu
+nhu `product_id`, `sku_id`, `voucher_id` hay `order_id`. Khong duoc dung alias
+nay de tinh KPI nghiep vu hoac suy ra mot funnel/thu tu nghiep vu hoan chinh.
 
 ## How To Read A Report Row
 

@@ -28,7 +28,7 @@ groups:
         labels: {severity: critical, layer: feature-store}
         annotations:
           summary: "Gia tri Redis lech so voi DuckDB"
-          description: "Ty le lech {{ $value | humanizePercentage }} > 0.1%. Nguy co training/serving skew."
+          description: "Ty le lech {{ $value | humanizePercentage }} > 0.1%. Nguy co offline/online feature skew."
 
       - alert: FeatureRowCountDrop
         expr: |
