@@ -22,8 +22,10 @@ from lzd_pipeline.serving.feature_contract import (
     compute_derived,
     load_contract,
 )
-
-pytest.importorskip("lightgbm", reason="can lightgbm de nap booster")
+try:
+    import lightgbm  # noqa: F401
+except (ImportError, OSError) as _exc:
+    pytest.skip(f"can lightgbm de nap booster: {_exc}", allow_module_level=True)
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = ROOT / "models" / "uplift_voucher"

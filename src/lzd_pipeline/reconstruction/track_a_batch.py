@@ -86,7 +86,20 @@ class GateSummary:
 
 
 def _iter_rows(path: Path, limit: int | None = None) -> Iterable[dict[str, str]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Khong tim thay file du lieu: {path}")
     with path.open(newline="", encoding="utf-8") as fh:
+        first_line = fh.readline()
+        if first_line.startswith("version https://git-lfs"):
+            raise RuntimeError(
+                f"Tep '{path}' hien la Git LFS pointer stub (chua tai du lieu that ve, ~657MB).\n"
+                f"De chay voi du lieu train that:\n"
+                f"  1. Cai git-lfs (`brew install git-lfs` tren macOS hoac `sudo apt install git-lfs` tren Linux)\n"
+                f"  2. Chay `git lfs pull` de tai data/full_trainset.csv\n"
+                f"Hoac de kiem tra pipeline nhanh ma khong can tai dataset lon, ban co the dung:\n"
+                f"  make snapshot   (sinh reconstruction snapshot da commit san trong docs/)"
+            )
+        fh.seek(0)
         reader = csv.DictReader(fh)
         for index, row in enumerate(reader):
             if limit is not None and index >= limit:
@@ -141,6 +154,12 @@ def fit_value_maps(
     }
     for row in _iter_rows(input_path, limit):
         for name, attr in value_attrs.items():
+            for c in attr.outputs:
+                if c not in row:
+                    raise KeyError(
+                        f"Cot '{c}' khong ton tai trong file '{input_path}'. "
+                        f"Kiem tra header cua CSV (cac cot tim thay: {list(row.keys())[:10]}...)."
+                    )
             values = tuple(float(row[c]) for c in attr.outputs)
             key = tuple(float_repr(v) for v in values)
             seen[name].setdefault(key, values)
@@ -612,14 +631,17 @@ def main() -> None:
         raise SystemExit("Use either --limit or --all, not both.")
 
     config = load_runtime_config(args.config) if args.config else load_runtime_config()
-    manifest = materialize_track_a(
-        input_path=args.input,
-        output_dir=args.output_dir,
-        limit=None if args.all else args.limit,
-        config=config,
-        verify_limit=args.verify_limit,
-        write_parquet=args.parquet,
-    )
+    try:
+        manifest = materialize_track_a(
+            input_path=args.input,
+            output_dir=args.output_dir,
+            limit=None if args.all else args.limit,
+            config=config,
+            verify_limit=args.verify_limit,
+            write_parquet=args.parquet,
+        )
+    except (RuntimeError, FileNotFoundError) as exc:
+        raise SystemExit(f"\n❌ LỖI: {exc}\n")
     print(json.dumps(_jsonable(manifest), indent=2, ensure_ascii=False))
 
 

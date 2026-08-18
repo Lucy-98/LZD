@@ -18,11 +18,10 @@ log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------- Redis
-def get_redis(decode_responses: bool = True):
+def get_redis(decode_responses: bool = True, socket_timeout: float = 10.0):
     """Client Redis dung chung.
 
     decode_responses=True -> tra ve str (tien cho feature dang so/text).
-    socket_timeout thap vi serving path yeu cau < 10ms; that bai nhanh con hon treo.
     """
     import redis
 
@@ -32,8 +31,8 @@ def get_redis(decode_responses: bool = True):
         port=cfg.port,
         db=cfg.db,
         decode_responses=decode_responses,
-        socket_timeout=2.0,
-        socket_connect_timeout=2.0,
+        socket_timeout=socket_timeout,
+        socket_connect_timeout=5.0,
         health_check_interval=30,
         retry_on_timeout=True,
         max_connections=64,
@@ -73,18 +72,30 @@ def get_duckdb(read_only: bool = True, path: str | None = None):
                    "pid": os.getpid()},
         )
 
-    try:
-        con = duckdb.connect(db_path, read_only=read_only)
-    except Exception as exc:
-        if "lock" in str(exc).lower():
-            raise DuckDBWriteLockError(
-                f"Khong mo duoc {db_path} (read_only={read_only}): {exc}\n"
-                "Nguyen nhan thuong gap: mot process khac dang mo file o che do GHI.\n"
-                "  - Kiem tra task nao dang chay trong pool `duckdb_writer`\n"
-                "  - Query ad-hoc PHAI dung duckdb_conn() (mac dinh read-only)\n"
-                "  - Xem ai mo write gan day: Loki -> event=\"duckdb_write_open\""
-            ) from exc
-        raise
+    max_retries = 5 if read_only else 1
+    last_exc = None
+    con = None
+    for attempt in range(max_retries):
+        try:
+            con = duckdb.connect(db_path, read_only=read_only)
+            break
+        except Exception as exc:
+            last_exc = exc
+            if "lock" in str(exc).lower():
+                if attempt < max_retries - 1:
+                    time.sleep(1.0)
+                    continue
+                raise DuckDBWriteLockError(
+                    f"Khong mo duoc {db_path} (read_only={read_only}): {exc}\n"
+                    "Nguyen nhan thuong gap: mot process khac dang mo file o che do GHI.\n"
+                    "  - Kiem tra task nao dang chay trong pool `duckdb_writer`\n"
+                    "  - Query ad-hoc PHAI dung duckdb_conn() (mac dinh read-only)\n"
+                    "  - Xem ai mo write gan day: Loki -> event=\"duckdb_write_open\""
+                ) from exc
+            raise
+
+    if con is None and last_exc:
+        raise last_exc
 
     minio = settings.minio
     con.execute("INSTALL httpfs; LOAD httpfs;")

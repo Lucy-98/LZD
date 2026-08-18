@@ -5,6 +5,10 @@ dataset gốc, build feature bằng dbt/DuckDB, sync 55 selected feature lên Re
 phục vụ quyết định phát voucher qua FastAPI, huấn luyện lại hằng tuần, và chứng
 minh reconstruction từ feature train ngược về event.
 
+> 📖 **Xem hướng dẫn chạy toàn diện:** [docs/HUONG_DAN_CHAY_END_TO_END.md](file:///Users/user/Intern/LZD/docs/HUONG_DAN_CHAY_END_TO_END.md)  
+> 🔍 **Xem chi tiết Airflow DAGs & dbt:** [docs/CHI_TIET_AIRFLOW_DAGS_VA_DBT.md](file:///Users/user/Intern/LZD/docs/CHI_TIET_AIRFLOW_DAGS_VA_DBT.md)  
+> 🎤 **Kịch bản thuyết trình & Live Demo:** [docs/KICH_BAN_DEMO_TRINH_BAY.md](file:///Users/user/Intern/LZD/docs/KICH_BAN_DEMO_TRINH_BAY.md)
+
 ## Mục lục
 
 1. [Tổng quan cho người mới](#1-tổng-quan-cho-người-mới)
@@ -100,7 +104,7 @@ Cập nhật 2026-08-17. Mọi con số đều **đo trên máy thật**, không
 
 | Hạng mục | Kết quả |
 |---|---|
-| Test | `346 passed, 1 skipped` — chạy bằng `.venv\Scripts\python` |
+| Test | `346 passed, 1 skipped` — chạy bằng `.venv/bin/python` |
 | Pipeline | DAG 00 → 20 → 40 xanh, feature lên Redis, `active_version` được kích hoạt |
 | Serving | `/decide` 2.7–10.6 ms ấm, `cache_hit=true` |
 | Model | DRLearner từ notebook, MLflow Registry `v1`, alias `Production` |
@@ -186,25 +190,25 @@ data/full_testset.csv
 
 **Bắt buộc:**
 
-- Windows 10/11 với PowerShell 5+ hoặc PowerShell 7+
+- macOS (Apple Silicon M1/M2/M3/M4 hoặc Intel) với zsh/bash, hoặc Linux
 - Python 3.11+
 - Git
-- Docker Desktop có Compose v2 (nếu chạy cả stack)
+- Docker Desktop cho Mac có Compose v2 (nếu chạy cả stack)
 
 **Tài nguyên Docker Desktop nên cấp:**
+(Cấu hình tại *Docker Desktop → Settings → Resources*)
 
-- CPU: 4 nhân
+- CPU: 4–6 nhân
 - RAM: tối thiểu 8 GB, nên 12 GB
-- Đĩa: trống 15 GB
+- Virtual disk limit: trống 15–20 GB
 
 **Đường dẫn repo nên dùng:**
 
 ```text
-C:\dev\LZD
+~/dev/LZD
 ```
 
-Repo chạy được từ OneDrive, nhưng Docker BuildKit và bind mount ổn định hơn khi
-nằm ngoài OneDrive, vì OneDrive có thể đánh dấu file thành reparse point.
+Nên đặt repo trong thư mục cục bộ của máy Mac (ví dụ `~/dev/LZD` hoặc `~/Projects/LZD`), tránh đặt trực tiếp trong các thư mục đồng bộ đám mây (iCloud Drive / OneDrive / Dropbox) để đảm bảo hiệu năng file I/O và bind mount của Docker.
 
 ---
 
@@ -213,17 +217,19 @@ nằm ngoài OneDrive, vì OneDrive có thể đánh dấu file thành reparse p
 Nên đi đường này trước. Nó chứng minh hợp đồng code/reconstruction mà không cần
 Docker Hub, MinIO, Kafka, Redis hay Airflow.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements-dev.txt
 ```
 
 Chạy test:
 
-```powershell
-.venv\Scripts\python -m pytest tests -q
+```bash
+.venv/bin/python -m pytest tests -q
+# hoặc dùng make:
+make test
 ```
 
 > ⚠️ **Phải chạy bằng interpreter của `.venv`.** Dùng system Python thiếu
@@ -232,14 +238,16 @@ Chạy test:
 
 Sinh snapshot reconstruction cỡ nhỏ đã commit:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 snapshot
+```bash
+make snapshot
+# hoặc: ./scripts/stack.sh snapshot
 ```
 
 Sinh Track A event từ dữ liệu train thật, giới hạn 1,000 dòng:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 track-a 1000
+```bash
+make track-a
+# hoặc: ./scripts/stack.sh track-a 1000
 ```
 
 Kết quả ra `.tmp/reconstruction_track_a/`. `.tmp/` bị git bỏ qua vì Track A đầy
@@ -251,8 +259,9 @@ Kết quả ra `.tmp/reconstruction_track_a/`. `.tmp/` bị git bỏ qua vì Tra
 
 Một lệnh, từ bản clone sạch:
 
-```powershell
-docker compose up -d
+```bash
+make up
+# hoặc: docker compose up -d
 ```
 
 Đó là toàn bộ phần cài đặt. Không cần tạo `.env`, không cần build tay, không cần
@@ -263,25 +272,26 @@ cờ profile: mọi biến trong `docker-compose.yml` đều có giá trị mặ
 Bạn nhận được Postgres, Redis, MinIO, Kafka, Airflow, MLflow, API suy luận và
 toàn bộ observability. Thêm traffic realtime mô phỏng chỉ khi cần:
 
-```powershell
-docker compose --profile all up -d
+```bash
+make up-all
+# hoặc: docker compose --profile all up -d
 ```
 
 Hoặc bỏ mười container observability khi máy yếu:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 up-core
+```bash
+make up-core
+# hoặc: ./scripts/stack.sh up-core
 ```
 
 `.env` là **tuỳ chọn**, chỉ dùng để ghi đè: port trùng, mật khẩu, hoặc
 `AIRFLOW_UNPAUSE_DAGS`. Copy từ `.env.example` khi cần.
 
-Script bọc vẫn hữu ích khi mạng chập chờn hoặc có proxy công ty: nó kéo image
-tuần tự có retry, và phân biệt được lỗi TLS bị chặn giữa đường với lỗi rớt mạng.
+Script bọc `make` hoặc `./scripts/stack.sh` giúp kiểm tra nhanh hệ thống và điều khiển stack tiện lợi:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 doctor
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 up
+```bash
+./scripts/stack.sh doctor
+make up
 ```
 
 Mọi DAG đều **paused khi tạo**, có chủ đích — bootstrap đọc file CSV 476 MB,
@@ -294,16 +304,16 @@ AIRFLOW_UNPAUSE_DAGS=30_train_uplift_model
 
 Xem trạng thái và sức khoẻ:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 status
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 health
+```bash
+make status
+make health
 ```
 
 Dừng (giữ dữ liệu) và reset (xoá volume):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 down
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 reset
+```bash
+make down
+make reset
 ```
 
 ---
@@ -325,7 +335,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 reset
 | Service | Vai trò | URL |
 |---|---|---|
 | inference-api | đọc feature từ Redis, ra quyết định | http://localhost:8000/docs |
-| mlflow | experiment + model registry | http://localhost:5000 |
+| mlflow | experiment + model registry | http://localhost:5001 |
 
 **Observability** (chạy mặc định):
 
@@ -432,9 +442,8 @@ Ba entry point reconstruction, khác nhau ở phạm vi:
 | `reconstruction.track_a_batch` | thật, `--limit N` | chỉ A |
 | `reconstruction.track_ab_batch` | thật, `--limit N` | A và B |
 
-```powershell
-$env:PYTHONPATH="src"
-.venv\Scripts\python -m lzd_pipeline.reconstruction.track_ab_batch --limit 10
+```bash
+PYTHONPATH=src .venv/bin/python -m lzd_pipeline.reconstruction.track_ab_batch --limit 10
 ```
 
 Đo ngày 2026-08-15 trên 10 dòng đầu của `data/full_trainset.csv`: **10/10 user
@@ -809,27 +818,48 @@ mười container observability, và `docker builder prune` thu hồi cache — 
 
 ## 15. Lệnh hay dùng
 
-```powershell
-# chẩn đoán Docker registry/proxy/CA
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 doctor
+```bash
+# Chẩn đoán môi trường Docker / mạng trên macOS
+./scripts/stack.sh doctor
 
-# build image
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 build
+# Build các container images
+make build
+# hoặc: ./scripts/stack.sh build
 
-# trạng thái container
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 ps
+# Khởi động toàn bộ stack
+make up
 
-# log của một service
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 logs airflow-scheduler
+# Trạng thái container và các đường link UI
+make status
+# hoặc: make ps
 
-# mở redis-cli
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 redis
+# Xem log của một service (ví dụ airflow-scheduler)
+make logs s=airflow-scheduler
+# hoặc: ./scripts/stack.sh logs airflow-scheduler
 
-# liệt kê bảng DuckDB qua container Airflow
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 duckdb
+# Mở redis-cli tương tác
+make redis
+# hoặc: ./scripts/stack.sh redis
 
-# test local, không cần Docker
-.venv\Scripts\python -m pytest tests -q
+# Liệt kê bảng DuckDB qua container Airflow
+make duckdb
+# hoặc: ./scripts/stack.sh duckdb
+
+# Chạy test local (không cần Docker)
+make test
+# hoặc: .venv/bin/python -m pytest tests -q
+
+# Sinh snapshot reconstruction
+make snapshot
+
+# Sinh dữ liệu Track A (1,000 dòng mẫu)
+make track-a
+
+# Dừng stack (giữ nguyên dữ liệu)
+make down
+
+# Reset stack (xoá toàn bộ volume và log)
+make reset
 ```
 
 ---
@@ -885,6 +915,7 @@ Dry-run chỉ kiểm hợp đồng; muốn ghi thật phải dùng `--land` ho�
 
 ## 17. Tài liệu chính
 
+- [Hướng dẫn chạy End-to-End](docs/HUONG_DAN_CHAY_END_TO_END.md) — hướng dẫn từng bước vận hành toàn bộ luồng & kết nối các công cụ.
 - [Tech reference](docs/TECH_REFERENCE.md) — bản đồ mức code: module, config,
   hợp đồng, DAG, test. **Đọc file này đầu tiên nếu bạn sắp sửa code.**
 - [Kiến trúc pipeline](docs/PIPELINE_ARCHITECTURE.md)

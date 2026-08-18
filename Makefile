@@ -5,6 +5,8 @@
 CORE_SERVICES = postgres redis minio minio-init kafka kafka-init \
                 airflow-init airflow-webserver airflow-scheduler mlflow inference-api
 
+PYTHON ?= $(shell if [ -f .venv/bin/python ]; then echo .venv/bin/python; elif command -v python3 >/dev/null 2>&1; then echo python3; else echo python; fi)
+
 .PHONY: help init build up up-core up-all down reset ps status logs health test redis duckdb reconstruction track-a snapshot load-test
 
 help:
@@ -62,7 +64,7 @@ ps status:
 	@echo "Grafana       http://localhost:3000   (admin/admin)"
 	@echo "Kafka UI      http://localhost:8082"
 	@echo "MinIO         http://localhost:9001   (minioadmin/minioadmin123)"
-	@echo "MLflow        http://localhost:5000"
+	@echo "MLflow        http://localhost:5001"
 	@echo "Prometheus    http://localhost:9090"
 	@echo "RedisInsight  http://localhost:5540"
 	@echo "Inference API http://localhost:8000/docs"
@@ -79,16 +81,16 @@ health:
 	done
 
 test:
-	python -m pytest tests/ -v
+	$(PYTHON) -m pytest tests/ -v
 
 reconstruction:
-	PYTHONPATH=src python -m lzd_pipeline.reconstruction.e2e
+	PYTHONPATH=src $(PYTHON) -m lzd_pipeline.reconstruction.e2e
 
 track-a:
-	PYTHONPATH=src python -m lzd_pipeline.reconstruction.track_a_batch --limit 1000 --verify-limit 50
+	PYTHONPATH=src $(PYTHON) -m lzd_pipeline.reconstruction.track_a_batch --limit 1000 --verify-limit 50
 
 snapshot:
-	PYTHONPATH=src python -m lzd_pipeline.reconstruction.snapshot
+	PYTHONPATH=src $(PYTHON) -m lzd_pipeline.reconstruction.snapshot
 
 redis:
 	docker compose exec redis redis-cli
@@ -98,4 +100,4 @@ duckdb:
 	  con=duckdb_conn(read_only=True).__enter__();print(con.execute('SHOW ALL TABLES').fetchdf())"
 
 load-test:
-	python scripts/load_test.py --rps 20 --duration 60
+	$(PYTHON) scripts/load_test.py --rps 20 --duration 60

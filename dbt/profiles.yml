@@ -5,7 +5,7 @@ lzd_uplift:
       type: duckdb
       # DuckDB dong vai tro BigQuery. File nam tren volume dung chung.
       path: "{{ env_var('DUCKDB_PATH', '/opt/lakehouse/warehouse.duckdb') }}"
-      threads: 4
+      threads: 1
       extensions:
         - httpfs
         - parquet
@@ -17,4 +17,5 @@ lzd_uplift:
         s3_use_ssl: false
         s3_url_style: "path"
         enable_progress_bar: false
+        max_memory: "1.5GB"
         TimeZone: "UTC"

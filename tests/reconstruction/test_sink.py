@@ -42,8 +42,19 @@ ROOT = Path(__file__).resolve().parents[2]
 DDL = ROOT / "sql" / "postgres" / "02_biz_reconstruction.sql"
 DBT = ROOT / "dbt" / "models"
 
+def _has_real_dataset() -> bool:
+    if not DEFAULT_INPUT.exists():
+        return False
+    try:
+        with open(DEFAULT_INPUT, "r", encoding="utf-8") as f:
+            first = f.readline()
+            return not first.startswith("version https://git-lfs")
+    except Exception:
+        return False
+
+
 pytestmark = pytest.mark.skipif(
-    not DEFAULT_INPUT.exists(), reason="can data/full_trainset.csv"
+    not _has_real_dataset(), reason="can data/full_trainset.csv that (khong phai Git LFS pointer)"
 )
 
 

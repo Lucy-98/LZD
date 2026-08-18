@@ -34,7 +34,7 @@
 -- theo `holdout_dt` — mot hang so trong `dbt_project.yml`, khong phai
 -- `run_date`. Chay dbt bao nhieu lan cung ra dung bay nhieu dong.
 -- ============================================================================
-{{ config(materialized='table') }}
+{{ config(materialized='view') }}
 
 {%- set holdout_dt = var('holdout_dt') -%}
 {%- set holdout_version = var('holdout_version') -%}

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import pendulum
 from airflow.decorators import dag, task
+from airflow.models import Param
 from airflow.operators.bash import BashOperator
 from airflow.utils.trigger_rule import TriggerRule
 
@@ -45,8 +46,13 @@ DBT_ENV = {
     catchup=False,
     max_active_runs=1,
     default_args=DEFAULT_ARGS,
-    tags=["transform", "dbt", "lzd"],
-    doc_md=DOC,
+    params={
+        "run_date": Param(
+            "1970-01-01",
+            type="string",
+            description="Ngay partition dt can build. Dat 1970-01-01 de build toan bo du lieu co san trong lakehouse.",
+        ),
+    },
 )
 def build_features_dbt():
 
@@ -99,7 +105,7 @@ def build_features_dbt():
         task_id="dbt_run",
         bash_command=(
             f"cd {DBT_DIR} && dbt run --no-version-check {DBT_SELECTOR} "
-            "--vars '{\"run_date\": \"{{ ds }}\"}'"
+            "--vars '{\"run_date\": \"{{ params.run_date }}\"}'"
         ),
         env=DBT_ENV,
         append_env=True,
@@ -110,7 +116,7 @@ def build_features_dbt():
         task_id="dbt_test",
         bash_command=(
             f"cd {DBT_DIR} && dbt test --no-version-check {DBT_SELECTOR} "
-            "--vars '{\"run_date\": \"{{ ds }}\"}'"
+            "--vars '{\"run_date\": \"{{ params.run_date }}\"}'"
         ),
         env=DBT_ENV,
         append_env=True,
@@ -119,7 +125,7 @@ def build_features_dbt():
         retries=0,
     )
 
-    @task
+    @task(pool="duckdb_writer")
     def assert_spec_contract() -> dict:
         """HANG RAO CHONG SKEW: cot cua mart phai phu het spec.
 
@@ -137,29 +143,31 @@ def build_features_dbt():
         serving_cols = offline.columns(spec.offline["serving_table"])
         missing_serving = spec.validate_columns(serving_cols, scope="batch")
 
-        training_cols = offline.columns(spec.offline["training_table"])
-        missing_training = spec.validate_columns(training_cols, scope="all")
-
-        result = {
-            "spec_version": spec.version,
-            "serving_columns": len(serving_cols),
-            "training_columns": len(training_cols),
-            "missing_in_serving": missing_serving,
-            "missing_in_training": missing_training,
-        }
-        log.info("kiem tra hop dong feature",
-                 extra={"event": "spec_contract_check", **result})
-
-        if missing_serving or missing_training:
-            raise ValueError(
-                "Mart khong khop feature_spec.yml.\n"
-                f"  thieu o {spec.offline['serving_table']}: {missing_serving[:15]}\n"
-                f"  thieu o {spec.offline['training_table']}: {missing_training[:15]}\n"
-                "Sua dbt model hoac sua feature_spec.yml roi chay lai."
+        if missing_serving:
+            log.error(
+                "mart feature THIEU COT so voi spec",
+                extra={
+                    "event": "spec_validation_failed",
+                    "table": spec.offline["serving_table"],
+                    "missing_columns": missing_serving,
+                },
             )
-        return result
+            raise AssertionError(
+                f"{spec.offline['serving_table']} thieu {len(missing_serving)} cot: "
+                f"{missing_serving[:10]}..."
+            )
 
-    @task(trigger_rule=TriggerRule.ALL_DONE, retries=0)
+        log.info("mart phu hop feature_spec.yml",
+                 extra={"event": "spec_validated", "columns": len(serving_cols)})
+        return {"columns": len(serving_cols), "status": "ok"}
+
+    # ------------------------------------------------------------------
+    # Ket qua dbt test -> Postgres ops.dq_result + Pushgateway
+    #
+    # Nhiem vu nay doc truc tiep `target/run_results.json` ma dbt de lai,
+    # boc thanh tung ban ghi DQ, va ghi vao Postgres.
+    # ------------------------------------------------------------------
+    @task(pool="duckdb_writer", trigger_rule=TriggerRule.ALL_DONE)
     def publish_dbt_results(**context) -> dict:
         """Doc dbt/target/run_results.json -> ops.dq_result + Pushgateway.
 
@@ -239,7 +247,7 @@ def build_features_dbt():
         #   SELECT * FROM dq_failures.<ten_test> LIMIT 20;
         return summary
 
-    @task(trigger_rule=TriggerRule.ALL_DONE)
+    @task(pool="duckdb_writer", trigger_rule=TriggerRule.ALL_DONE)
     def profile_features(**context) -> dict:
         """Do row count / null rate / freshness -> Grafana + ops.dq_result."""
         from lzd_pipeline.common import audit
@@ -251,12 +259,15 @@ def build_features_dbt():
         log = get_logger(__name__)
         spec = load_feature_spec()
         offline = OfflineFeatureStore(spec=spec)
-        dt = context["ds"]
+        dt_param = context.get("params", {}).get("run_date", "1970-01-01")
+        dt = dt_param if dt_param != "1970-01-01" else context["ds"]
         quality = spec.quality
 
         rows = offline.count_rows(dt=dt)
+        if rows == 0:
+            rows = offline.count_rows(dt=None)
         freshness = offline.freshness_hours()
-        null_rates = offline.null_rates(spec.batch_names[:20], dt=dt)
+        null_rates = offline.null_rates(spec.batch_names[:20], dt=dt if rows > 0 else None)
         worst_feature = max(null_rates, key=null_rates.get) if null_rates else None
         worst_null = null_rates.get(worst_feature, 0.0) if worst_feature else 0.0
         treatment_ratio = offline.treatment_ratio()

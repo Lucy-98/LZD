@@ -46,14 +46,10 @@ Dry-run **khong ghi production** vao Kafka, MinIO, Redis hay Postgres.
 
 ## Chay nhanh tren host
 
-```powershell
-$env:PYTHONPATH="src"
-if (-not (Test-Path ".tmp")) { New-Item -ItemType Directory -Force ".tmp" | Out-Null }
-$env:TEMP=(Resolve-Path .tmp).Path
-$env:TMP=$env:TEMP
-
-python -m lzd_pipeline.reconstruction.e2e
-python -m lzd_pipeline.reconstruction.e2e --branch H2
+```bash
+mkdir -p .tmp
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e --branch H2
 ```
 
 Expected output:
@@ -80,30 +76,18 @@ Expected output:
 
 Core la du cho reconstruction dry-run:
 
-```powershell
-.\scripts\stack.ps1 init
-.\scripts\stack.ps1 up-core
-.\scripts\stack.ps1 health
-.\scripts\stack.ps1 reconstruction
-.\scripts\stack.ps1 reconstruction H2
+```bash
+make init
+make up-core
+make health
+./scripts/stack.sh reconstruction
+./scripts/stack.sh reconstruction H2
 ```
 
-Neu PowerShell chan script unsigned, dung:
+Hoac chay truc tiep qua docker compose:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stack.ps1 reconstruction H2
-```
-
-Lenh `reconstruction` uu tien chay trong container `airflow-scheduler` neu core
-stack dang bat. Neu scheduler chua chay, script fallback sang Docker one-shot
-container bang image local co san (`lzd/airflow:2.10.5`, `lzd/dbt-duckdb:dev`,
-...):
-
-```powershell
+```bash
 docker compose exec airflow-scheduler python -m lzd_pipeline.reconstruction.e2e
-docker run --rm --entrypoint python -v "${PWD}:/opt/project" -w /opt/project `
-  -e PYTHONPATH=/opt/project/src lzd/dbt-duckdb:dev `
-  -m lzd_pipeline.reconstruction.e2e
 ```
 
 ## Chay bang Airflow
@@ -112,7 +96,7 @@ UI: http://localhost:8080, user/pass `admin/admin`.
 
 Trigger DAG manual:
 
-```powershell
+```bash
 docker compose exec airflow-scheduler airflow dags trigger 60_reconstruction_e2e
 docker compose exec airflow-scheduler airflow dags list-runs -d 60_reconstruction_e2e
 ```

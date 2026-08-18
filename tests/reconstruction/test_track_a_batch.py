@@ -1,8 +1,8 @@
-from __future__ import annotations
-
 import csv
 from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from lzd_pipeline.reconstruction.constructive import solve_h1
 from lzd_pipeline.reconstruction.e2e import load_runtime_config
@@ -88,3 +88,56 @@ def test_track_a_batch_materializes_real_csv_shape(tmp_path):
         rows = list(csv.DictReader(fh))
     assert {row["source_type"] for row in rows} == {"RECONSTRUCTED"}
     assert "gen_reason" not in rows[0]
+
+
+def test_track_a_batch_fails_clearly_on_git_lfs_stub(tmp_path):
+    stub_file = tmp_path / "full_trainset.csv"
+    stub_file.write_text(
+        "version https://git-lfs.github.com/spec/v1\n"
+        "oid sha256:79cb6e5c2fb7ad0c35710a84ed82275baa167647b17bf3423f402602b02b5bf0\n"
+        "size 657193635\n",
+        encoding="utf-8",
+    )
+    config = replace(load_runtime_config(), semantic_branch="H1")
+    with pytest.raises(RuntimeError, match="Git LFS pointer stub"):
+        materialize_track_a(
+            input_path=stub_file,
+            output_dir=tmp_path / "out",
+            limit=10,
+            config=config,
+            verify_limit=0,
+        )
+
+
+def test_track_a_batch_fails_on_missing_file(tmp_path):
+    missing_file = tmp_path / "non_existent.csv"
+    config = replace(load_runtime_config(), semantic_branch="H1")
+    with pytest.raises(FileNotFoundError, match="Khong tim thay"):
+        materialize_track_a(
+            input_path=missing_file,
+            output_dir=tmp_path / "out",
+            limit=10,
+            config=config,
+            verify_limit=0,
+        )
+
+
+def test_track_a_batch_fails_on_missing_required_column(tmp_path):
+    path = tmp_path / "bad_train.csv"
+    row = _fixture_row()
+    del row["f79"]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(row))
+        writer.writeheader()
+        writer.writerow(row)
+
+    config = replace(load_runtime_config(), semantic_branch="H1")
+    with pytest.raises(KeyError, match="f79"):
+        materialize_track_a(
+            input_path=path,
+            output_dir=tmp_path / "out",
+            limit=10,
+            config=config,
+            verify_limit=0,
+        )
+

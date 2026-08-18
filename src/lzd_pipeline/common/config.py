@@ -9,6 +9,34 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 
+from pathlib import Path
+
+_LOCAL_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _default_spec_path() -> str:
+    opt_path = "/opt/project/config/features/feature_spec.yml"
+    if os.path.exists(opt_path):
+        return opt_path
+    return str(_LOCAL_ROOT / "config" / "features" / "feature_spec.yml")
+
+
+def _default_redis_host() -> str:
+    if "REDIS_HOST" in os.environ:
+        return os.environ["REDIS_HOST"]
+    if os.path.exists("/.dockerenv") or (os.path.exists("/opt/project/src") and not os.path.exists(str(_LOCAL_ROOT))):
+        return "redis"
+    return "localhost"
+
+
+def _default_kafka_servers() -> str:
+    if "KAFKA_BOOTSTRAP_SERVERS" in os.environ:
+        return os.environ["KAFKA_BOOTSTRAP_SERVERS"]
+    if os.path.exists("/.dockerenv") or (os.path.exists("/opt/project/src") and not os.path.exists(str(_LOCAL_ROOT))):
+        return "kafka:9092"
+    return "localhost:29092"
+
+
 def _env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
@@ -29,7 +57,7 @@ def _env_float(key: str, default: float) -> float:
 
 @dataclass(frozen=True)
 class KafkaConfig:
-    bootstrap_servers: str = field(default_factory=lambda: _env("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"))
+    bootstrap_servers: str = field(default_factory=lambda: _env("KAFKA_BOOTSTRAP_SERVERS", _default_kafka_servers()))
     topic_events: str = field(default_factory=lambda: _env("KAFKA_TOPIC_EVENTS", "app.user.events.v1"))
     topic_dlq: str = field(default_factory=lambda: _env("KAFKA_TOPIC_DLQ", "app.user.events.dlq.v1"))
     consumer_group: str = field(default_factory=lambda: _env("KAFKA_CONSUMER_GROUP", "feature-stream-consumer"))
@@ -37,7 +65,7 @@ class KafkaConfig:
 
 @dataclass(frozen=True)
 class RedisConfig:
-    host: str = field(default_factory=lambda: _env("REDIS_HOST", "redis"))
+    host: str = field(default_factory=lambda: _env("REDIS_HOST", _default_redis_host()))
     port: int = field(default_factory=lambda: _env_int("REDIS_PORT", 6379))
     db: int = field(default_factory=lambda: _env_int("REDIS_DB", 0))
 
@@ -81,7 +109,7 @@ class PostgresConfig:
 
 @dataclass(frozen=True)
 class FeatureStoreConfig:
-    spec_path: str = field(default_factory=lambda: _env("FEATURE_SPEC_PATH", "/opt/project/config/features/feature_spec.yml"))
+    spec_path: str = field(default_factory=lambda: _env("FEATURE_SPEC_PATH", _default_spec_path()))
     shards: int = field(default_factory=lambda: _env_int("FEATURE_SYNC_SHARDS", 32))
     batch_size: int = field(default_factory=lambda: _env_int("FEATURE_SYNC_BATCH_SIZE", 1000))
     versions_to_keep: int = field(default_factory=lambda: _env_int("FEATURE_VERSIONS_TO_KEEP", 2))

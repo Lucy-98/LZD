@@ -21,3 +21,5 @@ dbt/.user.yml
 *.duckdb.wal
 
 .DS_Store
+.vscode/
+

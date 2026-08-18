@@ -5,19 +5,19 @@
 
 ## Khởi động
 
-```powershell
-.\scripts\stack.ps1 up-all
-.\scripts\stack.ps1 health
-.\scripts\stack.ps1 status
+```bash
+make up-all
+make health
+make status
 ```
 
 Airflow: http://localhost:8080 (`admin/admin`).
 
-Reconstruction dry-run chi can core stack. Neu observability image bi loi pull,
-dung:
+Reconstruction dry-run chỉ cần core stack. Nếu observability image bị lỗi pull,
+dùng:
 
-```powershell
-.\scripts\stack.ps1 up-core
+```bash
+make up-core
 ```
 
 ## Bootstrap không có dữ liệu
@@ -33,12 +33,12 @@ Không sửa trực tiếp CSV hoặc parquet để làm test pass.
 
 ## Stream không có event
 
-```powershell
-.\scripts\stack.ps1 logs event-producer
-.\scripts\stack.ps1 logs stream-consumer
-docker compose exec kafka kafka-consumer-groups `
-  --bootstrap-server kafka:29092 `
-  --group lzd-feature-consumer `
+```bash
+make logs s=event-producer
+make logs s=stream-consumer
+docker compose exec kafka kafka-consumer-groups \
+  --bootstrap-server kafka:29092 \
+  --group lzd-feature-consumer \
   --describe
 ```
 
@@ -54,12 +54,12 @@ là at-least-once bình thường; dbt phải dedup theo `event_id`.
 
 ## dbt thất bại
 
-```powershell
-docker compose exec airflow-scheduler bash -lc `
+```bash
+docker compose exec airflow-scheduler bash -lc \
   "cd /opt/project/dbt && dbt debug --no-version-check"
-docker compose exec airflow-scheduler bash -lc `
+docker compose exec airflow-scheduler bash -lc \
   "cd /opt/project/dbt && dbt run --no-version-check"
-docker compose exec airflow-scheduler bash -lc `
+docker compose exec airflow-scheduler bash -lc \
   "cd /opt/project/dbt && dbt test --no-version-check"
 ```
 
@@ -93,14 +93,13 @@ không dùng làm nguồn reconstruction.
 
 ## Reconstruction dry-run
 
-```powershell
-$env:PYTHONPATH="src"
-python -m lzd_pipeline.reconstruction.e2e
-python -m lzd_pipeline.reconstruction.e2e --branch H2
+```bash
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e --branch H2
 
-# Trong Docker
-.\scripts\stack.ps1 reconstruction
-.\scripts\stack.ps1 reconstruction H2
+# Hoặc dùng script bọc
+./scripts/stack.sh reconstruction
+./scripts/stack.sh reconstruction H2
 ```
 
 Kết quả hợp lệ phải có:
@@ -123,12 +122,11 @@ khi materialize target hoặc provenance.
 
 ## Test host
 
-```powershell
+```bash
 pip install -r requirements-dev.txt
-$env:PYTHONPATH="src"
-$env:TEMP=(Resolve-Path .tmp).Path
-$env:TMP=$env:TEMP
-python -m pytest tests -q -p no:cacheprovider
+PYTHONPATH=src python3 -m pytest tests -q -p no:cacheprovider
+# hoặc:
+make test
 ```
 
 ## Không làm

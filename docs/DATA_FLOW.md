@@ -119,9 +119,9 @@ v1 chỉ nhận `app_open`, `page_view`, `search`, `add_to_cart`, `checkout`, `o
 
 Pipeline chính:
 
-```powershell
-.\scripts\stack.ps1 up-all
-.\scripts\stack.ps1 health
+```bash
+make up-all
+make health
 ```
 
 Trigger Airflow theo thứ tự:
@@ -133,8 +133,8 @@ Trigger Airflow theo thứ tự:
 
 Reconstruction dry-run:
 
-```powershell
-$env:PYTHONPATH="src"
-python -m lzd_pipeline.reconstruction.e2e
-python -m lzd_pipeline.reconstruction.e2e --branch H2
+```bash
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e --branch H2
+# hoặc: ./scripts/stack.sh reconstruction H2
 ```

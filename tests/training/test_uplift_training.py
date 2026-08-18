@@ -229,7 +229,10 @@ def test_fit_va_xuat_booster():
     khoa duong noi giua huan luyen va phuc vu.
     """
     pytest.importorskip("sklearn", reason="DRLearner.fit can StratifiedKFold")
-    pytest.importorskip("lightgbm")
+    try:
+        import lightgbm as lgb  # noqa: F401
+    except (ImportError, OSError) as _exc:
+        pytest.skip(f"can lightgbm: {_exc}")
 
     rng = np.random.RandomState(5)
     n = 4000

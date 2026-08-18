@@ -52,6 +52,10 @@ SHARDS = int(os.environ.get("FEATURE_SYNC_SHARDS", "32"))
     tags=["sync", "feature-store", "lzd"],
     doc_md=DOC,
     params={
+        "dt": Param(
+            "", type="string",
+            description="Ngay partition dt can sync (vd: 2026-08-05). De trong = tu dong lay ngay partition moi nhat co trong mart.",
+        ),
         "force_full_resync": Param(
             False, type="boolean",
             description="Xoa dau shard cua version nay va ghi lai tu dau",
@@ -63,16 +67,29 @@ def sync_features_to_redis():
     @task
     def prepare(**context) -> dict:
         """Khoa so lieu offline + mo phien sync. Fail som neu mart chua san sang."""
+        from lzd_pipeline.common.clients import duckdb_conn
+        from lzd_pipeline.features.offline_store import OfflineFeatureStore
         from lzd_pipeline.features.online_store import OnlineFeatureStore
         from lzd_pipeline.features.sync import make_version, prepare_sync
 
-        ds = context["ds"]
+        param_dt = (context.get("params") or {}).get("dt")
+        if param_dt:
+            dt = param_dt
+        else:
+            offline = OfflineFeatureStore()
+            if offline.table_exists() and offline.count_rows(dt=context["ds"]) > 0:
+                dt = context["ds"]
+            else:
+                with duckdb_conn(read_only=True) as con:
+                    max_dt = con.execute(f"SELECT MAX(dt) FROM {offline.table}").fetchone()[0]
+                dt = max_dt.isoformat() if max_dt else context["ds"]
+
         if context["params"].get("force_full_resync"):
-            version = make_version(ds)
+            version = make_version(dt)
             store = OnlineFeatureStore()
             store.r.delete(store.spec.meta_key(version, "shards"))
 
-        return prepare_sync(ds, shards=SHARDS)
+        return prepare_sync(dt, shards=SHARDS)
 
     @task(
         pool="redis_sync",
@@ -80,21 +97,20 @@ def sync_features_to_redis():
         max_active_tis_per_dag=4,       # gioi han ghi song song vao Redis
         execution_timeout=pendulum.duration(minutes=20),
     )
-    def sync_shard(shard_id: int, **context) -> dict:
+    def sync_shard(shard_id: int, prep: dict, **context) -> dict:
         """Ghi 1 shard. Retry cua Airflow an toan vi ham nay idempotent."""
         from lzd_pipeline.features.sync import sync_shard as do_sync
 
-        return do_sync(context["ds"], shard_id=shard_id, shards=SHARDS)
+        return do_sync(prep["dt"], shard_id=shard_id, shards=SHARDS)
 
     @task
-    def summarize_shards(results: list[dict], **context) -> dict:
+    def summarize_shards(results: list[dict], prep: dict, **context) -> dict:
         """Tong hop ket qua map -> so shard xong, so dong, shard nao bo qua."""
         from lzd_pipeline.common.logging_setup import get_logger
         from lzd_pipeline.common.metrics import push_batch_metrics
-        from lzd_pipeline.features.sync import make_version
 
         log = get_logger(__name__)
-        version = make_version(context["ds"])
+        version = prep["version"]
         total_rows = sum(r["rows"] for r in results)
         skipped = [r["shard_id"] for r in results if r.get("skipped")]
 
@@ -110,18 +126,18 @@ def sync_features_to_redis():
         return summary
 
     @task(retries=0)
-    def validate(summary: dict, **context) -> dict:
+    def validate(summary: dict, prep: dict, **context) -> dict:
         """So du lieu online vs offline. Fail -> KHONG doi active_version."""
         from lzd_pipeline.features.sync import validate_sync
 
-        return validate_sync(context["ds"])
+        return validate_sync(prep["dt"])
 
     @task
-    def activate(report: dict, **context) -> dict:
+    def activate(report: dict, prep: dict, **context) -> dict:
         """Doi con tro active_version - 1 lenh SET, atomic."""
         from lzd_pipeline.features.sync import activate_version
 
-        return activate_version(context["ds"])
+        return activate_version(prep["dt"])
 
     @task
     def cleanup(activated: dict) -> dict:
@@ -172,15 +188,14 @@ def sync_features_to_redis():
         """
         from lzd_pipeline.features.sync import mark_failed
 
-        mark_failed(context["ds"], f"DAG that bai o run {context['run_id']}")
+        mark_failed(context.get("ds", ""), f"DAG that bai o run {context.get('run_id', '')}")
 
     prepared = prepare()
-    shard_results = sync_shard.expand(shard_id=list(range(SHARDS)))
-    prepared >> shard_results
+    shard_results = sync_shard.partial(prep=prepared).expand(shard_id=list(range(SHARDS)))
 
-    summary = summarize_shards(shard_results)
-    report = validate(summary)
-    activated = activate(report)
+    summary = summarize_shards(shard_results, prepared)
+    report = validate(summary, prepared)
+    activated = activate(report, prepared)
     activated >> [cleanup(activated), smoke_test_serving(activated)]
 
     [prepared, shard_results, summary, report, activated] >> on_sync_failed()

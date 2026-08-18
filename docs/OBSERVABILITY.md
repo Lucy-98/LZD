@@ -70,17 +70,17 @@ Dashboard data pipeline nên trả lời bốn câu hỏi:
 
 ## Debug nhanh
 
-```powershell
-.\scripts\stack.ps1 health
-.\scripts\stack.ps1 logs stream-consumer
+```bash
+make health
+make logs s=stream-consumer
 docker compose logs airflow-scheduler --tail 200
 ```
 
 Reconstruction:
 
-```powershell
-$env:PYTHONPATH="src"
-python -m lzd_pipeline.reconstruction.e2e
+```bash
+PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e
+# hoặc: ./scripts/stack.sh reconstruction
 ```
 
 Output phải cho thấy từng Gate A-F. Nếu fail, điều tra source event, dbt output và

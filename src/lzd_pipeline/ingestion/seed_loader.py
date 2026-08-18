@@ -116,6 +116,14 @@ def load_all(dt: str, csv_dir: str | None = None, row_limit: int | None = None) 
             log.warning("khong tim thay file CSV, bo qua",
                         extra={"event": "seed_missing", "path": path})
             continue
+        try:
+            with open(path, "r", encoding="utf-8") as _f:
+                if _f.readline().startswith("version https://git-lfs"):
+                    log.warning("file la Git LFS pointer (chua pull du lieu that), bo qua",
+                                extra={"event": "seed_git_lfs_stub", "path": path})
+                    continue
+        except Exception:
+            pass
         results.append(load_csv_to_lake(path, split, dt, row_limit))
     total = sum(r["rows"] for r in results)
     return {"dt": dt, "parts": results, "total_rows": total}

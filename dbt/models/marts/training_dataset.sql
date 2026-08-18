@@ -33,9 +33,7 @@
 -- bang phinh vo han. Dong qua han bi xoa o cuoi file.
 -- ============================================================================
 {{ config(
-    materialized='incremental',
-    unique_key=['user_id', 'dt'],
-    incremental_strategy='delete+insert'
+    materialized='view'
 ) }}
 
 {%- set window_weeks = var('training_window_weeks') | int -%}

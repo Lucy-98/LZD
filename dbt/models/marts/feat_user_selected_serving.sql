@@ -6,6 +6,10 @@
 -- ============================================================================
 {{ config(
     materialized='table',
+    pre_hook=[
+        "DROP INDEX IF EXISTS marts.idx_feat_selected_serving_user",
+        "DROP INDEX IF EXISTS idx_feat_selected_serving_user"
+    ],
     post_hook="CREATE INDEX IF NOT EXISTS idx_feat_selected_serving_user ON {{ this }} (user_id)"
 ) }}
 
