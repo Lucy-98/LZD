@@ -61,11 +61,12 @@ flowchart TD
 | **Apache Kafka** | `localhost:29092`<br/>UI: `http://localhost:8082` | Message Broker xử lý luồng stream sự kiện người dùng thời gian thực (xem sản phẩm, thêm giỏ, áp mã voucher). |
 | **Event Producer & Stream Consumer** | *(Docker services)* | `producer` liên tục bắn sự kiện vào Kafka. `consumer` đọc từ Kafka, ghi Parquet vào MinIO và cập nhật counter vào Redis. |
 | **DuckDB + dbt** | *(Chạy trong Airflow)* | Data Warehouse Engine & Transformation: đọc Parquet từ MinIO, thực hiện tính toán đặc trưng (feature engineering) và kiểm tra chất lượng dữ liệu (`dbt test`). |
-| **Redis** | `localhost:6379`<br/>UI: `http://localhost:5540` | **Online Feature Store**: Lưu trữ 55 đặc trưng batch (`fs:v2:u:...`) kết hợp với bộ đếm sự kiện thời gian thực (`rt:u:...`) với độ trễ dưới 2ms. |
-| **MLflow** | `http://localhost:5001` | Quản lý vòng đời mô hình (Model Registry): lưu trữ artifact của mô hình **DR-Learner Uplift** (LightGBM 350 cây) và hợp đồng đặc trưng `feature_contract.json`. |
-| **Inference API (FastAPI)** | `http://localhost:8000/docs` | API suy luận trực tuyến: nhận `user_id`, đọc feature từ Redis, tự động tính toán 7 cột phái sinh, gọi LightGBM booster để tính điểm uplift ($\tau = P(\text{buy}\mid\text{treat}) - P(\text{buy}\mid\text{control})$). |
+| **Redis** | `localhost:6379`<br/>UI: `http://localhost:5540` *(RedisInsight)* | **Online Feature Store**: Lưu trữ 55 đặc trưng batch (`fs:v20260805:u:...`) kết hợp với bộ đếm sự kiện thời gian thực (`rt:u:...`) với độ trễ dưới 2ms. |
+| **MLflow** | `http://localhost:5001` | Quản lý vòng đời mô hình (Model Registry): lưu trữ artifact của mô hình **DR-Learner Uplift** (LightGBM 350 cây) và hợp đồng đặc trưng `feature_contract.json`. *(Dùng port 5001 để tránh xung đột AirPlay macOS)*. |
+| **Inference API (FastAPI)** | `http://localhost:8000` *(tự động mở Swagger UI)* | API suy luận trực tuyến: nhận `user_id`, đọc feature từ Redis, tự động tính toán 7 cột phái sinh, gọi LightGBM booster để tính điểm uplift ($\tau = P(\text{buy}\mid\text{treat}) - P(\text{buy}\mid\text{control})$). |
 | **Apache Airflow** | `http://localhost:8080` *(admin/admin)* | Nhạc trưởng điều phối toàn bộ workflow theo lịch trình hoặc sự kiện. |
 | **Grafana & Prometheus** | `http://localhost:3000`<br/>`http://localhost:9090` | Thu thập chỉ số (metrics), cảnh báo và hiển thị trực quan toàn bộ hiệu năng hệ thống, độ trễ API, độ trễ Kafka, phân phối điểm Uplift. |
+| **Loki & Promtail (Logs)** | Xem qua Grafana: `http://localhost:3000/explore` | Cơ sở dữ liệu log tập trung cho toàn bộ 18 container (Loki là backend database, truy vấn trực tiếp qua Grafana Explore). |
 
 ---
 

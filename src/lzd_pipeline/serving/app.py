@@ -95,6 +95,13 @@ app = FastAPI(
 )
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    """Chuyen huong tu trang chu sang Swagger UI /docs."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
+
+
 def store() -> OnlineFeatureStore:
     global _store
     if _store is None:
