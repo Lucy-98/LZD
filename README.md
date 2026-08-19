@@ -1,5 +1,31 @@
 # LZD Uplift Feature Platform
 
+[![CI Pipeline](https://github.com/Lucy-98/LZD/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucy-98/LZD/actions)
+![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue?logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-Serving-009688?logo=fastapi)
+![Redis](https://img.shields.io/badge/Redis-FeatureStore-DC382D?logo=redis)
+![DuckDB](https://img.shields.io/badge/DuckDB-OLAP-FFF000?logo=duckdb)
+![dbt](https://img.shields.io/badge/dbt-Transformation-FF694B?logo=dbt)
+![Airflow](https://img.shields.io/badge/Airflow-Orchestration-017CEE?logo=apacheairflow)
+![MLflow](https://img.shields.io/badge/MLflow-ModelRegistry-0194E2?logo=mlflow)
+![Kafka](https://img.shields.io/badge/Kafka-Streaming-231F20?logo=apachekafka)
+
+---
+
+## 📌 Executive Summary (English for Reviewers & Recruiters)
+
+**LZD Uplift Feature Platform** is a production-grade, end-to-end Data & ML Engineering platform designed for dynamic e-commerce voucher allocation based on **Uplift Modeling (Causal Inference)**.
+
+### Key Architecture & Engineering Achievements
+- **End-to-End Pipeline**: Raw Ingestion $\to$ MinIO S3 Lakehouse $\to$ dbt / DuckDB Feature Transformations $\to$ Redis Online Feature Store $\to$ FastAPI Serving.
+- **Low Latency Serving**: Realtime decision endpoint (`POST /decide`) operating at **< 10 ms SLA** with zero-skew contract validation between training and serving vectors.
+- **Causal Uplift Model**: DRLearner (Meta-learner with LightGBM base models) achieving superior **AUUC & Qini scores** over benchmark models (SLearner, TLearner, CausalForestDML).
+- **Mathematically Verified Feature Reconstruction**: Deterministic dry-run engine proving backward feature-to-event reconstruction (Track A witness events & Track B future events) with 100% boundary constraint verification across active users.
+- **Production Observability**: Full metric push & log tracking with Prometheus, Grafana, Loki, StatsD, and PostgreSQL audit logging.
+- **Engineering Quality**: 347 passing unit/contract tests, PEP 517/518 packaging (`pyproject.toml`), and automated GitHub Actions CI.
+
+---
+
 Repo này dựng lại toàn bộ đường dữ liệu cho bài toán Lazada voucher uplift: nạp
 dataset gốc, build feature bằng dbt/DuckDB, sync 55 selected feature lên Redis,
 phục vụ quyết định phát voucher qua FastAPI, huấn luyện lại hằng tuần, và chứng

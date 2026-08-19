@@ -1,9 +1,16 @@
 .env
 __pycache__/
 *.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
 .venv/
 venv/
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .tmp/
 .ipynb_checkpoints/
 
@@ -21,3 +28,6 @@ dbt/.user.yml
 *.duckdb.wal
 
 .DS_Store
+.vscode/
+.idea/
+

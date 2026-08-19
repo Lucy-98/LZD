@@ -1,0 +1,59 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    name: Run Unit & Contract Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Validate Feature Spec Contract
+        run: |
+          python -c "from lzd_pipeline.features.spec import load_feature_spec; spec = load_feature_spec(); print(f'Feature spec loaded successfully: version={spec.version}, features={len(spec.selected_features)}')"
+
+      - name: Run Pytest Test Suite
+        run: |
+          pytest tests/ -v
+
+      - name: Verify Dry-run Reconstruction
+        run: |
+          python -m lzd_pipeline.reconstruction.e2e
+
+  lint-and-yaml:
+    name: Lint & Yaml Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate Yaml Files
+        run: |
+          python -c "import yaml, glob; [yaml.safe_load(open(f, encoding='utf-8')) for f in glob.glob('config/**/*.ym*', recursive=True)]"

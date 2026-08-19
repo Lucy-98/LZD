@@ -87,13 +87,23 @@ def get_duckdb(read_only: bool = True, path: str | None = None):
         raise
 
     minio = settings.minio
-    con.execute("INSTALL httpfs; LOAD httpfs;")
-    con.execute(f"SET s3_endpoint='{minio.host_no_scheme}';")
-    con.execute(f"SET s3_access_key_id='{minio.access_key}';")
-    con.execute(f"SET s3_secret_access_key='{minio.secret_key}';")
-    con.execute(f"SET s3_use_ssl={'true' if minio.use_ssl else 'false'};")
-    con.execute("SET s3_url_style='path';")   # bat buoc voi MinIO
-    con.execute("SET enable_progress_bar=false;")
+    try:
+        con.execute("LOAD httpfs;")
+    except Exception:
+        try:
+            con.execute("INSTALL httpfs; LOAD httpfs;")
+        except Exception as httpfs_err:
+            log.warning("Khong load duoc httpfs extension trong DuckDB: %s", httpfs_err)
+
+    try:
+        con.execute(f"SET s3_endpoint='{minio.host_no_scheme}';")
+        con.execute(f"SET s3_access_key_id='{minio.access_key}';")
+        con.execute(f"SET s3_secret_access_key='{minio.secret_key}';")
+        con.execute(f"SET s3_use_ssl={'true' if minio.use_ssl else 'false'};")
+        con.execute("SET s3_url_style='path';")   # bat buoc voi MinIO
+        con.execute("SET enable_progress_bar=false;")
+    except Exception as s3_cfg_err:
+        log.debug("Khong set duoc S3 settings cho DuckDB: %s", s3_cfg_err)
     return con
 
 
