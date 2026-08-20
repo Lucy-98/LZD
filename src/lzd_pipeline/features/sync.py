@@ -41,25 +41,39 @@ PUSH_JOB = "feature_sync"
 
 
 # ===========================================================================
+def _parse_logical_date(logical_date: str | date | datetime) -> date:
+    if isinstance(logical_date, datetime):
+        return logical_date.date()
+    if isinstance(logical_date, date):
+        return logical_date
+    if isinstance(logical_date, str):
+        cleaned = logical_date.strip()
+        if not cleaned:
+            return date.today()
+        cleaned = cleaned.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(cleaned).date()
+        except ValueError:
+            try:
+                return datetime.strptime(cleaned[:10], "%Y-%m-%d").date()
+            except ValueError:
+                return date.today()
+    return date.today()
+
+
 def make_version(logical_date: str | date | datetime) -> str:
     """Version DETERMINISTIC theo ngay logic.
 
     Chay lai DAG cua ngay 2026-08-05 luon cho version 'v20260805'
     -> ghi de dung cho key cu -> khong sinh rac, khong double-write.
     """
-    if isinstance(logical_date, str):
-        logical_date = datetime.fromisoformat(logical_date.replace("Z", "+00:00")).date()
-    if isinstance(logical_date, datetime):
-        logical_date = logical_date.date()
-    return f"v{logical_date.strftime('%Y%m%d')}"
+    d = _parse_logical_date(logical_date)
+    return f"v{d.strftime('%Y%m%d')}"
 
 
 def dt_of(logical_date: str | date | datetime) -> str:
-    if isinstance(logical_date, str):
-        logical_date = datetime.fromisoformat(logical_date.replace("Z", "+00:00")).date()
-    if isinstance(logical_date, datetime):
-        logical_date = logical_date.date()
-    return logical_date.isoformat()
+    d = _parse_logical_date(logical_date)
+    return d.isoformat()
 
 
 @dataclass
@@ -99,7 +113,17 @@ def prepare_sync(logical_date: str, shards: int | None = None) -> dict[str, Any]
 
     expected_rows = offline.count_rows(dt=dt)
     if expected_rows == 0:
-        raise RuntimeError(f"Khong co dong nao cho dt={dt} trong {offline.table}")
+        total_rows = offline.count_rows()
+        if total_rows == 0:
+            raise RuntimeError(f"Bang offline '{offline.table}' chua co du lieu. Chay DAG 20_build_features_dbt truoc.")
+        with duckdb_conn(read_only=True) as con:
+            max_dt_val = con.execute(f"SELECT MAX(dt) FROM {offline.table}").fetchone()[0]
+        if max_dt_val:
+            dt = max_dt_val.isoformat()
+            version = make_version(dt)
+            expected_rows = offline.count_rows(dt=dt)
+        if expected_rows == 0:
+            raise RuntimeError(f"Khong co dong nao cho dt={dt} trong {offline.table}")
 
     checksum = offline.checksum(dt=dt)
 

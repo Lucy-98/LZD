@@ -1,0 +1,93 @@
+# ==========================================================================
+# SELECTED FEATURE SET — solver contract artifact
+#
+# RECONSTRUCTION_SPEC.md §13.3
+#
+# SOLVER ĐỌC FILE NÀY. Định nghĩa 30-column reconstruction scope (v3).
+#
+# Scope 30 features:
+#   T1 (4):  f1, f2, f5, f18
+#   T2 (5):  f37, f38, f40, f79, f80
+#   T3 (21): f0, f3, f4, f8, f9, f10, f12, f13, f16, f17, f22, f23, f24,
+#            f25, f26, f27, f28, f29, f31, f34, f35
+# ==========================================================================
+id: fs_2026_08_v3
+created_at: "2026-08-20"
+supersedes: fs_2026_08_v2
+source_dataset: "data/full_trainset.csv"
+split_allowed: train
+
+expected_column_count: 30
+
+# --------------------------------------------------------------------------
+# 30 cột mục tiêu, chia theo reconstruction tier
+# --------------------------------------------------------------------------
+columns:
+  # T1 — event-level: tái tạo bằng cách SINH EVENT (4 cột)
+  T1: [f1, f2, f5, f18]
+
+  # T2 — attribute-level: tái tạo bằng cách gán LEVEL cho source attribute (5 cột)
+  T2: [f37, f38, f40, f79, f80]
+
+  # T3 — pass-through: copy nguyên trạng, KHÔNG thuộc Gate A (21 cột)
+  T3: [f0, f3, f4, f8, f9, f10, f12, f13, f16, f17, f22,
+       f23, f24, f25, f26, f27, f28, f29, f31, f34, f35]
+
+# --------------------------------------------------------------------------
+# Comparison regime — RECONSTRUCTION_SPEC.md §7
+# --------------------------------------------------------------------------
+regimes:
+  LOG10:
+    columns: [f18]
+    decode: "round(10 ** f)"
+    encode: "round(log10(n), 6)"
+    compare: exact
+  LN:
+    columns: [f5]
+    decode: "round(exp(f))"
+    encode: "log(n)"
+    compare: relative
+    tolerance: 1.0e-15
+  REC:
+    columns: [f1, f2]
+    decode: "int(f)"
+    encode: "date_diff_days"
+    compare: exact
+  CAT:
+    columns: [f37, f38, f40, f79, f80]
+    compare: exact
+  PASS:
+    columns: [f0, f3, f4, f8, f9, f10, f12, f13, f16, f17, f22,
+              f23, f24, f25, f26, f27, f28, f29, f31, f34, f35]
+    compare: exact
+
+# --------------------------------------------------------------------------
+# Source attributes cho 5 cột T2
+# --------------------------------------------------------------------------
+source_attributes:
+  synthetic_category_515:
+    levels: 515
+    encoding: encoding_map_515
+    outputs:  [f79, f80, f81, f82]
+    selected: [f79, f80]
+
+  synthetic_attr_64:
+    levels: 64
+    encoding: encoding_map_64
+    outputs:  [f37]
+    selected: [f37]
+
+  synthetic_attr_241:
+    levels: 241
+    encoding: encoding_map_241
+    outputs:  [f38]
+    selected: [f38]
+
+  synthetic_segment_g1:
+    levels: 3
+    encoding: one_hot
+    outputs:  [f40, f41, f42]
+    selected: [f40]
+
+intermediate_only:
+  [f41, f42, f81, f82]

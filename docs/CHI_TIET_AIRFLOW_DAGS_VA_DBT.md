@@ -10,41 +10,39 @@ Hệ thống quản lý dữ liệu qua 5 tầng lưu trữ chuyên biệt:
 
 ```mermaid
 flowchart TD
-    subgraph S1["1. NGUỒN DỮ LIỆU GỐC (CSV & KAFKA)"]
-        CSV_TRAIN["data/full_trainset.csv<br/>(926,000 dòng train, 454MB, dữ liệu thật Alibaba/Lazada)"]
-        CSV_TEST["data/full_testset.csv<br/>(182,338 dòng test, 93MB, dữ liệu thật Alibaba/Lazada)"]
-        KAFKA_STREAM{{"Kafka: app.user.events.v1<br/>(Traffic sự kiện app: page_view, add_to_cart, order...)"}}
+    subgraph S1["1. NGUỒN DỮ LIỆU & RECONSTRUCTION"]
+        CSV_TRAIN["data/full_trainset.csv<br/>(926,669 users, dữ liệu gốc)"]
+        TRACK_A["Track A Solver (DAG 60)<br/>Giải mã ngược ra Raw Events E* + biz.*"]
+        KAFKA_STREAM{{"Kafka: app.user.events.v1<br/>(Traffic sự kiện app: page_view, add_to_cart, search...)"}}
     end
 
     subgraph S2["2. DATA LAKE S3 (MinIO)"]
-        MINIO_SNAP[("s3://lakehouse/raw/user_snapshot/dt=2026-08-05/<br/>• train.parquet (U0000000..)<br/>• test.parquet (T0000000..)")]
-        MINIO_EVT[("s3://lakehouse/raw/app_events/<br/>• events_*.parquet (Sự kiện Kafka stream)")]
-        MINIO_REC[("s3://lakehouse/raw/events_v2/<br/>• events_track_a.parquet (Sự kiện giải mã Track A)")]
+        MINIO_REC[("s3://lakehouse/raw/events_v2/<br/>• Raw Events E* (Track A)")]
+        MINIO_EVT[("s3://lakehouse/raw/app_events/<br/>• Streaming Events (Track B)")]
     end
 
-    subgraph S3["3. DATA WAREHOUSE (DuckDB / dbt)"]
-        DB_STG["STAGING (stg_user_snapshot, stg_app_events)"]
-        DB_MART["MARTS (feat_user_selected_serving, training_dataset, eval_holdout)"]
-        DB_BIZ["BIZ (biz.generation_run, biz.provenance - Control Plane)"]
-        DB_DQ["DQ_FAILURES (Lưu các bản ghi vi phạm dbt test)"]
+    subgraph S3["3. DATA WAREHOUSE (DuckDB / dbt 3 Tầng)"]
+        DB_STG["🥉 STAGING: stg_events_v2, stg_app_events"]
+        DB_INT["🥈 INTERMEDIATE: int_cfs_*, int_passthrough, int_event_behaviour"]
+        DB_MART["🥇 MARTS: training_features (30f) & serving_features (Tên nghiệp vụ)"]
     end
 
     subgraph S4["4. ONLINE FEATURE STORE (Redis)"]
-        REDIS_BATCH[("Batch Key: fs:v20260805:u:{user_id}<br/>• 55 features sạch<br/>• fs:meta:active_version")]
-        REDIS_RT[("Realtime Key: rt:u:{user_id}<br/>• Sliding window counters 1h<br/>• TTL 3600s")]
+        REDIS_BATCH[("Batch Key: fs:{version}:u:{user_id}<br/>• ~41 features tên nghiệp vụ<br/>• fs:meta:active_version")]
+        REDIS_RT[("Realtime Key: rt:u:{user_id}<br/>• Sliding window 5m + 1h<br/>• TTL 48 giờ")]
     end
 
-    subgraph S5["5. MODEL REGISTRY & SERVING (MLflow & FastAPI)"]
-        MLFLOW["MLflow Model Registry<br/>DRLearner-20260813 (LightGBM 350 trees)"]
-        API["FastAPI POST /decide<br/>Hợp nhất Batch + Realtime -> Ra quyết định trong < 2ms"]
+    subgraph S5["5. SERVING & TRIGGER ENGINE (FastAPI)"]
+        MODEL_REG["MLflow / Docker Image Model Registry<br/>(Best Model từ Notebook)"]
+        TRIGGER["Hybrid Trigger Engine & POST /decide<br/>Ra quyết định voucher_30, voucher_15, no_voucher"]
     end
 
-    CSV_TRAIN & CSV_TEST -->|DAG 00 seed| MINIO_SNAP
+    CSV_TRAIN -->|DAG 60 Solver| TRACK_A --> MINIO_REC
     KAFKA_STREAM -->|stream-consumer| MINIO_EVT & REDIS_RT
-    MINIO_SNAP & MINIO_EVT -->|DAG 20 dbt| DB_STG --> DB_MART
-    DB_MART -->|DAG 40 sync| REDIS_BATCH
-    DB_MART -->|DAG 30 train| MLFLOW
-    REDIS_BATCH & REDIS_RT & MLFLOW --> API
+    MINIO_REC & MINIO_EVT -->|DAG 20 dbt| DB_STG --> DB_INT --> DB_MART
+    DB_MART -->|DAG 40 sync (01:30 AM)| REDIS_BATCH
+    DB_MART -->|Jupyter Notebook| MODEL_REG
+    REDIS_BATCH & REDIS_RT & MODEL_REG --> TRIGGER
 ```
 
 ---

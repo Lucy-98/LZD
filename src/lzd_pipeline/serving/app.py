@@ -123,6 +123,7 @@ class DecideRequest(BaseModel):
 class DecideResponse(BaseModel):
     user_id: str
     decision: str
+    voucher_code: str = "no_voucher"
     uplift_score: float | None
     threshold: float
     feature_version: str | None
@@ -134,11 +135,6 @@ class DecideResponse(BaseModel):
     #: bang mac dinh cua hop dong (trung vi tren train+val).
     features_supplied: int
     #: ★ So tin hieu realtime THUC SU vao duoc model.
-    #:
-    #: Bang 0 KHONG co nghia la client gui thieu — model 76 cot cua notebook
-    #: khong co o nao cho `rt_*`, nen realtime khong bao gio vao duoc no. Chi
-    #: model do `train.py` huan luyen (62 cot, co 7 cot rt_*) moi dung den.
-    #: Truong nay de cho su that do lo ra thay vi phai suy tu score.
     realtime_applied: int
     latency_ms: float
     features: dict[str, Any] | None = None
@@ -304,8 +300,16 @@ def decide(req: DecideRequest) -> DecideResponse:
     threshold = settings.uplift_threshold
     if score is None:
         decision = "NO_DECISION"
+        voucher_code = "no_voucher"
+    elif score >= 0.05:
+        decision = "SEND_VOUCHER"
+        voucher_code = "voucher_30"
+    elif score >= threshold:
+        decision = "SEND_VOUCHER"
+        voucher_code = "voucher_15"
     else:
-        decision = "SEND_VOUCHER" if score >= threshold else "NO_VOUCHER"
+        decision = "NO_VOUCHER"
+        voucher_code = "no_voucher"
 
     latency = time.perf_counter() - started
     INFERENCE_LATENCY.observe(latency)
@@ -313,9 +317,6 @@ def decide(req: DecideRequest) -> DecideResponse:
     INFERENCE_DECISIONS.labels(decision=decision).inc()
 
     latency_ms = round(latency * 1000, 3)
-    # Xep hang (~vai micro giay), worker thread ghi Postgres theo batch.
-    # KHONG duoc goi audit.log_inference() truc tiep o day: no mo ket noi
-    # Postgres moi cho tung request -> +5-20ms vao duong serving.
     get_inference_logger().log(
         user_id=req.user_id,
         feature_version=version,
@@ -329,6 +330,7 @@ def decide(req: DecideRequest) -> DecideResponse:
     log.info(
         "quyet dinh",
         extra={"event": "decision", "user_id": req.user_id, "decision": decision,
+               "voucher_code": voucher_code,
                "uplift_score": score, "feature_version": version,
                "model_version": model.version, "cache_hit": cache_hit,
                "features_missing": missing, "features_supplied": supplied,
@@ -338,6 +340,7 @@ def decide(req: DecideRequest) -> DecideResponse:
     return DecideResponse(
         user_id=req.user_id,
         decision=decision,
+        voucher_code=voucher_code,
         uplift_score=score,
         threshold=threshold,
         feature_version=version,
@@ -349,6 +352,14 @@ def decide(req: DecideRequest) -> DecideResponse:
         latency_ms=latency_ms,
         features=merged if req.debug else None,
     )
+
+
+@app.post("/trigger/evaluate-session")
+def trigger_evaluate_session(req: DecideRequest) -> dict[str, Any]:
+    """Near-realtime session intent evaluation via Hybrid Trigger Engine."""
+    from lzd_pipeline.serving.trigger_engine import TriggerEngine
+    engine = TriggerEngine(store=store())
+    return engine.evaluate_user(req.user_id, context=req.context)
 
 
 @app.post("/decide/batch")

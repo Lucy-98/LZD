@@ -376,7 +376,7 @@ class OnlineFeatureStore:
     def aggregate_realtime(
         self, rt_raw: dict[str, Any], now: float | None = None
     ) -> dict[str, Any]:
-        """Gap hash o-5-phut thanh gia tri cua so 1 gio.
+        """Gap hash o-5-phut thanh gia tri cua so 1 gio va 5 phut.
 
         Field co dang "<feature>|<bucket_start>" duoc CONG lai neu o do con
         nam trong cua so. Field khong co dau '|' (vd rt_last_event_ts) la gia
@@ -384,20 +384,46 @@ class OnlineFeatureStore:
         """
         if not rt_raw:
             return {}
-        cutoff = rt_cutoff(now or time.time())
+        current_time = now or time.time()
+        curr_bucket = rt_bucket_start(current_time)
+        cutoff = rt_cutoff(current_time)
         out: dict[str, Any] = {}
+
+        mapping_5m = {
+            "rt_page_view_1h": "rt_page_view_5m",
+            "rt_add_to_cart_1h": "rt_add_to_cart_5m",
+            "rt_gmv_1h": "rt_cart_gmv_5m",
+            "rt_search_cnt_1h": "rt_search_cnt_5m",
+        }
+
         for field, value in rt_raw.items():
             if RT_FIELD_SEP not in field:
                 out[field] = value
                 continue
             name, _, suffix = field.partition(RT_FIELD_SEP)
             try:
-                if int(suffix) < cutoff:
-                    continue                      # o da rot khoi cua so
+                b_epoch = int(suffix)
+                if b_epoch < cutoff:
+                    continue                      # o da rot khoi cua so 1h
                 out[name] = float(out.get(name, 0.0)) + float(value)
+
+                # Cua so 5 phut (in-session intent)
+                if b_epoch == curr_bucket and name in mapping_5m:
+                    name_5m = mapping_5m[name]
+                    out[name_5m] = float(out.get(name_5m, 0.0)) + float(value)
             except (TypeError, ValueError):
                 continue
         return out
+
+    def aggregate_realtime_5m(
+        self, rt_raw: dict[str, Any], now: float | None = None
+    ) -> dict[str, Any]:
+        """Chi trich xuat cac tin hieu in-session intent trong 5 phut gan nhat."""
+        full = self.aggregate_realtime(rt_raw, now=now)
+        return {
+            k: v for k, v in full.items()
+            if k.endswith("_5m") or k in ("rt_last_event_ts", "rt_session_len_sec")
+        }
 
     # ==================================================================
     # DOC (serving path) - phai < 10ms

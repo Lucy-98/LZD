@@ -1,0 +1,306 @@
+{
+  "run_mode": "full",
+  "canh_bao": null,
+  "ham_muc_tieu": {
+    "ten": "dr_qini",
+    "mo_ta": "DR-AUUC chuẩn hóa: sắp theo tau_hat, lấy trung bình tích lũy của pseudo-outcome doubly robust, tính diện tích trên đường chéo, chia cho diện tích của xếp hạng biết trước. Ngẫu nhiên ~ 0, biết trước = 1.",
+    "huong": "maximize",
+    "thay_the_cho": "dr_mse",
+    "ly_do_doi": "DR-MSE = MSE thật + E[Var(Y_tilde|X)]; số hạng thứ hai là hằng số giống nhau ở mọi mô hình nhưng lớn hơn số hạng thứ nhất vài trăm lần, nên nó nuốt mất phần tín hiệu và Optuna chỉ đuổi theo nhiễu."
+  },
+  "cau_hinh": {
+    "n_tune_rows": 200000,
+    "n_val_rows": 100000,
+    "n_val_overlap_rows": 43323,
+    "n_trials": 12,
+    "n_trials_causal_forest": 6,
+    "n_bootstrap": 1000,
+    "n_features": 76,
+    "feature_names": [
+      "f0",
+      "f1",
+      "f2",
+      "f3",
+      "f4",
+      "f5",
+      "f6",
+      "f7",
+      "f8",
+      "f9",
+      "f10",
+      "f11",
+      "f12",
+      "f13",
+      "f14",
+      "f16",
+      "f17",
+      "f18",
+      "f19",
+      "f20",
+      "f21",
+      "f22",
+      "f23",
+      "f24",
+      "f25",
+      "f26",
+      "f27",
+      "f28",
+      "f29",
+      "f30",
+      "f31",
+      "f34",
+      "f35",
+      "f36",
+      "f37",
+      "f38",
+      "f40",
+      "f41",
+      "f42",
+      "f43",
+      "f44",
+      "f45",
+      "f46",
+      "f47",
+      "f48",
+      "f49",
+      "f50",
+      "f51",
+      "f52",
+      "f53",
+      "f54",
+      "f55",
+      "f56",
+      "f57",
+      "f58",
+      "f59",
+      "f60",
+      "f61",
+      "f62",
+      "f63",
+      "f64",
+      "f65",
+      "f66",
+      "f68",
+      "f75",
+      "f79",
+      "f80",
+      "f81",
+      "f82",
+      "fe_ratio_f1_f2",
+      "fe_ratio_f14_f16",
+      "fe_ratio_f9_f27",
+      "fe_inter_f9_f26",
+      "fe_inter_f14_f27",
+      "fe_nonzero_top10",
+      "fe_flag_sum"
+    ],
+    "seed": 42
+  },
+  "xu_ly_overlap": {
+    "propensity_alpha": 0.071,
+    "propensity_clip": [
+      0.071,
+      0.929
+    ],
+    "alpha_crump_goc": 0.0707679226408803,
+    "hang_rao_alpha": [
+      0.02,
+      0.1
+    ],
+    "trim_ap_dung_cho": "thuoc_do_tren_val",
+    "clip_ap_dung_cho": "moi_cong_thuc_doubly_robust_ke_ca_khi_huan_luyen",
+    "ti_le_val_giu_lai": 0.43323,
+    "winsorize_phan_vi": [
+      0.5,
+      99.5
+    ],
+    "winsorize_can": [
+      -1.2505400602716372,
+      1.5572151076326648
+    ],
+    "estimand": "ATE trên vùng overlap: E_Pval[tau(X) | alpha <= e(X) <= 1-alpha]. KHÔNG phải ATE trên toàn quần thể Val.",
+    "ghi_chu_notebook_04": "Notebook 04 phải đọc propensity_alpha ở đây và dùng đúng ngưỡng đó trong compute_dr_scores, nếu không thì bộ siêu tham số tinh chỉnh cho mô hình này lại áp cho mô hình khác."
+  },
+  "hieu_chinh_tren_val": {
+    "ate_ngay_tho_toan_val": 0.04719877049549384,
+    "ate_ngay_tho_vung_overlap": 0.01970476315816623,
+    "ate_doubly_robust_toan_val": 0.005811591574578981,
+    "ate_doubly_robust_vung_overlap": 0.004932870035665353,
+    "se_ate_doubly_robust": 0.0017281997778816585,
+    "qini_dr_ngau_nhien": 0.0005635450013482573,
+    "dr_mse_du_doan_hang_so": 0.04044833459323739,
+    "ghi_chu": "Mức ATE luôn lấy từ dr_ov (đã trim, CHƯA winsorize). dr_val đã winsorize nên chỉ dùng làm nhãn cho thước đo xếp hạng, không dùng báo cáo mức."
+  },
+  "so_sanh_bootstrap_tren_val": {
+    "mo_hinh_dan_dau": "SLearner",
+    "quy_tac": "Chỉ tuyên bố A hơn B khi KTC 95% của hiệu Qini_DR không chứa 0",
+    "so_doi_thu_thua_co_y_nghia": 1,
+    "so_doi_thu": 5,
+    "chi_tiet": [
+      {
+        "Đối thủ": "LinearDML",
+        "Chênh lệch Qini_DR": 0.0040427778775619545,
+        "KTC thấp": -0.0156835973831832,
+        "KTC cao": 0.022631338753648603,
+        "Khác 0": false
+      },
+      {
+        "Đối thủ": "DRLearner",
+        "Chênh lệch Qini_DR": 0.007060647686240269,
+        "KTC thấp": -0.011113896700498414,
+        "KTC cao": 0.026716901607713138,
+        "Khác 0": false
+      },
+      {
+        "Đối thủ": "NonParamDML",
+        "Chênh lệch Qini_DR": 0.012767367624522657,
+        "KTC thấp": -0.005018685079191926,
+        "KTC cao": 0.03211482840701182,
+        "Khác 0": false
+      },
+      {
+        "Đối thủ": "CausalForestDML",
+        "Chênh lệch Qini_DR": 0.01551391416083108,
+        "KTC thấp": -0.0020782684760194178,
+        "KTC cao": 0.033094772851106104,
+        "Khác 0": false
+      },
+      {
+        "Đối thủ": "TLearner",
+        "Chênh lệch Qini_DR": 0.045664003677268944,
+        "KTC thấp": 0.028071350975931823,
+        "KTC cao": 0.06357666327899406,
+        "Khác 0": true
+      },
+      {
+        "Đối thủ": "— Ngẫu nhiên (mốc)",
+        "Chênh lệch Qini_DR": 0.0764948751314571,
+        "KTC thấp": 0.048484274624140185,
+        "KTC cao": 0.10612602686370716,
+        "Khác 0": true
+      }
+    ]
+  },
+  "kiem_tra_transportability": {
+    "ate_mang_sang": 0.012930438643916223,
+    "se_mang_sang": 0.00012743844428705068,
+    "ate_do_tren_rct_select": 0.0037187915667810864,
+    "se_rct_select": 0.001221426755361183,
+    "chenh_lech": 0.009211647077135137,
+    "se_chenh_lech": 0.0012280569513644108,
+    "chenh_lech_nho_nhat_phat_hien_duoc": 0.0024069916246742453,
+    "co_y_nghia_thong_ke": true,
+    "tap_dung": "rct_select",
+    "ghi_chu": "Vế mang sang chưa tính sai số ước lượng của mô hình nên KTC thật còn rộng hơn"
+  },
+  "best_params": {
+    "SLearner": {
+      "params": {
+        "n_estimators": 100,
+        "learning_rate": 0.026777926034348507,
+        "max_depth": 3,
+        "min_child_samples": 20
+      },
+      "dr_qini": 0.07121916915284884,
+      "dr_qini_ci": [
+        0.0503759821660907,
+        0.0934869028217387
+      ],
+      "dr_mse": 0.04047313853944401,
+      "n_trials": 12,
+      "thanh_cong": true
+    },
+    "TLearner": {
+      "params": {
+        "n_estimators": 150,
+        "learning_rate": 0.015256811898068502,
+        "max_depth": 3,
+        "min_child_samples": 147
+      },
+      "dr_qini": 0.02581341525105474,
+      "dr_qini_ci": [
+        0.003288305114287018,
+        0.04817592571348999
+      ],
+      "dr_mse": 0.040707436566369624,
+      "n_trials": 12,
+      "thanh_cong": true
+    },
+    "DRLearner": {
+      "params": {
+        "n_estimators": 350,
+        "learning_rate": 0.01777174904859463,
+        "max_depth": 4,
+        "min_child_samples": 30
+      },
+      "dr_qini": 0.06418258414273344,
+      "dr_qini_ci": [
+        0.04240601295439027,
+        0.08581054194775356
+      ],
+      "dr_mse": 0.04070721352581266,
+      "n_trials": 12,
+      "thanh_cong": true
+    },
+    "LinearDML": {
+      "params": {
+        "nuisance_n_estimators": 150,
+        "nuisance_max_depth": 5,
+        "cv": 3
+      },
+      "dr_qini": 0.06755818338001246,
+      "dr_qini_ci": [
+        0.04701711818783508,
+        0.08738792499731905
+      ],
+      "dr_mse": 0.040433139427149344,
+      "n_trials": 12,
+      "thanh_cong": true
+    },
+    "NonParamDML": {
+      "params": {
+        "n_estimators": 100,
+        "learning_rate": 0.017001754132211097,
+        "max_depth": 3,
+        "min_child_samples": 42,
+        "nuisance_n_estimators": 150,
+        "nuisance_max_depth": 4,
+        "cv": 3
+      },
+      "dr_qini": 0.059026280871486925,
+      "dr_qini_ci": [
+        0.03743321075973213,
+        0.07938913566821983
+      ],
+      "dr_mse": 0.0404621842260324,
+      "n_trials": 12,
+      "thanh_cong": true
+    },
+    "CausalForestDML": {
+      "params": {
+        "nuisance_n_estimators": 200,
+        "nuisance_max_depth": 4,
+        "cv": 3,
+        "cf_n_estimators": 400,
+        "cf_min_samples_leaf": 122,
+        "cf_max_depth": 5
+      },
+      "dr_qini": 0.0560362538076019,
+      "dr_qini_ci": [
+        0.03493338707422969,
+        0.0775063419125206
+      ],
+      "dr_mse": 0.040431499405811026,
+      "n_trials": 6,
+      "thanh_cong": true
+    }
+  },
+  "thu_tu_theo_dr_qini": [
+    "SLearner",
+    "LinearDML",
+    "DRLearner",
+    "NonParamDML",
+    "CausalForestDML",
+    "TLearner"
+  ]
+}

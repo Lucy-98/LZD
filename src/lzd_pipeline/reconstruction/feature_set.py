@@ -21,6 +21,7 @@ duoi dang van xuoi o 3 tai lieu khac nhau -> khong co gi ngan chung drift (B5).
 from __future__ import annotations
 
 import functools
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -30,7 +31,11 @@ import yaml
 Tier = Literal["T1", "T2", "T3"]
 Regime = Literal["LOG10", "LN", "REC", "CAT", "PASS"]
 
-DEFAULT_PATH = Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v2.yaml"
+DEFAULT_PATH = (
+    Path(os.environ["FEATURE_SET_PATH"])
+    if "FEATURE_SET_PATH" in os.environ
+    else Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v2.yaml"
+)
 
 
 @dataclass(frozen=True)

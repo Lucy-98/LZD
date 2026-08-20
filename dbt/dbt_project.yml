@@ -55,9 +55,21 @@ models:
       +schema: staging
 
       # ── RECONSTRUCTION PATH ────────────────────────────────────────────
-      # Doc `source('raw','events_v2')` — chi ton tai SAU khi Track A da ghi
-      # event xuong lake. Xem chu thich o khoi `marts` ben duoi.
       stg_events_v2:
+        +tags: ["reconstruction"]
+
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+
+      # ── RECONSTRUCTION PATH ────────────────────────────────────────────
+      int_cfs_counter:
+        +tags: ["reconstruction"]
+      int_cfs_recency:
+        +tags: ["reconstruction"]
+      int_cfs_categorical:
+        +tags: ["reconstruction"]
+      int_passthrough:
         +tags: ["reconstruction"]
 
     marts:
@@ -65,19 +77,10 @@ models:
       +schema: marts
 
       # ── RECONSTRUCTION PATH ────────────────────────────────────────────
-      # DAY LA DANH SACH DUY NHAT cua cac model thuoc duong reconstruction.
-      #
-      # Chung doc `source('biz', ...)` va `source('raw','events_v2')` — nhung
-      # relation CHI ton tai sau khi Track A chay va writer da land du lieu.
-      # Trong `dbt run` mac dinh (DAG 20) chung bi EXCLUDE, neu khong toan bo
-      # build se do vi CatalogException va keo sap ca duong feature production.
-      #
-      #     DAG 20 (hang ngay):  dbt run --exclude tag:reconstruction
-      #     Duong reconstruction: dbt run --select tag:reconstruction
-      #
-      # 🚫 Them model reconstruction moi ma quen tag o day => DAG 20 do lai.
-      #    `test_dbt_reconstruction_tags.py` chan viec do bang cach doi chieu
-      #    tag voi source that su duoc dung trong SQL.
+      training_features:
+        +tags: ["reconstruction"]
+      serving_features:
+        +tags: ["reconstruction"]
       feat_cfs_counter:
         +tags: ["reconstruction"]
       feat_cfs_recency:

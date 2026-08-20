@@ -1,140 +1,82 @@
-# Data Flow
+# DATA FLOW ARCHITECTURE
 
-> **Scope:** ingest, lake, dbt feature engineering và reconstruction. API,
-> policy contract và cách tổ chức key/value trong Redis không thuộc tài liệu này.
+> **Kiến trúc luồng dữ liệu**: Tích hợp luồng Batch (Track A + dbt Medallion 3 tầng) và Near-Realtime (Track B + Kafka + Redis Realtime Overlay + Hybrid Trigger Engine).
 
-## 1. Batch
+---
 
-```text
-data/full_trainset.csv + data/full_testset.csv
-        |
-        | DAG 00: seed_loader
-        v
-MinIO raw/user_snapshot/dt=.../*.parquet
-        |
-        | DAG 20: dbt
-        v
-stg_user_snapshot
-        |
-        +--> feat_user_behaviour
-        +--> feat_user_realtime_pit
-        +--> feat_user_serving              (baseline/full mart)
-        +--> feat_user_selected_serving     (55-column Redis sync source)
-        `--> training_dataset
-```
-
-`stg_user_snapshot` cast `f0..f82`, chuẩn hóa entity/time và dedup. Label cùng
-`is_treat` chỉ được giữ trong training dataset; chúng không đi vào feature export
-hoặc reconstruction solver.
-
-Feature export hiện dùng `feat_user_selected_serving`: chỉ `user_id`, `dt`,
-`feature_ts` và 55 cột trong `config/features/fs_2026_08_v2.yaml`. Redis batch
-key là `fs:{version}:u:{user_id}`; mỗi hash có 55 selected features + metadata
-`_v`, `_ts`, `_feature_set_id`.
-
-## 2. Stream
+## 1. Luồng Batch (Offline Feature Pipeline)
 
 ```text
-event_producer
-    |
-    v
-Kafka app.user.events.v1
-    |
-    v
-stream_consumer
-    |
-    +--> validate fail --> DLQ
-    |
-    +--> [1] MinIO raw/app_events/*.parquet
-    +--> [2] Redis realtime overlay rt:u:{user_id}
-    `--> [3] commit Kafka offset
+Dataset CSV (full_trainset.csv)
+       │
+       │ DAG 60: Track A Solver (Constraint Reconstruction)
+       ▼
+┌─────────────────────────────────┬──────────────────────────────────┐
+│ MinIO: raw/events_v2/*.parquet  │ DuckDB: schema biz.*             │
+│ (Chuỗi Raw Events E*)           │ • customer_attribute (T2)        │
+│                                 │ • passthrough_source (T3)        │
+│                                 │ • encoding_map (T2 decode)       │
+│                                 │ • reconstruction_boundary        │
+└────────────────┬────────────────┴────────────────┬─────────────────┘
+                 │                                 │
+                 ▼                                 ▼
+ 🥉 TẦNG ĐỒNG: stg_events_v2                      biz.*
+                 │                                 │
+                 ▼                                 ▼
+ 🥈 TẦNG BẠC: int_cfs_counter, int_cfs_recency, int_cfs_categorical, int_passthrough
+                 │                                 │
+                 ├─────────────────────────────────┘
+                 ▼
+ 🥇 TẦNG VÀNG:
+   ├── marts.training_features (30 cột f* phục vụ Jupyter Notebook huấn luyện mô hình)
+   └── marts.serving_features  (~41 cột tên nghiệp vụ: customer_value_score, order_cnt_7d...)
+                 │
+                 │ DAG 40: Đồng bộ 32 Shards (01:30 AM)
+                 ▼
+          Redis Online Feature Store: fs:{version}:u:{user_id}
 ```
 
-Thứ tự `[1] -> [2] -> [3]` là invariant. Nếu ghi lake hoặc cập nhật downstream
-state thất bại thì offset không được commit và batch sẽ được đọc lại.
+---
 
-Lake là source of truth. Replay có thể làm downstream realtime counter cộng dư,
-nhưng `stg_app_events` dedup theo `event_id` trước khi tính feature offline.
-
-## 3. Reconstruction Track A
+## 2. Luồng Near-Realtime (Online Streaming & In-Session Intent)
 
 ```text
-immutable 55-column target (train only)
-        |
-        | decode T1/T2/T3
-        v
-constraint solver H1 hoặc H2
-        |
-        v
-RECONSTRUCTED event witness, event_ts < REFERENCE_TS
-        |
-        v
-dbt SQL thật
-  feat_cfs_counter
-  feat_cfs_recency
-  feat_cfs_categorical
-  feat_passthrough
-        |
-        v
-Gate A-F
-        |
-        v
-CustomerState(T0)
+Hành vi Người dùng Sau t₀ (browse, add_to_cart, search, checkout)
+       │
+       ▼
+ Kafka topic: app.user.events.v1
+       │
+       ▼
+ Stream Consumer (poll 1s, flush 30s hoặc 2000 events)
+       │
+       ├─► [1] MinIO raw/app_events/*.parquet (Immutable Lakehouse)
+       │
+       └─► [2] Redis Realtime Overlay: rt:u:{user_id} (TTL 48 giờ)
+               • Cửa sổ 5 phút: rt_page_view_5m, rt_add_to_cart_5m, rt_cart_gmv_5m, rt_search_cnt_5m
+               • Cửa sổ 1 giờ: rt_events_1h, rt_page_view_1h, rt_add_to_cart_1h, rt_order_1h...
 ```
 
-`semantic_status=UNIDENTIFIED` là trạng thái nhận thức. `semantic_branch=H1|H2`
-chỉ chọn scenario vận hành; nó không chứng minh semantic thật của `f30`.
+---
 
-## 4. Future Simulation Track B
+## 3. Luồng Serving & Hybrid Trigger Engine
 
 ```text
-CustomerState(T0)
-        |
-        | rule-based behaviour model
-        v
-SYNTHETIC future events, event_ts >= REFERENCE_TS
-        |
-        v
-Kafka app.user.events.v2 -> consumer -> MinIO raw/events_v2
-```
-
-Track B không nhận `ReconstructionTarget`, feature payload, label hay treatment.
-Nó chỉ nhận state đã qua gate, counters, T2 level và provenance.
-
-Track B event vocabulary là business v2. Không publish Track B vào consumer v1 hiện tại;
-v1 chỉ nhận `app_open`, `page_view`, `search`, `add_to_cart`, `checkout`, `order`,
-`voucher_view`, `voucher_claim`. Production Track B cần topic/schema/consumer v2 trước.
-
-## 5. Storage Ownership
-
-| Layer | Owner | Vai trò |
-|---|---|---|
-| CSV | source dataset | read-only reference |
-| MinIO raw | ingestion | immutable event/snapshot history |
-| DuckDB/dbt | transformation | staging, feature marts, training dataset |
-| PostgreSQL `biz` | reconstruction control plane | target, run, provenance, diff, state |
-| Downstream state sink | downstream owner | representation và access contract ngoài scope |
-
-## 6. Chạy
-
-Pipeline chính:
-
-```bash
-make up-all
-make health
-```
-
-Trigger Airflow theo thứ tự:
-
-1. `00_bootstrap_lake`
-2. `20_build_features_dbt`
-3. `40_sync_features_to_redis` nếu downstream sink được bật
-4. `50_data_quality`
-
-Reconstruction dry-run:
-
-```bash
-PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e
-PYTHONPATH=src python3 -m lzd_pipeline.reconstruction.e2e --branch H2
-# hoặc: ./scripts/stack.sh reconstruction H2
+ ① Event-Driven Trigger (sự kiện add_to_cart, checkout) ──┐
+ ② Polling Trigger (Quét định kỳ mỗi 5 phút user active) ──┴─► Trigger Engine
+                                                                     │
+                                    ┌────────────────────────────────┘
+                                    ▼
+                          Đọc 1 RTT Atomic Lua Script:
+                          • Batch: fs:{version}:u:{uid} (~41 features)
+                          • Realtime: rt:u:{uid} (11 features 5m/1h)
+                                    │
+                                    ▼
+                          Model Inference Engine (Best Model từ Notebook)
+                          Dự đoán Uplift Score τ(x)
+                                    │
+                                    ▼
+                          Quyết định phân phối Voucher:
+                          • τ(x) ≥ 0.05 ──► voucher_30 (giảm 30%)
+                          • τ(x) ≥ 0.02 ──► voucher_15 (giảm 15%)
+                          • τ(x) < 0.02 ──► no_voucher (tiết kiệm ngân sách)
 ```

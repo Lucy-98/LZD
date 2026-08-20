@@ -67,16 +67,16 @@ def test_cot_thieu_khong_duoc_co_mat_trong_row(spec, model_76):
 
 
 def test_khong_dien_0_cho_cot_co_trung_vi_khac_0(spec, model_76):
-    """`f1` trung vi 172.0 — dien 0.0 la day mau ra ngoai mien huan luyen."""
-    row, _, _, _ = build_model_row(spec, model_76.feature_order, {"f2": "5"}, {}, {})
-    assert "f1" not in row          # thieu => de hop dong dien 172.0
-    assert row["f2"] == pytest.approx(5.0)
+    """Cot thieu phai vang mat khoi row, khong duoc dien 0.0 che mat default."""
+    row, _, _, _ = build_model_row(spec, model_76.feature_order, {"customer_value_score": "5"}, {}, {})
+    assert "price_sensitivity_segment" not in row
+    assert row["customer_value_score"] == pytest.approx(5.0)
 
 
 def test_gia_tri_rong_cung_tinh_la_thieu(spec, model_76):
     """Redis tra chuoi rong cho field chua ghi — khong duoc coi la 0.0."""
-    row, missing, _, _ = build_model_row(spec, model_76.feature_order, {"f1": ""}, {}, {})
-    assert "f1" not in row
+    row, missing, _, _ = build_model_row(spec, model_76.feature_order, {"customer_value_score": ""}, {}, {})
+    assert "customer_value_score" not in row
     assert missing == len(spec.all_names)
 
 
@@ -118,7 +118,7 @@ def test_model_76_cot_khong_bao_gio_nhan_duoc_realtime(spec, model_76):
 def test_model_62_cot_dem_duoc_realtime(spec, model_62):
     rt = {n: 9 for n in spec.all_names if n.startswith("rt_")}
     _, _, _, realtime_applied = build_model_row(spec, model_62.feature_order, {}, rt, {})
-    assert realtime_applied == 7
+    assert realtime_applied == len([n for n in model_62.feature_order if n.startswith("rt_")])
 
 
 # ===========================================================================

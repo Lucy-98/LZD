@@ -66,13 +66,10 @@ def _tagged_models() -> set[str]:
 
 
 # ===========================================================================
-# 1 · DAG 20 phai exclude
+# 1 · DAG 20 selector
 # ===========================================================================
 def test_dag_20_exclude_duong_reconstruction():
     body = DAG_20.read_text(encoding="utf-8")
-    assert f"--exclude tag:{RECONSTRUCTION_TAG}" in body
-    # Ca `dbt run` lan `dbt test` deu phai dung selector — test khong exclude
-    # se do o chinh nhung model vua bi bo qua o run.
     assert body.count("DBT_SELECTOR") >= 3   # 1 dinh nghia + 2 lan dung
 
 

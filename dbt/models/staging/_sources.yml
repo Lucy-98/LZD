@@ -63,7 +63,6 @@ sources:
     schema: biz
     tables:
       - name: reconstruction_boundary
-        identifier: v_reconstruction_boundary
       - name: customer_attribute
       - name: encoding_map
       - name: onehot_layout

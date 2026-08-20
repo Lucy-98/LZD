@@ -72,17 +72,17 @@ def sync_features_to_redis():
         from lzd_pipeline.features.online_store import OnlineFeatureStore
         from lzd_pipeline.features.sync import make_version, prepare_sync
 
-        param_dt = (context.get("params") or {}).get("dt")
-        if param_dt:
+        raw_param = (context.get("params") or {}).get("dt")
+        param_dt = str(raw_param).strip() if raw_param is not None else ""
+        offline = OfflineFeatureStore()
+        if param_dt and offline.table_exists() and offline.count_rows(dt=param_dt) > 0:
             dt = param_dt
+        elif offline.table_exists() and offline.count_rows(dt=context["ds"]) > 0:
+            dt = context["ds"]
         else:
-            offline = OfflineFeatureStore()
-            if offline.table_exists() and offline.count_rows(dt=context["ds"]) > 0:
-                dt = context["ds"]
-            else:
-                with duckdb_conn(read_only=True) as con:
-                    max_dt = con.execute(f"SELECT MAX(dt) FROM {offline.table}").fetchone()[0]
-                dt = max_dt.isoformat() if max_dt else context["ds"]
+            with duckdb_conn(read_only=True) as con:
+                max_dt = con.execute(f"SELECT MAX(dt) FROM {offline.table}").fetchone()[0]
+            dt = max_dt.isoformat() if max_dt else context["ds"]
 
         if context["params"].get("force_full_resync"):
             version = make_version(dt)

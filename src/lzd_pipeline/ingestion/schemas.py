@@ -19,11 +19,11 @@ EVENT_TYPES = (
     "voucher_claim",
 )
 
-# Event nao dong gop vao feature realtime nao
 EVENT_TO_COUNTER = {
     "page_view": "rt_page_view_1h",
     "add_to_cart": "rt_add_to_cart_1h",
     "order": "rt_order_1h",
+    "search": "rt_search_cnt_1h",
 }
 
 

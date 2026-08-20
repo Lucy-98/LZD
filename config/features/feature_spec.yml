@@ -8,24 +8,22 @@
 #
 # Doi feature => sua DUY NHAT file nay => bump `version` => pipeline tu align.
 # ==========================================================================
-version: 3
+version: 4
 entity: user
 entity_key: user_id
 
 offline:
-  # Bang mart trong DuckDB dung lam nguon sync. Scope nay chi gom 55 selected
-  # features cua fs_2026_08_v2, khong sync f0..f82 day du len Redis.
-  serving_table: marts.feat_user_selected_serving
+  # Bang mart trong DuckDB dung lam nguon sync Redis (tên nghiệp vụ).
+  serving_table: marts.serving_features
   training_table: marts.training_dataset
-  selected_feature_set_id: fs_2026_08_v2
-  # Cot moc thoi gian de kiem tra freshness
+  selected_feature_set_id: fs_2026_08_v3
   event_time_column: feature_ts
   partition_column: dt
 
 online:
   # Key layout tren Redis:
   #   fs:{version}:u:{user_id}      -> HASH feature batch (ghi boi Airflow sync)
-  #   rt:u:{user_id}                -> HASH realtime overlay (stream consumer ghi sau raw lake)
+  #   rt:u:{user_id}                -> HASH realtime overlay (stream consumer ghi)
   #   fs:meta:active_version        -> STRING con tro version dang phuc vu
   #   fs:meta:{version}:status      -> HASH trang thai sync
   #   fs:meta:{version}:shards      -> SET shard da ghi xong (idempotency)
@@ -33,253 +31,210 @@ online:
   batch_key_template: "fs:{version}:u:{user_id}"
   realtime_key_template: "rt:u:{user_id}"
   meta_prefix: "fs:meta"
-  # Active version khong set TTL. Version cu bi ha TTL khi retire.
   stale_ttl_seconds: 86400
-  realtime_ttl_seconds: 3600
+  realtime_ttl_seconds: 172800   # 48 gio: giu context hanh vi xuyen phien
 
 # --------------------------------------------------------------------------
-# 1) BATCH FEATURES - 55 selected features, tinh hang ngay tu warehouse,
+# 1) BATCH FEATURES - Tên nghiệp vụ, tinh hang ngay tu warehouse,
 #    sync len Redis tai key fs:{version}:u:{user_id}
 # --------------------------------------------------------------------------
 batch_features:
-  # T1 - event-level reconstruction surface
-  - name: f1
+  # --- Profile: Customer Segmentation (T2) ---
+  - name: price_sensitivity_segment
     dtype: float
     default: 0.0
-    group: cfs_t1
-  - name: f2
+    group: profile_segment
+  - name: promo_affinity_segment
     dtype: float
     default: 0.0
-    group: cfs_t1
-  - name: f5
+    group: profile_segment
+  - name: platform_preference_flag
     dtype: float
     default: 0.0
-    group: cfs_t1
-  - name: f11
+    group: profile_segment
+  - name: preferred_category_enc_a
     dtype: float
     default: 0.0
-    group: cfs_t1
-  - name: f18
+    group: profile_segment
+  - name: preferred_category_enc_b
     dtype: float
     default: 0.0
-    group: cfs_t1
-  - name: f19
-    dtype: float
-    default: 0.0
-    group: cfs_t1
-  - name: f30
-    dtype: float
-    default: 0.0
-    group: cfs_t1
+    group: profile_segment
 
-  # T2 - attribute-level reconstruction surface
-  - name: f37
+  # --- Profile: Latent Scores (T3) ---
+  - name: latent_ordinal_segment
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f38
+    group: profile_latent
+  - name: customer_value_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f79
+    group: profile_latent
+  - name: purchase_power_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f80
+    group: profile_latent
+  - name: baseline_conversion_propensity
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f81
+    group: profile_latent
+  - name: incremental_response_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f82
+    group: profile_latent
+  - name: discount_sensitivity_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  # one-hot g1 (3/3 muc — group duy nhat duoc chon day du)
-  - name: f40
+    group: profile_latent
+  - name: category_affinity_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f41
+    group: profile_latent
+  - name: brand_affinity_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f42
+    group: profile_latent
+  - name: churn_risk_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  # one-hot g2 (6/10 muc)
-  - name: f43
+    group: profile_latent
+  - name: assortment_breadth_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f44
+    group: profile_latent
+  - name: abuse_risk_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f45
+    group: profile_latent
+  - name: ltv_score_a
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f46
+    group: profile_latent
+  - name: basket_stability_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f47
+    group: profile_latent
+  - name: ltv_score_b
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f52
+    group: profile_latent
+  - name: shipping_sensitivity_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  # one-hot g3 (6/10 muc) — group MOI o scope v2
-  - name: f53
+    group: profile_latent
+  - name: quality_index_a
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f54
+    group: profile_latent
+  - name: payment_friction_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f57
+    group: profile_latent
+  - name: search_intent_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f58
+    group: profile_latent
+  - name: campaign_fatigue_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f59
+    group: profile_latent
+  - name: quality_index_b
     dtype: float
     default: 0.0
-    group: cfs_t2
-  - name: f62
+    group: profile_latent
+  - name: seller_quality_pref_score
     dtype: float
     default: 0.0
-    group: cfs_t2
-  # one-hot g4 (2/3 muc)
-  - name: f64
-    dtype: float
-    default: 0.0
-    group: cfs_t2
-  - name: f65
-    dtype: float
-    default: 0.0
-    group: cfs_t2
-  # one-hot g6 (1/2 muc)
-  - name: f68
-    dtype: float
-    default: 0.0
-    group: cfs_t2
+    group: profile_latent
 
-  # T3 - pass-through, khong tham gia Gate A cua reconstruction
-  - name: f0
+  # --- Event-Derived: T1 CFS Features ---
+  - name: days_since_first_signal
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f3
+    group: cfs_recency
+  - name: days_since_last_signal
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f4
+    group: cfs_recency
+  - name: browse_intensity_365d
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f6
+    group: cfs_counter
+  - name: promo_touch_intensity_365d
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f8
+    group: cfs_counter
+
+  # --- Event-Derived: Behaviour Features ---
+  - name: order_cnt_7d
+    dtype: int
+    default: 0
+    group: behaviour
+  - name: order_cnt_14d
+    dtype: int
+    default: 0
+    group: behaviour
+  - name: order_cnt_30d
+    dtype: int
+    default: 0
+    group: behaviour
+  - name: gmv_7d
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f9
+    group: behaviour
+  - name: gmv_30d
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f10
+    group: behaviour
+  - name: avg_order_value_30d
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f12
+    group: behaviour
+  - name: voucher_used_14d
+    dtype: int
+    default: 0
+    group: behaviour
+  - name: voucher_claim_rate_30d
     dtype: float
     default: 0.0
-    group: cfs_t3
-  - name: f13
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f16
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f17
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f20
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f21
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f22
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f23
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f24
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f25
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f26
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f27
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f28
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f29
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f31
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f34
-    dtype: float
-    default: 0.0
-    group: cfs_t3
-  - name: f35
-    dtype: float
-    default: 0.0
-    group: cfs_t3
+    group: behaviour
+  - name: active_days_30d
+    dtype: int
+    default: 0
+    group: behaviour
+  - name: recency_last_order_days
+    dtype: int
+    default: 0
+    group: behaviour
+  - name: user_tenure_days
+    dtype: int
+    default: 0
+    group: behaviour
 
 # --------------------------------------------------------------------------
-# 2) REALTIME FEATURES - stream consumer ghi Redis overlay sau khi persist
-#    raw event xuong MinIO/lake. TTL ngan. Inference merge: batch <- overlay.
-#    Ban cung tinh lai chinh xac cac cot nay trong dbt de train khong bi skew
-#    (point-in-time join, xem models/marts/training_dataset.sql).
+# 2) REALTIME FEATURES - stream consumer ghi Redis overlay
+#    TTL 48 gio.
 # --------------------------------------------------------------------------
 realtime_features:
+  # Cua so 5 phut (In-Session Intent)
+  - name: rt_page_view_5m
+    dtype: int
+    default: 0
+    description: "So trang xem trong 5 phut"
+  - name: rt_add_to_cart_5m
+    dtype: int
+    default: 0
+    description: "So lan them gio hang trong 5 phut"
+  - name: rt_cart_gmv_5m
+    dtype: float
+    default: 0.0
+    description: "Tong tien gio hang trong 5 phut"
+  - name: rt_search_cnt_5m
+    dtype: int
+    default: 0
+    description: "So luot tim kiem trong 5 phut"
+
+  # Cua so 1 gio (Near-Realtime Context)
   - name: rt_events_1h
     dtype: int
     default: 0
@@ -293,6 +248,10 @@ realtime_features:
   - name: rt_order_1h
     dtype: int
     default: 0
+  - name: rt_search_cnt_1h
+    dtype: int
+    default: 0
+    description: "So luot tim kiem trong 1 gio"
   - name: rt_gmv_1h
     dtype: float
     default: 0.0
@@ -302,7 +261,7 @@ realtime_features:
   - name: rt_last_event_ts
     dtype: int
     default: 0
-    description: "Epoch giay cua event cuoi - dung do freshness cua overlay"
+    description: "Epoch giay cua event cuoi"
 
 # --------------------------------------------------------------------------
 # 3) Cot khong phai feature nhung di kem trong training set
@@ -317,5 +276,4 @@ quality:
   max_null_rate: 0.02          # >2% null tren 1 cot batch => FAIL
   max_freshness_hours: 26      # data cu hon 26h => FAIL (SLA daily + buffer)
   min_row_count: 1000
-  # Sai lech tuong doi cho phep khi so gia tri offline vs online
   online_offline_tolerance: 0.0001

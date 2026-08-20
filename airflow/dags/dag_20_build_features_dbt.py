@@ -87,19 +87,8 @@ def build_features_dbt():
         pool="duckdb_writer",
     )
 
-    # ------------------------------------------------------------------
-    # 🚫 `--exclude tag:reconstruction`
-    #
-    # Model reconstruction (`stg_events_v2`, `feat_cfs_*`, `feat_passthrough`)
-    # doc `source('raw','events_v2')` va `source('biz', ...)`. Nhung relation do
-    # CHI ton tai sau khi Track A chay va writer land du lieu — hien tai CHUA CO
-    # writer production (xem TECH_REFERENCE.md §12.1).
-    #
-    # Khong exclude thi `dbt run` do CatalogException va keo sap ca duong
-    # feature production hang ngay, du duong do khong lien quan gi toi
-    # reconstruction. Danh sach tag nam o dbt_project.yml.
-    # ------------------------------------------------------------------
-    DBT_SELECTOR = "--exclude tag:reconstruction"
+    # Chay toan bo cac tang dbt: staging -> intermediate -> marts
+    DBT_SELECTOR = ""
 
     dbt_run = BashOperator(
         task_id="dbt_run",

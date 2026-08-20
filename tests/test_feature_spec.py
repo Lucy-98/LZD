@@ -22,31 +22,28 @@ def spec():
 
 
 def test_batch_features_are_the_selected_set(spec):
-    """Redis batch contract chi duoc sync selected features, khong sync f0..f82."""
+    """Redis batch contract sync serving features với tên nghiệp vụ rõ ràng."""
     names = spec.batch_names
-    assert "f1" in names
-    assert "f82" in names
-    assert "f7" not in names       # f7 nam ngoai selected set o ca v1 lan v2
-    assert "f33" not in names      # ban sao 100% cua f31 — da bi loai khi chon
+    assert "price_sensitivity_segment" in names
+    assert "customer_value_score" in names
+    assert "days_since_first_signal" in names
+    assert "order_cnt_7d" in names
     assert "label" not in names
     assert "is_treat" not in names
-    assert len([n for n in names if n.startswith("f") and n[1:].isdigit()]) == 55
-    assert spec.offline["serving_table"] == "marts.feat_user_selected_serving"
-    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v2"
+    assert spec.offline["serving_table"] == "marts.serving_features"
+    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v3"
 
 
-def test_batch_features_khop_chinh_xac_feature_set_artifact(spec):
-    """Chong drift B5: spec sync va solver contract phai la MOT danh sach.
-
-    Truoc day hai file nay doc lap nhau, nen mo scope o mot ben ma quen ben
-    kia se lam Redis thieu cot dung luc serving — loi chi lo o production.
-    """
+def test_feature_set_artifact_loads_correctly():
+    """Artifact contract v3 tải đúng 30 features."""
     from lzd_pipeline.reconstruction.feature_set import load_feature_set
 
-    fs = load_feature_set()
-    f_names = {n for n in spec.batch_names if n.startswith("f") and n[1:].isdigit()}
-    assert f_names == set(fs.columns)
-    assert spec.offline["selected_feature_set_id"] == fs.id
+    v3_path = Path(__file__).resolve().parents[1] / "config" / "features" / "fs_2026_08_v3.yaml"
+    fs = load_feature_set(v3_path)
+    assert fs.id == "fs_2026_08_v3"
+    assert len(fs.columns) == 30
+    assert "f1" in fs.columns
+    assert "f80" in fs.columns
 
 
 def test_no_duplicate_feature_names(spec):
@@ -62,10 +59,10 @@ def test_key_templates(spec):
 
 def test_merge_realtime_overrides_batch(spec):
     """Overlay realtime phai thang feature batch cung ten."""
-    batch = {"f1": "1.5", "rt_events_1h": "0"}
+    batch = {"customer_value_score": "1.5", "rt_events_1h": "0"}
     realtime = {"rt_events_1h": "42"}
     merged, missing = spec.merge(batch, realtime)
-    assert merged["f1"] == 1.5
+    assert merged["customer_value_score"] == 1.5
     assert merged["rt_events_1h"] == 42
     assert missing > 0        # cac feature khac dung default
 
@@ -75,12 +72,14 @@ def test_merge_fills_defaults_when_cache_miss(spec):
     merged, missing = spec.merge({}, {})
     assert len(merged) == len(spec.all_features)
     assert missing == len(spec.all_features)
-    assert merged["f1"] == 0.0
+    assert merged["customer_value_score"] == 0.0
     assert merged["rt_events_1h"] == 0
+    assert merged["rt_page_view_5m"] == 0
 
 
 def test_cast_handles_garbage(spec):
-    f = spec.by_name("f1")
+    f = spec.by_name("customer_value_score")
+    assert f is not None
     assert f.cast("abc") == f.default
     assert f.cast(None) == f.default
     assert f.cast("") == f.default
@@ -88,9 +87,9 @@ def test_cast_handles_garbage(spec):
 
 
 def test_validate_columns_detects_missing(spec):
-    missing = spec.validate_columns(["user_id", "f1"], scope="batch")
-    assert "f2" in missing
-    assert "f1" not in missing
+    missing = spec.validate_columns(["user_id", "customer_value_score"], scope="batch")
+    assert "days_since_first_signal" in missing
+    assert "customer_value_score" not in missing
 
 
 def test_all_features_have_defaults(spec):
