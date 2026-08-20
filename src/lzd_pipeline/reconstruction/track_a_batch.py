@@ -2,7 +2,7 @@
 
 This is the host-side path used when Docker/MinIO is not available. It reads the
 real `data/full_trainset.csv`, decodes the selected reconstruction features
-(scope comes from the feature-set artifact, currently `fs_2026_08_v2` = 55
+(scope comes from the feature-set artifact, currently `fs_2026_08_v3` = 30
 columns), emits CFS raw events plus the sidecar tables needed by the dbt
 reconstruction models, and verifies a configurable sample through the same dbt
 SQL runner.
@@ -97,7 +97,7 @@ def _iter_rows(path: Path, limit: int | None = None) -> Iterable[dict[str, str]]
                 f"  1. Cai git-lfs (`brew install git-lfs` tren macOS hoac `sudo apt install git-lfs` tren Linux)\n"
                 f"  2. Chay `git lfs pull` de tai data/full_trainset.csv\n"
                 f"Hoac de kiem tra pipeline nhanh ma khong can tai dataset lon, ban co the dung:\n"
-                f"  make snapshot   (sinh reconstruction snapshot da commit san trong docs/)"
+                f"  make snapshot   (sinh local review artifact trong artifacts/)"
             )
         fh.seek(0)
         reader = csv.DictReader(fh)
@@ -179,16 +179,15 @@ def fit_value_maps(
 def decode_target(values: Mapping[str, float]) -> DecodedTarget:
     """Giai ma T1 theo regime §7.
 
-    `f19` chi co trong scope v2 (55 cot). Doc theo su hien dien cua khoa —
-    KHONG mac dinh 0/1 khi thieu — de mot target v1 khong am tham sinh ra
-    `EVT_F19` ma forward engine se dem duoc.
+    Chi decode feature co trong target. Scope v3 bo f11/f19/f30, nen solver
+    khong duoc muon ngam cac cot do tu CSV.
     """
     return DecodedTarget(
         n5=round(math.exp(values["f5"])),
-        n11=round(math.exp(values["f11"])),
+        n11=round(math.exp(values["f11"])) if "f11" in values else None,
         n18=round(pow(10.0, values["f18"])),
         n19=round(pow(10.0, values["f19"])) if "f19" in values else None,
-        n30=round(pow(10.0, values["f30"])),
+        n30=round(pow(10.0, values["f30"])) if "f30" in values else None,
         d1=round(values["f1"]),
         d2=round(values["f2"]),
         window_days=30,

@@ -135,6 +135,6 @@ def assert_reconstruction_sources_ready(con: "duckdb.DuckDBPyConnection") -> dic
     if empty:
         raise ReconstructionSourcesEmpty(
             f"relation {empty} dang RONG. Mart reconstruction se rong va Gate A "
-            "se vo nghia. Track A chua land du lieu — xem TECH_REFERENCE.md §12.1."
+            "se vo nghia. Can land Track A truoc khi build hai Gold marts."
         )
     return counts

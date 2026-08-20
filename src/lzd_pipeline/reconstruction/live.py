@@ -1,9 +1,8 @@
-"""Track B — Live Synthetic Event Generator.
+"""Isolated synthetic future-event generator used as an upstream test fixture.
 
-RECONSTRUCTION_SPEC.md §0, §3.4.
-
-    Track A:  target  ->  E*     ->  F'     (mot lan, deterministic reconstruction)
-    Track B:  State   ->  E_future        (lien tuc, behaviour simulation)
+This module is not Track B. Real Track B starts when events enter Kafka topic
+app.user.events.v1, then stream_consumer persists raw/app_events and updates
+Redis rt:u:{user_id}.
 
 ★ INVARIANT 4 — CAPABILITY BOUNDARY
 
@@ -15,15 +14,15 @@ RECONSTRUCTION_SPEC.md §0, §3.4.
            reconstruction.engine        reconstruction.semantics
            reconstruction.candidate
 
-    Ly do: `CustomerState.source_target_id` la OPAQUE LINEAGE ID. Neu Track B
-    co ĐƯỜNG NÀO toi target repository, no giai duoc id do va "nhin trom" 36
+    Ly do: `CustomerState.source_target_id` la OPAQUE LINEAGE ID. Neu generator
+    co ĐƯỜNG NÀO toi target repository, no giai duoc id do va "nhin trom" 30
     feature => generator co the lai event tuong lai de chieu theo feature =>
     closed-loop test do CHINH NO, khong do he thong.
 
     Rang buoc nay duoc canh boi `capability.assert_cannot_reach` (TEST-10b),
     khong phai boi code review.
 
-Track A la feature-space aware. Track B chi la state/behaviour aware.
+Track A la feature-space aware. Generator chi la state/behaviour aware.
 """
 from __future__ import annotations
 

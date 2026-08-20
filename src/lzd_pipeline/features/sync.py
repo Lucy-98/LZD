@@ -28,6 +28,7 @@ from datetime import date, datetime
 from typing import Any
 
 from lzd_pipeline.common import audit
+from lzd_pipeline.common.clients import duckdb_conn
 from lzd_pipeline.common.config import get_settings
 from lzd_pipeline.common.logging_setup import get_logger
 from lzd_pipeline.common.metrics import push_batch_metrics

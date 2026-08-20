@@ -48,11 +48,9 @@ ENV PYTHONUNBUFFERED=1 \
 #   - healthcheck dung urllib cua Python thay vi curl
 #   - reaping process do `init: true` trong docker-compose lo
 #
-# NGOAI TRU `libgomp1`. Wheel cua LightGBM link dong toi OpenMP runtime, ma
-# `python:slim` khong co no. Thieu goi nay thi `import lightgbm` do
-#     OSError: libgomp.so.1: cannot open shared object file
-# va chuoi nap model tut xuong StubModel — API van xanh, /decide van tra ve
-# so, chi la so gia. Da xay ra that, xem `event=model_stub`.
+# NGOAI TRU `libgomp1`. Neu sau nay gan lai artifact 30F co dung LightGBM,
+# wheel se can OpenMP runtime. Hien tai API chay voi model boundary
+# "unconfigured" va tra `NO_DECISION` cho den khi artifact that duoc gan vao.
 #
 # ~150 KB. Khong dung `libgomp1-*-dev`: runtime khong can header.
 RUN apt-get update \

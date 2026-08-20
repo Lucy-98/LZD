@@ -106,6 +106,10 @@ def h1_objective_bound(d: DecodedTarget) -> tuple[int, int]:
     argmin thi loi no NGAY tai cho, khong am tham di vao manifest.
     """
     forced = d.forced_days
+    if d.n30 is None:
+        days = max(len(forced), 1)
+        total = d.counter_capacity + len(forced)
+        return (0, max(days, math.ceil(total / SESSION_CAPACITY)))
     k = d.n30
     if k < len(forced):
         raise Infeasible(
@@ -157,7 +161,7 @@ def solve_h1(
 
     window = d.window_days
     forced = sorted(d.forced_days)
-    k = d.n30
+    k = d.n30 if d.n30 is not None else max(len(forced), 1)
     pool = [x for x in range(window) if x not in d.forced_days]
     days = sorted([
         *forced,

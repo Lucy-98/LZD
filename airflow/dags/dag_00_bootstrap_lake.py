@@ -1,4 +1,4 @@
-"""DAG 00 - BOOTSTRAP: nap dataset goc vao data lake + dung schema DuckDB.
+"""DAG 00 - DEV FIXTURE: nap dataset tinh va dung schema DuckDB.
 
 Chay 1 lan (trigger tay) khi dung stack lan dau.
 Mo phong: bang nguon tren BigQuery da co san du lieu.
@@ -19,12 +19,13 @@ DOC = __doc__
 
 @dag(
     dag_id="00_bootstrap_lake",
-    description="Nap CSV goc vao MinIO + tao schema DuckDB (chay 1 lan)",
+    description="[DEV] Nap CSV fixture vao MinIO + tao schema DuckDB (trigger tay)",
     schedule=None,                       # chi trigger tay
     start_date=pendulum.datetime(2026, 1, 1, tz="Asia/Ho_Chi_Minh"),
     catchup=False,
     default_args=DEFAULT_ARGS,
-    tags=["ingest", "bootstrap", "lzd"],
+    tags=["dev", "simulation", "bootstrap", "lzd"],
+    is_paused_upon_creation=True,
     doc_md=DOC,
     params={
         "dt": Param("2026-08-05", type="string",

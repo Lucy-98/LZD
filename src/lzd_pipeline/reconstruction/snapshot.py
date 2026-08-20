@@ -1,8 +1,8 @@
-"""Create committed review artifacts for the reconstruction dry-run.
+"""Create local review artifacts for the reconstruction dry-run.
 
 The reconstruction itself is deterministic and normally runs once for a given
-runtime config. This module materializes a small, reviewable snapshot under
-``docs/`` so someone who pulls the repo can inspect the reconstructed events,
+runtime config. This module materializes a small snapshot under
+``artifacts/`` so a reviewer can inspect the reconstructed events,
 future synthetic events, feature comparison, and charts without running Docker.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ from lzd_pipeline.reconstruction.feature_set import SelectedFeatureSet, load_fea
 from lzd_pipeline.reconstruction.runner import ColumnResult
 
 ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_OUTPUT_DIR = ROOT / "docs" / "reconstruction_snapshot"
+DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "reconstruction_snapshot"
 SNAPSHOT_SCHEMA_VERSION = "reconstruction_snapshot_v1"
 
 

@@ -1,7 +1,7 @@
 -- ============================================================================
 -- FORWARD FEATURE ENGINE — recency (T1): f1 · f2
 --
--- docs/RECONSTRUCTION_SPEC.md §7 regime REC
+-- REC regime for active T1 features f1 and f2.
 --
 -- Bat bien DO DUOC tren 100% dong:  f1 >= f2
 --   [ASSUMPTION] S-01/S-02: f1 = days_since_first_*, f2 = days_since_last_*

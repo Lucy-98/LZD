@@ -1,149 +1,43 @@
--- ============================================================================
--- FORWARD FEATURE ENGINE — counter (T1): f5 · f11 · f18 · f19 · f30
---
--- docs/RECONSTRUCTION_SPEC.md §7 (regime) · §4.2 (H1/H2)
---
--- ★ Model nay la mat xich bien Gate A tu "hop dong" thanh "chay duoc".
---   Track A:  E*  ->  MODEL NAY  ->  F'  ->  so voi target
---
--- 🚫 KHONG doc payload cua target. Chi doc `reference_ts` qua boundary view.
--- 🚫 KHONG co nhanh `if reconstruction_mode` (TA-2).
--- 🚫 KHONG dem theo `gen_reason` — stg_events_v2 da drop no (TA-6).
---    Model chi biet `event_type`, dung nhu production.
---
--- HAI REGIME MA HOA KHAC NHAU — do duoc tren 926,669 dong:
---   LOG10  f18, f19, f30   luu 6 chu so   round-trip khop CHINH XAC 100.0000%
---   LN     f5,  f11        float64 day du round-trip exact chi 93.05% / 93.42%
---                                     => phai so bang dung sai tuong doi 1e-15
---
--- ★ f19 (scope v2): counter LOG10 thu 7, CUNG co che voi f18.
---   [MEASURED] round-trip 926,669/926,669 train VA 181,669/181,669 test,
---   156 muc, max n = 4712. No lam NHE bai toan: capacity infeasibility
---   47.56% -> 39.54%, va ha ti le event khong giai thich duoc 14.1% -> 10.9%.
--- ============================================================================
+-- Reconstruction forward engine for the active 30-feature contract.
+-- T1 counters in fs_2026_08_v3 are only f5 and f18.
 {{ config(materialized='table') }}
 
-{%- set active_window = var('history_days') -%}          {# 30 ngay #}
-{%- set counter_window = var('counter_window_days') -%}  {# 365 - [ASSUMPTION] S-06 #}
-{%- set f30_branch = var('f30_semantic_branch', 'H1') -%}
+{%- set counter_window = var('counter_window_days', 365) -%}
 
 with boundary as (
-
-    -- CHI target_id + reference_ts. View nay khong phoi bay payload (§6b SQL).
-    select target_id, customer_id_hint as customer_id, reference_ts
+    select target_id, reference_ts
     from {{ source('biz', 'reconstruction_boundary') }}
-
 ),
 
 events as (
-
     select * from {{ ref('stg_events_v2') }}
-
-),
-
-joined as (
-
-    select
-        b.target_id,
-        b.reference_ts,
-        e.event_type,
-        e.event_ts
-    from boundary b
-    left join events e
-           on e.target_id = b.target_id
-          -- Bien PIT: NGHIEM NGAT `<`, khop voi feat_user_realtime_pit.
-          -- Dung `<=` se lech mot event o bien — loi rat kho tim vi chi hien
-          -- o mot ti le nho user.
-          and e.event_ts < b.reference_ts
-          -- availability: event chua duoc quan sat thi chua ton tai
-          and e.observation_ts <= b.reference_ts
-
 ),
 
 counted as (
-
     select
-        target_id,
-        reference_ts,
-
-        -- H1: f30 la SO NGAY PHAN BIET trong cua so 30 ngay.
-        count(distinct cast(event_ts as date)) filter (
-            where event_ts >= reference_ts - interval '{{ active_window }} days'
-        )                                                        as n30_h1,
-
-        -- H2: f30 la counter cua lop event rieng. Hai hypothesis dung chung
-        -- event contract, chi khac semantic duoc chon o runtime config.
+        b.target_id,
+        b.reference_ts,
         count(*) filter (
-            where event_type = 'EVT_F30'
-              and event_ts >= reference_ts - interval '{{ counter_window }} days'
-        )                                                        as n30_h2,
-
-        -- f5 / f11 / f18: dem CFS witness event theo LOAI, cua so {{ counter_window }} ngay.
-        -- Loai event la contract noi bo CFS; solver va model khai bao DOC LAP
-        -- cung mot gia dinh => lech nhau thi Gate A do.
+            where e.event_type = 'EVT_F5'
+              and e.event_ts >= b.reference_ts - interval '{{ counter_window }} days'
+        ) as n5,
         count(*) filter (
-            where event_type = 'EVT_F5'
-              and event_ts >= reference_ts - interval '{{ counter_window }} days'
-        )                                                        as n5,
-        count(*) filter (
-            where event_type = 'EVT_F11'
-              and event_ts >= reference_ts - interval '{{ counter_window }} days'
-        )                                                        as n11,
-        count(*) filter (
-            where event_type = 'EVT_F18'
-              and event_ts >= reference_ts - interval '{{ counter_window }} days'
-        )                                                        as n18,
-        count(*) filter (
-            where event_type = 'EVT_F19'
-              and event_ts >= reference_ts - interval '{{ counter_window }} days'
-        )                                                        as n19
-
-    from joined
-    group by target_id, reference_ts
-
-),
-
-resolved as (
-
-    select
-        target_id,
-        reference_ts,
-        n5,
-        n11,
-        n18,
-        n19,
-        case
-            when '{{ f30_branch }}' = 'H2' then n30_h2
-            else n30_h1
-        end as n30
-    from counted
-
+            where e.event_type = 'EVT_F18'
+              and e.event_ts >= b.reference_ts - interval '{{ counter_window }} days'
+        ) as n18
+    from boundary b
+    left join events e
+           on e.target_id = b.target_id
+          and e.event_ts < b.reference_ts
+          and e.observation_ts <= b.reference_ts
+    group by b.target_id, b.reference_ts
 )
 
 select
     target_id,
     reference_ts,
-
-    -- Gia tri da giai ma — giu lai de audit va de assertion o tang event (§14.1)
-    n5, n11, n18, n19, n30,
-
-    -- ── REGIME LN — float64 DAY DU, KHONG lam tron ──────────────────────
-    -- 🚫 CAM `round(ln(n), k)`: lam tron se pha round-trip 1e-15.
-    case when n5  >= 1 then ln(n5)  end                          as f5,
-    case when n11 >= 1 then ln(n11) end                          as f11,
-
-    -- ── REGIME LOG10 — lam tron DUNG 6 chu so ───────────────────────────
-    -- 6 chu so la quy uoc luu tru do duoc; lam tron o day cho round-trip
-    -- khop CHINH XAC, khong can dung sai.
-    case when n18 >= 1 then round(log10(n18), 6) end             as f18,
-    case when n19 >= 1 then round(log10(n19), 6) end             as f19,
-    case when n30 >= 1 then round(log10(n30), 6) end             as f30
-
-from resolved
-
--- ⚠️ KHONG coalesce n=0 thanh 1.
---    Mien do duoc la [1, N] cho ca NAM counter. Neu engine thay 0, do la
---    KHONG KHOP THAT — phai de NULL cho Gate A bat, khong duoc che di.
---    Voi target scope v1 (khong co f19) thi solver khong phat EVT_F19 nao,
---    n19 = 0, f19 = NULL — va f19 khong nam trong 36 cot nen Gate A khong
---    doc no. Do la hanh vi DUNG, khong phai lo lot.
+    n5,
+    n18,
+    case when n5 >= 1 then ln(n5) end as f5,
+    case when n18 >= 1 then round(log10(n18), 6) end as f18
+from counted

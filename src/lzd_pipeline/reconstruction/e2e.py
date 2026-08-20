@@ -1,8 +1,8 @@
-"""Runnable Track A -> CustomerState(T0) -> Track B dry-run.
+"""Runnable Track A plus an isolated future-event generator dry-run.
 
-This module is the orchestration boundary. Track B remains isolated in
-``live.py`` and receives only ``CustomerState``; it never receives the target.
-The forward pass executes the real dbt model SQL through ``runner.py``.
+The generator in live.py is an upstream test fixture, not Track B. The real
+Track B is Kafka -> stream_consumer -> MinIO raw/app_events + Redis rt:u:*.
+The forward pass executes the real dbt model SQL through runner.py.
 """
 from __future__ import annotations
 
@@ -142,7 +142,7 @@ def run_end_to_end(
     behaviour: RuleBasedBehaviour | None = None,
     outcome: engine.SolveOutcome | None = None,
 ) -> EndToEndResult:
-    """Execute both tracks without writing Kafka, Redis, MinIO, or Postgres.
+    """Execute Track A and the future-event fixture without infrastructure.
 
     `outcome` cho phep TRUYEN VAO mot nghiem da tinh san.
 
@@ -155,7 +155,7 @@ def run_end_to_end(
 
     Nen duong du lieu that (`track_a_batch.reconstruct_row`) dung solver
     constructive `solve_h1`, roi dua nghiem do vao day. Moi buoc con lai —
-    dbt marts, Gate A..F, CustomerState(T0), Track B — chay y het.
+    dbt marts, Gate A..F, CustomerState(T0), future fixture — chay y het.
     """
     target.verify()
     solver_config = config.solver_config()
@@ -282,17 +282,14 @@ def _demo_contract(
     dict[str, float],
 ]:
     decoded = DecodedTarget(
-        n5=2, n11=1, n18=1, n19=1, n30=2, d1=1, d2=1, window_days=4
+        n5=2, n11=None, n18=1, n19=None, n30=None,
+        d1=1, d2=1, window_days=4,
     )
     attributes = {
         "synthetic_category_515": 0,
         "synthetic_attr_64": 0,
         "synthetic_attr_241": 0,
         "synthetic_segment_g1": 0,
-        "synthetic_segment_g2": 1,
-        "synthetic_segment_g3": 0,
-        "synthetic_segment_g4": 1,
-        "synthetic_segment_g6": 0,
     }
     encoded_values = {
         "synthetic_category_515": (0.79, 0.80, 0.81, 0.82),
@@ -304,12 +301,8 @@ def _demo_contract(
         "f1": float(decoded.d1),
         "f2": float(decoded.d2),
         "f5": math.log(decoded.n5),
-        "f11": math.log(decoded.n11),
         "f18": round(math.log10(decoded.n18), 6),
-        "f30": round(math.log10(decoded.n30), 6),
     }
-    if decoded.n19 is not None:
-        values["f19"] = round(math.log10(decoded.n19), 6)
     encoding_rows: list[tuple[str, int, str, float]] = []
     onehot_rows: list[tuple[str, int, str]] = []
 

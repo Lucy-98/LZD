@@ -32,7 +32,7 @@ REASON_F30 = "f30"
 #: bac tu do — nen no khong tham gia toi uu, chi tham gia feasibility.
 REASON_RECENCY = "recency"
 
-#: `f19` CHI ton tai tu scope v2 (55 cot) tro di. Voi target v1 (36 cot),
+#: `f19` la counter tuy chon ngoai scope v3. Khi target khong co cot,
 #: `DecodedTarget.n19 is None` va reason nay khong duoc phat.
 COUNTER_REASONS = (REASON_F5, REASON_F11, REASON_F18, REASON_F19)
 
@@ -53,26 +53,26 @@ class DecodedTarget:
 
     Chi chua counter T1 + recency. KHONG chua gia tri feature goc.
 
-    `n19` la OPTIONAL vi no chi ton tai trong scope v2 (55 cot). Voi target
-    dung `fs_2026_08_v1` (36 cot) thi `n19 is None` va solver khong phat
+    `n19` la OPTIONAL vi khong thuoc scope 30 hien tai. Khi `None`, solver khong phat
     `EVT_F19` nao — nho vay MOT engine phuc vu duoc CA HAI feature set thay
     vi fork ra hai nhanh se drift.
     """
 
     n5: int
-    n11: int
+    n11: int | None
     n18: int
-    n30: int
+    n30: int | None
     d1: int          # days_since_first_*  (SYNTHETIC_ASSUMPTION S-01)
     d2: int          # days_since_last_*   (S-02);  bat bien do duoc: d1 >= d2
     window_days: int = 30
-    n19: int | None = None   # counter LOG10 thu 7 — chi co o scope v2
+    n19: int | None = None   # counter LOG10 tuy chon, khong thuoc scope 30
 
     def __post_init__(self) -> None:
         if self.d1 < self.d2:
             raise ValueError(f"d1 >= d2 la bat bien do duoc tren 100% dong (d1={self.d1}, d2={self.d2})")
         for name in ("n5", "n11", "n18", "n30"):
-            if getattr(self, name) < 1:
+            value = getattr(self, name)
+            if value is not None and value < 1:
                 raise ValueError(f"{name} phai >= 1 (mien do duoc: [1, ...])")
         if self.n19 is not None and self.n19 < 1:
             raise ValueError(f"n19 phai >= 1 (mien do duoc: [1, 4712]), nhan {self.n19}")
@@ -85,11 +85,9 @@ class DecodedTarget:
         candidate generation va constructive solver deu doc tu day, nen khong
         the lech nhau.
         """
-        demand = [
-            (REASON_F5, self.n5),
-            (REASON_F11, self.n11),
-            (REASON_F18, self.n18),
-        ]
+        demand = [(REASON_F5, self.n5), (REASON_F18, self.n18)]
+        if self.n11 is not None:
+            demand.append((REASON_F11, self.n11))
         if self.n19 is not None:
             demand.append((REASON_F19, self.n19))
         return tuple(demand)
@@ -106,6 +104,11 @@ class DecodedTarget:
         Chi tinh ngay nam TRONG cua so — d >= window thi khong anh huong n30.
         """
         return frozenset(d for d in (self.d1, self.d2) if d < self.window_days)
+
+    @property
+    def constrains_active_days(self) -> bool:
+        """Scope v3 bo f30, nen active-day count khong con la target."""
+        return self.n30 is not None
 
 
 @runtime_checkable
@@ -176,11 +179,17 @@ class H1Branch:
         # f1/f2: dung so moc phan biet (1 neu d1==d2, nguoc lai 2)
         if c.count_of(REASON_RECENCY) != len({d.d1, d.d2}):
             return False
-        if c.active_days_in_window(d.window_days) != d.n30:
+        if d.n30 is not None and c.active_days_in_window(d.window_days) != d.n30:
             return False
         return d.forced_days <= c.day_offsets    # ngay cua d1/d2 phai active
 
     def candidates(self, d: DecodedTarget) -> Iterator[Candidate]:
+        if d.n30 is None:
+            days = tuple(sorted(d.forced_days)) or (0,)
+            rec = _recency_slots(d)
+            for base in _place_counters(days, d.counter_demand):
+                yield Candidate.of((*base, *rec))
+            return
         forced = sorted(d.forced_days)
         if len(forced) > d.n30:
             return                                # Q_FORCED_DAYS — vo nghiem
@@ -224,13 +233,22 @@ class H2Branch:
         for reason in COUNTER_REASONS:
             if reason not in {r for r, _ in d.counter_demand} and c.count_of(reason):
                 return False
-        if c.count_of(REASON_F30) != d.n30:      # counter rieng, khong phai ngay
+        if d.n30 is None:
+            if c.count_of(REASON_F30):
+                return False
+        elif c.count_of(REASON_F30) != d.n30:    # counter rieng, khong phai ngay
             return False
         if c.count_of(REASON_RECENCY) != len({d.d1, d.d2}):
             return False
         return d.forced_days <= c.day_offsets
 
     def candidates(self, d: DecodedTarget) -> Iterator[Candidate]:
+        if d.n30 is None:
+            days = tuple(sorted(d.forced_days)) or (0,)
+            rec = _recency_slots(d)
+            for base in _place_counters(days, d.counter_demand):
+                yield Candidate.of((*base, *rec))
+            return
         forced = sorted(d.forced_days)
         pool = [x for x in range(d.window_days) if x not in d.forced_days]
         counts = (*d.counter_demand, (REASON_F30, d.n30))

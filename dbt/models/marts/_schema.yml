@@ -1,63 +1,36 @@
 version: 2
 
 models:
-  - name: feat_user_behaviour
-    description: "Feature hanh vi 30 ngay tinh tu event stream"
+  - name: training_features
+    description: "Gold 1: exactly 30 f* columns reconstructed for model training."
     columns:
       - name: user_id
         tests: [not_null, unique]
-
-  - name: feat_user_serving
-    description: >
-      Baseline/full snapshot feature mart. Khong phai nguon sync selected
-      reconstruction feature store.
-    columns:
-      - name: user_id
-        tests:
-          - not_null
-          - unique          # 1 dong / 1 user -> HSET len Redis khong dam nhau
-      - name: dt
-        tests: [not_null]
-      - name: feature_ts
-        tests: [not_null]
-      - name: f0
-        tests:
-          - not_null
-      - name: hist_gmv_30d
-        tests:
-          - not_null
-          - dbt_utils_at_least_zero:
-              config:
-                severity: warn
-
-  - name: feat_user_selected_serving
-    description: >
-      Selected 36-feature mart duoc sync len Redis theo feature_spec.yml
-      (batch_features). Khong chua label/is_treat va khong sync f0..f82 day du.
-    columns:
-      - name: user_id
-        tests:
-          - not_null
-          - unique
       - name: dt
         tests: [not_null]
       - name: feature_ts
         tests: [not_null]
       - name: f1
         tests: [not_null]
-      - name: f82
+      - name: f35
         tests: [not_null]
 
-  - name: feat_user_realtime_pit
-    description: "Feature realtime tinh point-in-time - dung cho training"
+  - name: serving_features
+    description: "Gold 2: 41 business-named batch features synced to Redis."
     columns:
       - name: user_id
+        tests: [not_null, unique]
+      - name: dt
         tests: [not_null]
-      - name: rt_events_1h
+      - name: feature_ts
+        tests: [not_null]
+      - name: price_sensitivity_segment
+        tests: [not_null]
+      - name: user_tenure_days
         tests: [not_null]
 
   - name: training_dataset
-    description: "Dataset cuoi cung cho uplift model"
+    description: "Training view: Gold-1 features plus label/is_treat/split metadata."
     columns:
       - name: user_id
         tests: [not_null]
@@ -71,4 +44,19 @@ models:
           - accepted_values: {values: [0, 1], quote: false}
       - name: split
         tests:
-          - accepted_values: {values: ['train', 'test']}
+          - accepted_values: {values: ['train'], quote: true}
+
+  - name: feat_user_selected_serving
+    description: "Legacy view alias of serving_features; not the active sync contract."
+
+  - name: feat_user_realtime_pit
+    description: "Offline PIT mirror for evaluation only; realtime serving uses Redis rt:u:*."
+    columns:
+      - name: user_id
+        tests: [not_null]
+
+  - name: feat_user_behaviour
+    description: "Legacy behaviour mart retained for compatibility."
+    columns:
+      - name: user_id
+        tests: [not_null, unique]

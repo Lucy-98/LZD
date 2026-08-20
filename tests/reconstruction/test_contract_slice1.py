@@ -37,12 +37,12 @@ def _values(fs, fill=1.0) -> dict[str, float]:
 # ===========================================================================
 # Feature set artifact — INVARIANT 1
 # ===========================================================================
-def test_scope_la_dung_55_cot(fs):
-    assert fs.id == "fs_2026_08_v2"
-    assert len(fs.columns) == 55
-    assert len(fs.tiers["T1"]) == 7
-    assert len(fs.tiers["T2"]) == 24
-    assert len(fs.tiers["T3"]) == 24
+def test_scope_la_dung_30_cot(fs):
+    assert fs.id == "fs_2026_08_v3"
+    assert len(fs.columns) == 30
+    assert len(fs.tiers["T1"]) == 4
+    assert len(fs.tiers["T2"]) == 5
+    assert len(fs.tiers["T3"]) == 21
 
 
 def test_invariant_1_do_artifact_chot_chu_khong_phai_code(fs):
@@ -57,25 +57,20 @@ def test_invariant_1_do_artifact_chot_chu_khong_phai_code(fs):
 
 def test_gate_a_va_gate_a_t3_tach_rieng(fs):
     """§12 — gop hai gate lam ti le pass cao gia tao nho copy."""
-    assert len(fs.gate_a_columns) == 31       # T1 + T2, thuc su reconstruct
-    assert len(fs.gate_a_t3_columns) == 24    # T3, chi copy
+    assert len(fs.gate_a_columns) == 9        # T1 + T2, thuc su reconstruct
+    assert len(fs.gate_a_t3_columns) == 21   # T3, chi copy
     assert not set(fs.gate_a_columns) & set(fs.gate_a_t3_columns)
 
 
-def test_v2_la_superset_chat_cua_v1(fs):
-    """v2 chi CONG THEM. Khong cot nao cua v1 bi bo => gate dang xanh giu nguyen."""
-    v1 = load_feature_set(DEFAULT_PATH.parent / "fs_2026_08_v1.yaml")
-    assert set(v1.columns) < set(fs.columns)
-    assert len(set(fs.columns) - set(v1.columns)) == 19
+def test_v3_artifact_la_active_contract(fs):
+    assert fs.id == "fs_2026_08_v3"
+    assert fs.expected_column_count == 30
 
 
 def test_cot_trung_gian_khong_lot_vao_target(fs):
     """§1.2 — muc khong duoc chon cua g2/g3/g4/g6 la dau ra trung gian."""
     assert not fs.intermediate_only & fs.column_set
-    assert "f48" in fs.intermediate_only      # g2
-    assert "f55" in fs.intermediate_only      # g3
-    assert "f63" in fs.intermediate_only      # g4
-    assert "f78" in fs.intermediate_only      # g6
+    assert fs.intermediate_only == frozenset({"f41", "f42", "f81", "f82"})
 
 
 def test_moi_muc_cua_group_deu_duoc_khai_bao(fs):
@@ -86,18 +81,6 @@ def test_moi_muc_cua_group_deu_duoc_khai_bao(fs):
 
 
 def test_source_attribute_dung_du_muc_cua_group(fs):
-    """§5 / G-1 — dung du 10 muc cho G2 du chi chon 6 cot."""
-    g2 = fs.source_attributes["synthetic_segment_g2"]
-    assert g2.levels == 10
-    assert len(g2.outputs) == 10          # phai dung DU
-    assert set(g2.selected) == {"f43", "f44", "f45", "f46", "f47", "f52"}
-
-    # g3 la group MOI o v2 — chua tung duoc khai bao o bat ky tai lieu nao
-    g3 = fs.source_attributes["synthetic_segment_g3"]
-    assert g3.levels == 10
-    assert set(g3.outputs) == {f"f{i}" for i in range(53, 63)}
-    assert set(g3.selected) == {"f53", "f54", "f57", "f58", "f59", "f62"}
-
     cat = fs.source_attributes["synthetic_category_515"]
     assert cat.levels == 515
     assert set(cat.outputs) == {"f79", "f80", "f81", "f82"}  # MOT bien, 4 encoding
@@ -110,11 +93,12 @@ def test_g1_duoc_chon_du_ca_group(fs):
     ghi lai de khong ai doc "55 cot" thanh "55 tin hieu doc lap".
     """
     g1 = fs.source_attributes["synthetic_segment_g1"]
-    assert set(g1.selected) == set(g1.outputs) == {"f40", "f41", "f42"}
+    assert set(g1.selected) == {"f40"}
+    assert set(g1.outputs) == {"f40", "f41", "f42"}
 
 
 def test_regime_gan_dung_cot(fs):
-    assert fs.regime_of("f30") == "LOG10"
+    assert fs.regime_of("f18") == "LOG10"
     assert fs.regime_of("f5") == "LN"
     assert fs.regime_of("f1") == "REC"
     assert fs.regime_of("f79") == "CAT"
@@ -123,10 +107,10 @@ def test_regime_gan_dung_cot(fs):
 
 def test_dung_sai_chi_ap_dung_cho_regime_ln(fs):
     """§7 — LOG10 khop chinh xac 100%; LN chi 93% => phai co dung sai."""
-    assert fs.tolerance_of("f30") is None
+    assert fs.tolerance_of("f18") is None
     assert fs.tolerance_of("f18") is None
     assert fs.tolerance_of("f5") == pytest.approx(1e-15)
-    assert fs.tolerance_of("f11") == pytest.approx(1e-15)
+    assert fs.tolerance_of("f5") == pytest.approx(1e-15)
 
 
 # ===========================================================================
@@ -136,13 +120,13 @@ def test_09_target_chua_83_cot_bi_tu_choi(fs):
     """Ai do 'tien tay' mo scope len 83 vi target vo tinh mang du du lieu."""
     v = _values(fs)
     v.update({f"f{i}": 0.0 for i in range(83)})   # nhet ca f0..f82
-    with pytest.raises(ScopeViolation, match="DUNG 55 cot"):
+    with pytest.raises(ScopeViolation, match="DUNG 30 cot"):
         build_target(target_id="T", values=v, reference_ts=REF_TS)
 
 
 def test_09_target_thieu_cot_bi_tu_choi(fs):
     v = _values(fs)
-    del v["f30"]
+    del v["f18"]
     with pytest.raises(ScopeViolation):
         build_target(target_id="T", values=v, reference_ts=REF_TS)
 
@@ -196,7 +180,7 @@ def test_hai_hash_long_nhau(fs):
     assert t1.target_hash != t2.target_hash                       # identity doi
 
     v2 = dict(v)
-    v2["f30"] = 2.0
+    v2["f18"] = 2.0
     t3 = build_target(target_id="T", values=v2, reference_ts=REF_TS)
     assert t3.feature_payload_hash != t1.feature_payload_hash
     assert t3.target_hash != t1.target_hash
@@ -213,7 +197,7 @@ def test_tamper_evidence(fs):
         feature_version=t.feature_version,
         reference_ts=t.reference_ts,
         split=t.split,
-        values={**t.values, "f30": 999.0},   # sua len
+        values={**t.values, "f18": 999.0},   # sua len
         target_hash=t.target_hash,           # giu hash cu
     )
     with pytest.raises(TamperDetected, match="KHONG duoc sua target"):
@@ -223,7 +207,7 @@ def test_tamper_evidence(fs):
 def test_target_bat_bien(fs):
     t = build_target(target_id="T", values=_values(fs), reference_ts=REF_TS)
     with pytest.raises(Exception):
-        t.values["f30"] = 5.0        # type: ignore[index]
+        t.values["f18"] = 5.0        # type: ignore[index]
     with pytest.raises(Exception):
         t.target_id = "khac"         # type: ignore[misc]
 

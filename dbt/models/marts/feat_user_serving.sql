@@ -1,9 +1,9 @@
 -- ============================================================================
 -- BUSINESS READY BASELINE - full mart, KHONG phai selected Redis sync source.
 --
--- Bang duoc sync len Redis la `feat_user_selected_serving`: chi gom 55 selected
--- features trong config/features/fs_2026_08_v2.yaml. Mart nay giu full f0..f82 +
--- legacy hist_* de doi chieu/phan tich, khong phai contract online v2.
+-- Bang duoc sync len Redis la `serving_features`: 41 key nghiep vu.
+-- Mart nay giu full f0..f82 + legacy hist_* de doi chieu/phan tich; no khong
+-- nam tren duong Gold/Redis hien tai.
 --
 -- Khong dua feature realtime vao day: stream-consumer persist raw event xuong
 -- lake/MinIO truoc, roi moi cap nhat Redis (rt:u:*). API merge luc doc.

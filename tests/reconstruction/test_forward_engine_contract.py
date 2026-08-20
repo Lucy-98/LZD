@@ -145,22 +145,23 @@ def test_availability_semantics(models, name):
 def test_regime_log10_lam_tron_6_chu_so(models):
     body = _strip_comments(models["feat_cfs_counter"])
     assert "round(log10(n18), 6)" in body
-    assert "round(log10(n30), 6)" in body
+    assert "n30" not in body
 
 
 def test_regime_ln_KHONG_duoc_lam_tron(models):
     """★ Lam tron regime LN se pha round-trip 1e-15."""
     body = _strip_comments(models["feat_cfs_counter"])
-    assert "ln(n5)" in body and "ln(n11)" in body
+    assert "ln(n5)" in body
+    assert "n11" not in body
     assert "round(ln(" not in body, "regime LN bi lam tron => pha dung sai 1e-15"
 
 
-def test_f30_co_hai_semantic_scenario_tuong_minh(models):
-    """H1 dem active day; H2 dem lop event rieng; branch den tu config."""
+def test_counter_scope_chi_con_f5_f18(models):
     body = _strip_comments(models["feat_cfs_counter"])
-    assert "count(distinct cast(event_ts as date))" in body
-    assert "event_type = 'EVT_F30'" in body
-    assert "f30_semantic_branch" in models["feat_cfs_counter"]
+    assert "event_type = 'EVT_F5'" in body
+    assert "event_type = 'EVT_F18'" in body
+    for removed in ("EVT_F11", "EVT_F19", "EVT_F30"):
+        assert removed not in body
 
 
 def test_khong_coalesce_che_loi(models):
@@ -175,10 +176,10 @@ def test_khong_coalesce_che_loi(models):
 # ===========================================================================
 # Group-level reconstruction — §5 G-1
 # ===========================================================================
-def test_g2_dung_du_10_muc_du_chi_chon_3_cot(models):
-    """Chi dung 3/10 muc lam vo bat bien sum(f43..f52)=1."""
+def test_g1_dung_du_3_muc_du_chi_chon_f40(models):
+    """The selected f40 bit still requires the complete three-level group."""
     body = _strip_comments(models["feat_cfs_categorical"])
-    for c in [f"f{i}" for i in range(43, 53)]:
+    for c in ("f40", "f41", "f42"):
         assert f"'{c}'" in body, f"group G2 thieu muc {c} — one-hot invariant se vo"
 
 
@@ -192,9 +193,7 @@ def test_categorical_tra_theo_KHOA_THUOC_TINH(models):
 
 def test_categorical_co_assert_onehot_invariant(models):
     body = _strip_comments(models["feat_cfs_categorical"])
-    for g in ("_g1_onehot_sum", "_g2_onehot_sum", "_g3_onehot_sum",
-              "_g4_onehot_sum", "_g6_onehot_sum"):
-        assert g in body
+    assert "_g1_onehot_sum" in body
 
 
 def test_f79_f82_tu_MOT_thuoc_tinh(models):
@@ -213,7 +212,7 @@ def test_passthrough_co_du_cot_t3(models):
 
     body = models["feat_passthrough"]
     cols = load_feature_set().tiers["T3"]
-    assert len(cols) == 24
+    assert len(cols) == 21
     for c in cols:
         assert f"'{c}'" in body, f"passthrough thieu {c}"
 

@@ -1,8 +1,6 @@
 # ==========================================================================
 # SELECTED FEATURE SET — solver contract artifact
 #
-# RECONSTRUCTION_SPEC.md §13.3
-#
 # SOLVER ĐỌC FILE NÀY. Định nghĩa 30-column reconstruction scope (v3).
 #
 # Scope 30 features:
@@ -34,7 +32,7 @@ columns:
        f23, f24, f25, f26, f27, f28, f29, f31, f34, f35]
 
 # --------------------------------------------------------------------------
-# Comparison regime — RECONSTRUCTION_SPEC.md §7
+# Comparison regimes used by the reconstruction Gate A checks
 # --------------------------------------------------------------------------
 regimes:
   LOG10:

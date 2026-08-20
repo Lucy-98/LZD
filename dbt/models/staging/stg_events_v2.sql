@@ -1,7 +1,7 @@
 -- ============================================================================
 -- CLEANED layer cho event witness cua Track A (raw/events_v2).
 --
--- docs/RECONSTRUCTION_SPEC.md §12 (tautology prevention) · TA-6
+-- Track A event staging: strip reconstruction-only witness metadata.
 --
 -- ★ TRACH NHIEM QUAN TRONG NHAT: DROP metadata cua solver.
 --

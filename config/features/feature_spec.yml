@@ -6,7 +6,8 @@
 #   - Sync job doc spec nay de biet ghi field nao len Redis.
 #   - Inference API doc spec nay de biet doc field nao + default khi thieu.
 #
-# Doi feature => sua DUY NHAT file nay => bump `version` => pipeline tu align.
+# Doi feature => bump version, update dbt projection/mapping, then contract-test
+# this file against the resulting mart before Redis activation.
 # ==========================================================================
 version: 4
 entity: user

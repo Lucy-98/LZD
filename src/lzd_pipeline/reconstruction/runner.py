@@ -1,7 +1,5 @@
 """End-to-end runner — target -> E* -> FEATURE ENGINE THAT -> F' -> Gate A.
 
-docs/RECONSTRUCTION_SPEC.md §12 (TA-1) · §14 (Gate A)
-
 ★ RANG BUOC QUAN TRONG NHAT: module nay KHONG viet lai logic feature.
   No render va THUC THI CHINH FILE SQL cua dbt trong DuckDB.
 
@@ -45,8 +43,7 @@ RELATIONS = {
 DEFAULT_VARS = {
     "history_days": 30,
     "counter_window_days": 365,
-    "f30_semantic_branch": "H1",
-    "reconstruction_encoding_version": "encoding_2026_08_v2",
+    "reconstruction_encoding_version": "encoding_2026_08_v3",
 }
 
 
@@ -82,7 +79,7 @@ class RunInput:
     decoded: DecodedTarget
     reference_ts: datetime
     attributes: Mapping[str, int]          # attr_name -> level_id
-    passthrough: Mapping[str, float]       # 18 cot T3
+    passthrough: Mapping[str, float]       # 21 cot T3
     generation_run_id: str = "run-1"
 
 
@@ -93,7 +90,7 @@ def seed(
     *,
     encoding_rows: Sequence[tuple[str, int, str, float]],
     onehot_rows: Sequence[tuple[str, int, str]],
-    encoding_version: str = "encoding_2026_08_v2",
+    encoding_version: str = "encoding_2026_08_v3",
 ) -> None:
     """Nap bang nguon. Event DUY NHAT den tu `outcomes` - tuc tu solver."""
     con.execute("SET TimeZone='UTC'")
@@ -159,18 +156,20 @@ def build_marts(
     semantic_branch: str = "H1",
     history_days: int = 30,
     counter_window_days: int = 365,
-    encoding_version: str = "encoding_2026_08_v2",
+    encoding_version: str = "encoding_2026_08_v3",
 ) -> None:
     """Chay CHINH SQL cua dbt, theo dung thu tu phu thuoc."""
+    # Compatibility input for the legacy solver state; the active 30-feature
+    # forward SQL does not contain f30 and therefore does not branch on it.
+    _ = semantic_branch
     for rel, path in (
         ("stg_events_v2", DBT_ROOT / "staging" / "stg_events_v2.sql"),
         ("feat_cfs_counter", DBT_ROOT / "marts" / "feat_cfs_counter.sql"),
         ("feat_cfs_recency", DBT_ROOT / "marts" / "feat_cfs_recency.sql"),
         ("feat_cfs_categorical", DBT_ROOT / "marts" / "feat_cfs_categorical.sql"),
         ("feat_passthrough", DBT_ROOT / "marts" / "feat_passthrough.sql"),
-    ):
+        ):
         sql = render_model(path, {
-            "f30_semantic_branch": semantic_branch,
             "history_days": history_days,
             "counter_window_days": counter_window_days,
             "reconstruction_encoding_version": encoding_version,
@@ -242,7 +241,7 @@ def gate_a(
 
 
 def read_reconstructed(con: duckdb.DuckDBPyConnection, target_id: str) -> dict[str, float]:
-    """Gom 36 cot tu bon mart."""
+    """Gom cac cot cua feature-set 30 cot tu cac mart."""
     out: dict[str, float] = {}
     for tbl in ("feat_cfs_counter", "feat_cfs_recency",
                 "feat_cfs_categorical", "feat_passthrough"):

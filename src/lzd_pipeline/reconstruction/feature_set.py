@@ -1,22 +1,8 @@
-"""Doc `fs_2026_08_v*.yaml` — SELECTED FEATURE SET contract.
+"""Load and validate the selected reconstruction feature-set contract.
 
-RECONSTRUCTION_SPEC.md §13.3.
-
-Day la nguon DUY NHAT cua reconstruction scope. Truoc day danh sach nay nam
-duoi dang van xuoi o 3 tai lieu khac nhau -> khong co gi ngan chung drift (B5).
-
-★ INVARIANT 1 van la hard invariant, chi khac cho DAT con so:
-      truoc:  `if len(fs.columns) != 36`  — hard-code trong code
-      nay:    `expected_column_count` trong CHINH artifact yaml
-
-  Ly do doi: con so 36 nam trong code lam artifact khong the tu mo ta scope
-  cua no. Khi v2 nang len 55, mot hang so trong code se bien INVARIANT 1
-  thanh "cai chan duong" thay vi "cai bao ve" — va cach de nhat de vuot no
-  la xoa han assert. Dat trong yaml thi doi scope BAT BUOC phai sua artifact
-  va bump `id`, tuc la doi hop dong mot cach hien thi duoc trong git diff.
-
-🚫 Module nay KHONG doc `feature_semantics_2026_08.yaml`. `semantic_signal_count`
-   va cau hoi ngo f9/f16 KHONG duoc phep chan solver (§13.2).
+The active default is fs_2026_08_v3: exactly 30 columns split into
+T1=4 event-derived, T2=5 encoded attributes, and T3=21 controlled copies.
+The YAML artifact owns both the column list and its expected count.
 """
 from __future__ import annotations
 
@@ -34,7 +20,7 @@ Regime = Literal["LOG10", "LN", "REC", "CAT", "PASS"]
 DEFAULT_PATH = (
     Path(os.environ["FEATURE_SET_PATH"])
     if "FEATURE_SET_PATH" in os.environ
-    else Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v2.yaml"
+    else Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v3.yaml"
 )
 
 

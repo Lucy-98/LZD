@@ -3,7 +3,7 @@
 Bat bien duoc thuc thi bang KIEU DU LIEU, khong phai bang quy uoc:
 
     I-1  khong co field label/is_treat        -> khong dinh nghia field + chan key
-    I-2  DUNG 36 khoa khop feature set        -> validate luc dung
+    I-2  dung so khoa cua feature-set artifact -> validate luc dung
     I-3  split == "train"                     -> validate luc dung
     I-4  target BAT BIEN                      -> frozen=True
     I-5  solver khong nhan behaviour_model    -> chu ky ham (engine)
@@ -27,7 +27,7 @@ FORBIDDEN_KEYS = frozenset({"label", "is_treat"})
 
 
 class ScopeViolation(ValueError):
-    """INVARIANT 1 — ai do co mo scope ra ngoai 36 cot."""
+    """INVARIANT 1 — target lech khoi scope do artifact chot."""
 
 
 class LeakageViolation(ValueError):
@@ -63,7 +63,7 @@ def validate_scope(values: Mapping[str, float], fs: SelectedFeatureSet) -> None:
 class ReconstructionTarget:
     """Target BAT BIEN. Solver khong bao gio duoc sua no.
 
-    `values` chua DUNG 36 cot cua `selected_feature_set_id` — khong hon.
+    `values` chua dung cac cot cua `selected_feature_set_id` — khong hon.
     Neu goi dung 83 cot, dataclass nay TU CHOI dung (INVARIANT 1, TEST-09).
     """
 

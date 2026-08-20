@@ -2,10 +2,10 @@
 
 Hai che do, chon bang param `mode`:
 
-    contract   solver + SQL dbt + Gate A..F + handoff + Track B, tren MOT target
-               synthetic. Khong cham ha tang. Day la bai kiem HOP DONG.
+    contract   solver + SQL dbt + Gate A..F + future-event fixture, tren MOT
+               target synthetic. Khong cham Kafka/consumer/Redis.
 
-    backfill   doc `data/full_trainset.csv` that, giai ma 55 feature, sinh event
+    backfill   doc `data/full_trainset.csv` that, giai ma dung 30 feature, sinh event
                witness, roi LAND xuong ha tang:
                    Postgres biz.*  ->  DuckDB biz.*  ->  MinIO raw/events_v2
                Thu tu do khong dao duoc — xem `reconstruction/sink.py`.
@@ -16,7 +16,7 @@ Sau `backfill`, model reconstruction build bang:
 
     dbt run --select tag:reconstruction
 
-(chung bi EXCLUDE khoi DAG 20 hang ngay — xem TECH_REFERENCE.md §12.2)
+(DAG 20 chi build hai Gold contract va ancestors cua chung)
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ DEFAULT_OUTPUT_DIR = "/opt/lakehouse/track_a"
     start_date=pendulum.datetime(2026, 8, 1, tz="Asia/Ho_Chi_Minh"),
     catchup=False,
     default_args={**DEFAULT_ARGS, "retries": 0},
-    tags=["reconstruction", "track-a", "track-b", "lzd"],
+    tags=["reconstruction", "track-a", "lzd"],
     doc_md=DOC,
     params={
         "mode": Param(

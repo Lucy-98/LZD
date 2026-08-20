@@ -190,8 +190,11 @@ def ready() -> dict[str, Any]:
             status_code=503,
             detail="chua co fs:meta:active_version - chay DAG 40_sync_features_to_redis truoc",
         )
+    model = get_model()
+    if not model.is_configured:
+        raise HTTPException(status_code=503, detail="model uplift chua duoc cau hinh")
     return {"status": "ready", "feature_version": version,
-            "model_version": get_model().version}
+            "model_version": model.version}
 
 
 @app.get("/metrics")
@@ -232,6 +235,7 @@ def get_features(user_id: str, version: str | None = None) -> dict[str, Any]:
 @app.get("/store/info")
 def store_info() -> dict[str, Any]:
     s = store()
+    model = get_model()
     version = s.get_active_version()
     return {
         "active_version": version,
@@ -240,8 +244,13 @@ def store_info() -> dict[str, Any]:
         "age_seconds": s.feature_store_age_seconds(),
         "realtime_keys": s.count_keys(s.spec.realtime_key("*")),
         "batch_keys": s.count_keys(s.spec.batch_key(version, "*")) if version else 0,
-        "model": {"name": get_model().name, "version": get_model().version,
-                  "is_stub": get_model().is_stub},
+        "model": {
+            "name": model.name,
+            "version": model.version,
+            "is_stub": model.is_stub,
+            "is_configured": model.is_configured,
+            "expected_feature_count": model.expected_feature_count,
+        },
     }
 
 
@@ -283,30 +292,27 @@ def decide(req: DecideRequest) -> DecideResponse:
     FEATURES_MISSING.observe(missing)
 
     # ---- 3. Suy luan ---------------------------------------------------
-    try:
-        score = model.predict_uplift([merged])[0]
-        status = "ok"
-    except NotImplementedError:
-        # Model that chua san sang -> tra ve rang minh khong quyet dinh duoc
+    if not model.is_configured:
         score = None
         status = "model_not_ready"
-    except Exception as exc:
-        INFERENCE_REQUESTS.labels(status="error").inc()
-        log.error("loi suy luan", extra={"event": "predict_error",
-                                         "user_id": req.user_id, "error": str(exc)})
-        raise HTTPException(status_code=500, detail=f"model loi: {exc}")
+    else:
+        try:
+            score = model.predict_uplift([merged])[0]
+            status = "ok"
+        except Exception as exc:
+            INFERENCE_REQUESTS.labels(status="error").inc()
+            log.error("loi suy luan", extra={"event": "predict_error",
+                                             "user_id": req.user_id, "error": str(exc)})
+            raise HTTPException(status_code=500, detail=f"model loi: {exc}")
 
     # ---- 4. Quyet dinh -------------------------------------------------
     threshold = settings.uplift_threshold
     if score is None:
         decision = "NO_DECISION"
         voucher_code = "no_voucher"
-    elif score >= 0.05:
-        decision = "SEND_VOUCHER"
-        voucher_code = "voucher_30"
     elif score >= threshold:
         decision = "SEND_VOUCHER"
-        voucher_code = "voucher_15"
+        voucher_code = "voucher_30"
     else:
         decision = "NO_VOUCHER"
         voucher_code = "no_voucher"
@@ -387,10 +393,13 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
         rows.append(row)
         per_user.append((bool(batch_raw), missing, supplied, rt_applied))
 
-    try:
-        scores = model.predict_uplift(rows)
-    except NotImplementedError:
+    if not model.is_configured:
         scores = [None] * len(rows)
+    else:
+        try:
+            scores = model.predict_uplift(rows)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"model loi: {exc}")
 
     threshold = get_settings().uplift_threshold
     results = []
@@ -429,5 +438,10 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
 def reload_model() -> dict[str, Any]:
     """Nap lai model sau khi co ban moi tren Registry (khong can restart)."""
     model = get_model(force_reload=True)
-    return {"model_name": model.name, "model_version": model.version,
-            "is_stub": model.is_stub}
+    return {
+        "model_name": model.name,
+        "model_version": model.version,
+        "is_stub": model.is_stub,
+        "is_configured": model.is_configured,
+        "expected_feature_count": model.expected_feature_count,
+    }

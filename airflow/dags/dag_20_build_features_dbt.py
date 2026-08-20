@@ -1,23 +1,13 @@
-"""DAG 20 - TRANSFORM: RAW -> CLEANED -> BUSINESS READY bang dbt.
+"""DAG 20 - build the active Bronze/Silver/two-Gold dbt path.
 
-    stg_user_snapshot ─┐
-    stg_app_events ────┼─> feat_user_behaviour ─┐
-                       │                        ├─> feat_user_serving  (=> Redis)
-                       └─> feat_user_realtime_pit ┘        │
-                                                  └────────┴─> training_dataset
+Track A must first land raw/events_v2 and biz.*. This DAG then builds:
+  - Gold 1 training_features: exactly 30 f* columns;
+  - training_dataset view: the same 30 plus label/is_treat/split;
+  - Gold 2 serving_features: exactly 41 business-named batch keys.
 
-Sau khi dbt build xong:
-  - kiem tra cot cua feat_user_serving co khop feature_spec.yml khong
-    (day la hang rao chong training/serving skew, fail som con hon sai am tham)
-  - day so lieu (row count, null rate, freshness) len Grafana
-  - ghi ket qua dbt test vao ops.dq_result
-
-Tat ca task ghi DuckDB deu nam trong pool `duckdb_writer` (1 slot) vi DuckDB
-chi cho 1 writer tai 1 thoi diem.
-
-⚠️ DAG nay CHI build duong feature PRODUCTION (`--exclude tag:reconstruction`).
-   Model cua duong reconstruction build rieng bang `--select tag:reconstruction`
-   sau khi Track A da land du lieu. Ly do: xem khoi chu thich o `DBT_SELECTOR`.
+Persisted Track B app events contribute daily behaviour aggregates. The stream
+consumer still writes Redis rt:u:* directly; FastAPI merges that realtime
+overlay with the versioned batch hash when serving.
 """
 from __future__ import annotations
 
@@ -87,8 +77,9 @@ def build_features_dbt():
         pool="duckdb_writer",
     )
 
-    # Chay toan bo cac tang dbt: staging -> intermediate -> marts
-    DBT_SELECTOR = ""
+    # Build the two active Gold contracts and all of their ancestors.
+    # Legacy/full-snapshot marts are intentionally outside this path.
+    DBT_SELECTOR = "--select +serving_features +training_dataset"
 
     dbt_run = BashOperator(
         task_id="dbt_run",
