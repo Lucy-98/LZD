@@ -24,4 +24,4 @@ from __future__ import annotations
 PROTOTYPE = True
 """Co chan: moi duong ghi ra production phai assert `not PROTOTYPE`."""
 
-SPEC_REF = "config/features/fs_2026_08_v3.yaml"
+SPEC_REF = "config/features/fs_2026_08_v4.yaml"

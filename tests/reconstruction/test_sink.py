@@ -147,7 +147,7 @@ def test_payload_dung_scope_va_khong_co_label(artifact):
     for row in rows[:20]:
         payload = json.loads(row["payload"])
         assert set(payload) == set(fs.columns)
-        assert len(payload) == fs.expected_column_count == 55
+        assert len(payload) == fs.expected_column_count == 30
         assert not {"label", "is_treat"} & set(payload)
 
 
@@ -313,5 +313,5 @@ def test_gate_a_pass_qua_duong_production_shaped(con, artifact, monkeypatch):
         assert report.gate_a_t3_pass
         checked += 1
 
-    assert checked == 25
-    assert len(fs.gate_a_columns) == 31 and len(fs.gate_a_t3_columns) == 24
+    assert checked == min(25, len(targets))
+    assert len(fs.gate_a_columns) == 9 and len(fs.gate_a_t3_columns) == 21

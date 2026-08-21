@@ -60,7 +60,7 @@ def test_write_rows_is_idempotent(store):
     second = store.r.hgetall("fs:v1:u:U1")
 
     assert first["customer_value_score"] == second["customer_value_score"] == "1.5"
-    assert first["_feature_set_id"] == "fs_2026_08_v3"
+    assert first["_feature_set_id"] == "fs_2026_08_v4"
     assert store.count_keys("fs:v1:u:*") == 2
 
 

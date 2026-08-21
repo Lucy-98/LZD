@@ -1,7 +1,7 @@
 """Load and validate the selected reconstruction feature-set contract.
 
-The active default is fs_2026_08_v3: exactly 30 columns split into
-T1=4 event-derived, T2=5 encoded attributes, and T3=21 controlled copies.
+The active default is fs_2026_08_v4: the exact 30 columns consumed by the
+immutable production LightGBM artifact.
 The YAML artifact owns both the column list and its expected count.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ Regime = Literal["LOG10", "LN", "REC", "CAT", "PASS"]
 DEFAULT_PATH = (
     Path(os.environ["FEATURE_SET_PATH"])
     if "FEATURE_SET_PATH" in os.environ
-    else Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v3.yaml"
+    else Path(__file__).resolve().parents[3] / "config" / "features" / "fs_2026_08_v4.yaml"
 )
 
 

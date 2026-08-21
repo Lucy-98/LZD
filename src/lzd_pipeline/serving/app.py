@@ -30,7 +30,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from lzd_pipeline.common.config import get_settings
 from lzd_pipeline.common.logging_setup import configure_logging, get_logger
@@ -121,6 +121,8 @@ class DecideRequest(BaseModel):
 
 
 class DecideResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     user_id: str
     decision: str
     voucher_code: str = "no_voucher"

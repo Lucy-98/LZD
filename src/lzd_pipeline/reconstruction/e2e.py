@@ -285,23 +285,11 @@ def _demo_contract(
         n5=2, n11=None, n18=1, n19=None, n30=None,
         d1=1, d2=1, window_days=4,
     )
-    attributes = {
-        "synthetic_category_515": 0,
-        "synthetic_attr_64": 0,
-        "synthetic_attr_241": 0,
-        "synthetic_segment_g1": 0,
-    }
-    encoded_values = {
-        "synthetic_category_515": (0.79, 0.80, 0.81, 0.82),
-        "synthetic_attr_64": (0.37,),
-        "synthetic_attr_241": (0.38,),
-    }
+    attributes = {name: 0 for name in fs.source_attributes}
 
     values: dict[str, float] = {
         "f1": float(decoded.d1),
-        "f2": float(decoded.d2),
         "f5": math.log(decoded.n5),
-        "f18": round(math.log10(decoded.n18), 6),
     }
     encoding_rows: list[tuple[str, int, str, float]] = []
     onehot_rows: list[tuple[str, int, str]] = []
@@ -314,7 +302,11 @@ def _demo_contract(
                 if column in attr.selected:
                     values[column] = 1.0 if index == level else 0.0
         else:
-            for column, value in zip(attr.outputs, encoded_values[attr_name]):
+            # Deterministic demo encodings. Production rows use maps fitted
+            # from the real train split; the contract dry-run only needs a
+            # stable, internally consistent value for level zero.
+            encoded_values = tuple((int(column[1:]) + 1) / 100.0 for column in attr.outputs)
+            for column, value in zip(attr.outputs, encoded_values):
                 encoding_rows.append((attr_name, level, column, value))
                 if column in attr.selected:
                     values[column] = value

@@ -2,7 +2,7 @@
 
 This is the host-side path used when Docker/MinIO is not available. It reads the
 real `data/full_trainset.csv`, decodes the selected reconstruction features
-(scope comes from the feature-set artifact, currently `fs_2026_08_v3` = 30
+(scope comes from the feature-set artifact, currently `fs_2026_08_v4` = 30
 columns), emits CFS raw events plus the sidecar tables needed by the dbt
 reconstruction models, and verifies a configurable sample through the same dbt
 SQL runner.
@@ -185,11 +185,13 @@ def decode_target(values: Mapping[str, float]) -> DecodedTarget:
     return DecodedTarget(
         n5=round(math.exp(values["f5"])),
         n11=round(math.exp(values["f11"])) if "f11" in values else None,
-        n18=round(pow(10.0, values["f18"])),
+        n18=round(pow(10.0, values["f18"])) if "f18" in values else None,
         n19=round(pow(10.0, values["f19"])) if "f19" in values else None,
         n30=round(pow(10.0, values["f30"])) if "f30" in values else None,
         d1=round(values["f1"]),
-        d2=round(values["f2"]),
+        # The production 30F contract keeps only first-signal recency. A
+        # single witness at d1 is the minimal history when f2 is absent.
+        d2=round(values.get("f2", values["f1"])),
         window_days=30,
     )
 

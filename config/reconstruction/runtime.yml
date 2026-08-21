@@ -1,9 +1,9 @@
-version: reconstruction_runtime_v3
+version: reconstruction_runtime_v4
 
-# The active reconstruction contract is config/features/fs_2026_08_v3.yaml:
-# 30 selected features (T1=4, T2=5, T3=21).
+# The active reconstruction contract is config/features/fs_2026_08_v4.yaml:
+# exact production model scope (T1=2, T2=7, T3=21).
 # Kept for compatibility with the existing solver state object. f30 is not
-# part of fs_2026_08_v3, so this branch does not add a model feature.
+# part of fs_2026_08_v4, so this branch does not add a model feature.
 semantic_status: UNIDENTIFIED
 semantic_branch: H1
 
@@ -14,8 +14,8 @@ generation_seed: 42
 # Every value below participates in the reproducibility fingerprint.
 # Changing one requires a version bump so two different runs cannot share
 # the same identity.
-constraint_model_version: constraints_v3_scope30
-encoding_version: encoding_2026_08_v3
+constraint_model_version: constraints_v4_model30
+encoding_version: encoding_2026_08_v4
 objective_version: objective_v1
 selection_policy_version: seeded_day_choice_v1
 solver_version: constructive_argmin_v1

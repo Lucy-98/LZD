@@ -70,17 +70,17 @@ CREATE TABLE IF NOT EXISTS biz.reconstruction_target (
     feature_version           TEXT        NOT NULL,
     reference_ts              TIMESTAMPTZ NOT NULL,
     split                     TEXT        NOT NULL CHECK (split = 'train'),
-    payload                   JSONB       NOT NULL,   -- DUNG 55 cot (fs_2026_08_v2)
+    payload                   JSONB       NOT NULL,   -- DUNG 30 cot (fs_2026_08_v4)
     target_hash               TEXT        NOT NULL,   -- tamper-evidence §6.3
     feature_payload_hash      TEXT        NOT NULL,   -- §6.1a
     created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     -- I-1 / Gate E: label & is_treat KHONG BAO GIO duoc co mat
     CONSTRAINT ck_no_label CHECK (NOT (payload ? 'label' OR payload ? 'is_treat')),
-    -- INVARIANT 1: dung 55 cot, khong hon.
-    -- Con so nay phai khop `expected_column_count` cua fs_2026_08_v2.yaml.
+    -- INVARIANT 1: dung 30 cot, khong hon.
+    -- Con so nay phai khop `expected_column_count` cua fs_2026_08_v4.yaml.
     -- Doi scope => doi CA HAI, va bump `selected_feature_set_id`.
-    CONSTRAINT ck_scope_55 CHECK (biz.jsonb_object_keys_count(payload) = 55)
+    CONSTRAINT ck_scope_30 CHECK (biz.jsonb_object_keys_count(payload) = 30)
 );
 
 -- 🚫 Chan UPDATE/DELETE — immutable la rang buoc, khong phai loi hua
@@ -122,18 +122,17 @@ CREATE TABLE IF NOT EXISTS biz.onehot_layout (
     PRIMARY KEY (encoding_version, attr_name, level_index)
 );
 
--- 24 cot T3 cua fs_2026_08_v2. Phai khop `tiers["T3"]` cua artifact —
+-- 21 cot T3 cua fs_2026_08_v4. Phai khop `tiers["T3"]` cua artifact —
 -- neu thieu cot, feat_passthrough.sql se select mot cot khong ton tai.
 CREATE TABLE IF NOT EXISTS biz.passthrough_source (
     target_id                 TEXT        PRIMARY KEY REFERENCES biz.reconstruction_target(target_id),
     f0  DOUBLE PRECISION, f3  DOUBLE PRECISION, f4  DOUBLE PRECISION,
-    f6  DOUBLE PRECISION, f8  DOUBLE PRECISION, f9  DOUBLE PRECISION,
-    f10 DOUBLE PRECISION, f12 DOUBLE PRECISION, f13 DOUBLE PRECISION,
+    f6  DOUBLE PRECISION, f7  DOUBLE PRECISION, f8  DOUBLE PRECISION,
+    f9  DOUBLE PRECISION, f10 DOUBLE PRECISION, f13 DOUBLE PRECISION,
     f16 DOUBLE PRECISION, f17 DOUBLE PRECISION, f20 DOUBLE PRECISION,
     f21 DOUBLE PRECISION, f22 DOUBLE PRECISION, f23 DOUBLE PRECISION,
-    f24 DOUBLE PRECISION, f25 DOUBLE PRECISION, f26 DOUBLE PRECISION,
-    f27 DOUBLE PRECISION, f28 DOUBLE PRECISION, f29 DOUBLE PRECISION,
-    f31 DOUBLE PRECISION, f34 DOUBLE PRECISION, f35 DOUBLE PRECISION
+    f25 DOUBLE PRECISION, f26 DOUBLE PRECISION, f27 DOUBLE PRECISION,
+    f28 DOUBLE PRECISION, f29 DOUBLE PRECISION, f35 DOUBLE PRECISION
 );
 
 -- ---------------------------------------------------------------------------
@@ -269,7 +268,7 @@ CREATE TABLE IF NOT EXISTS biz.reconstruction_diff (
 --
 -- Feature engine CAN `reference_ts` de biet bien point-in-time, giong het
 -- `feat_user_realtime_pit` doc `feature_ts` tu snapshot.
--- Nhung no TUYET DOI khong duoc thay `payload` (55 gia tri feature) — neu thay,
+-- Nhung no TUYET DOI khong duoc thay `payload` (30 gia tri feature) — neu thay,
 -- no co the "doc dap an" va Gate A thanh vo nghia (§12 tautology).
 --
 -- View nay phoi bay DUNG ba cot. dbt source tro vao DAY, khong tro vao bang goc.

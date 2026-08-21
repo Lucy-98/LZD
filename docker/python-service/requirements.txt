@@ -11,15 +11,16 @@ pydantic==2.9.2
 # --- online store + streaming ---------------------------------------------
 redis==5.1.1
 confluent-kafka==2.5.3
+psycopg2-binary==2.9.10
 
 # --- ghi parquet xuong MinIO (stream-consumer) ----------------------------
 pyarrow==17.0.0
 boto3==1.35.36
 
 # --- suy luan model --------------------------------------------------------
-# Runtime image hien tai khong bundle model artifact. Cac dependency model
-# duoc giu lai de sau nay gan artifact 30F that vao co the mo rong ngay, nhung
-# API hien tai van chay theo boundary "unconfigured" va tra NO_DECISION.
+# Runtime loads the immutable 30F LightGBM text artifact mounted read-only at
+# /opt/project/models/uplift_voucher_30f. The loader verifies every checksum
+# before it marks the model configured.
 numpy==1.26.4
 pandas==2.2.3
 lightgbm==4.7.0

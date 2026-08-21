@@ -1,0 +1,482 @@
+{
+  "phien_ban": "20260820",
+  "mo_hinh": "DRLearner",
+  "file_mo_hinh": "model.pkl",
+  "file_khong_phu_thuoc_python": [
+    "model_booster.txt"
+  ],
+  "so_cot_mo_hinh_nhan_vao": 30,
+  "nguon_dac_trung": "Toàn bộ lấy từ feature store. Pipeline này không có đặc trưng dẫn xuất nên AI Service không phải tính công thức nào lúc phục vụ.",
+  "cach_dung": "Dựng vector đủ 30 cột theo thu_tu_dua_vao_mo_hinh rồi gọi model.predict_cate(X). Cột thiếu dữ liệu thì điền gia_tri_mac_dinh.",
+  "canh_bao_thu_tu": "Sai thứ tự cột sẽ cho dự đoán sai mà KHÔNG báo lỗi. Luôn dựng vector theo thu_tu_dua_vao_mo_hinh.",
+  "cach_chon_so_dac_trung": {
+    "ket_qua": "30/69",
+    "ly_do": "k = 30 thừa kế từ notebook 05; thứ hạng đặc trưng dựng lại trên Val ở notebook 07 để rct_select không vừa chọn vừa chấm",
+    "cach_do": "permutation importance trên vùng overlap của Val (notebook 07), rồi so 4 nhánh nhiều seed trên rct_select kèm bootstrap theo cặp (notebook 08)",
+    "tieu_chi": [
+      "Hai thứ hạng độc lập phải đồng ý về tập k cột",
+      "Nhánh ứng viên không tụt quá sàn nhiễu so với mốc",
+      "Bootstrap theo cặp trên rct_select không CHỨNG MINH được D tệ hơn A"
+    ],
+    "tap_dung_de_chot": "Val (xếp hạng) + rct_select (chấm điểm)",
+    "thu_tu_bo_cot": "permutation importance đo trên vùng overlap của Val (notebook 07)",
+    "ma_bam_cong": "a4f5c2ff6ae084f6"
+  },
+  "gia_tri_mac_dinh_lay_tu": "trung vị trên train + val",
+  "gia_tri_mac_dinh_dung_khi_nao": "khách hàng mới chưa có dữ liệu trong feature store",
+  "ghi_chu_online_offline": "Dữ liệu đã ẩn danh nên chưa xác định được đặc trưng nào tính online, đặc trưng nào tính offline theo cửa sổ 7/30 ngày. DE điền trường tinh_online sau khi đối chiếu bảng gốc.",
+  "golden_predictions": "golden_predictions.csv — xem Bước 10",
+  "gioi_han": "Bản này CHƯA TỪNG được đo trên rct_holdout. Bằng chứng ngoài mẫu duy nhất là rct_select, với thứ hạng đặc trưng dẫn xuất từ Val. Xem metadata.json.",
+  "dac_trung": [
+    {
+      "ten": "f0",
+      "thu_tu_dua_vao_mo_hinh": 0,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 2.0,
+      "khoang": [
+        0.0,
+        5.0
+      ],
+      "hang_permutation": 12,
+      "hang_permutation_rct_select": 8,
+      "hang_gain": 40,
+      "tinh_online": null
+    },
+    {
+      "ten": "f1",
+      "thu_tu_dua_vao_mo_hinh": 1,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 172.0,
+      "khoang": [
+        0.0,
+        365.0
+      ],
+      "hang_permutation": 9,
+      "hang_permutation_rct_select": 13,
+      "hang_gain": 6,
+      "tinh_online": null
+    },
+    {
+      "ten": "f3",
+      "thu_tu_dua_vao_mo_hinh": 2,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.0986123085021973,
+      "khoang": [
+        0.0,
+        12.785057067871094
+      ],
+      "hang_permutation": 3,
+      "hang_permutation_rct_select": 12,
+      "hang_gain": 29,
+      "tinh_online": null
+    },
+    {
+      "ten": "f4",
+      "thu_tu_dua_vao_mo_hinh": 3,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.5,
+      "khoang": [
+        0.0,
+        275.8333435058594
+      ],
+      "hang_permutation": 8,
+      "hang_permutation_rct_select": 27,
+      "hang_gain": 22,
+      "tinh_online": null
+    },
+    {
+      "ten": "f5",
+      "thu_tu_dua_vao_mo_hinh": 4,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        9.56416130065918
+      ],
+      "hang_permutation": 13,
+      "hang_permutation_rct_select": 24,
+      "hang_gain": 8,
+      "tinh_online": null
+    },
+    {
+      "ten": "f6",
+      "thu_tu_dua_vao_mo_hinh": 5,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        3.6173150539398193
+      ],
+      "hang_permutation": 17,
+      "hang_permutation_rct_select": 60,
+      "hang_gain": 11,
+      "tinh_online": null
+    },
+    {
+      "ten": "f7",
+      "thu_tu_dua_vao_mo_hinh": 6,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 2.0,
+      "khoang": [
+        0.0,
+        5.0
+      ],
+      "hang_permutation": 30,
+      "hang_permutation_rct_select": 46,
+      "hang_gain": 50,
+      "tinh_online": null
+    },
+    {
+      "ten": "f8",
+      "thu_tu_dua_vao_mo_hinh": 7,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.0,
+      "khoang": [
+        0.0,
+        58.400001525878906
+      ],
+      "hang_permutation": 24,
+      "hang_permutation_rct_select": 22,
+      "hang_gain": 7,
+      "tinh_online": null
+    },
+    {
+      "ten": "f9",
+      "thu_tu_dua_vao_mo_hinh": 8,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 2.0281481742858887,
+      "khoang": [
+        0.0,
+        8.1696195602417
+      ],
+      "hang_permutation": 28,
+      "hang_permutation_rct_select": 18,
+      "hang_gain": 28,
+      "tinh_online": null
+    },
+    {
+      "ten": "f10",
+      "thu_tu_dua_vao_mo_hinh": 9,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.5475624799728394,
+      "khoang": [
+        0.0,
+        6.705638885498047
+      ],
+      "hang_permutation": 7,
+      "hang_permutation_rct_select": 21,
+      "hang_gain": 20,
+      "tinh_online": null
+    },
+    {
+      "ten": "f13",
+      "thu_tu_dua_vao_mo_hinh": 10,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.0,
+      "khoang": [
+        0.0,
+        4.765660762786865
+      ],
+      "hang_permutation": 29,
+      "hang_permutation_rct_select": 5,
+      "hang_gain": 26,
+      "tinh_online": null
+    },
+    {
+      "ten": "f16",
+      "thu_tu_dua_vao_mo_hinh": 11,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.945910096168518,
+      "khoang": [
+        0.0,
+        8.1696195602417
+      ],
+      "hang_permutation": 4,
+      "hang_permutation_rct_select": 20,
+      "hang_gain": 24,
+      "tinh_online": null
+    },
+    {
+      "ten": "f17",
+      "thu_tu_dua_vao_mo_hinh": 12,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        3.9432969093322754
+      ],
+      "hang_permutation": 21,
+      "hang_permutation_rct_select": 2,
+      "hang_gain": 32,
+      "tinh_online": null
+    },
+    {
+      "ten": "f20",
+      "thu_tu_dua_vao_mo_hinh": 13,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        6.850427150726318
+      ],
+      "hang_permutation": 11,
+      "hang_permutation_rct_select": 67,
+      "hang_gain": 4,
+      "tinh_online": null
+    },
+    {
+      "ten": "f21",
+      "thu_tu_dua_vao_mo_hinh": 14,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 1.0,
+      "khoang": [
+        0.0,
+        23.0
+      ],
+      "hang_permutation": 15,
+      "hang_permutation_rct_select": 64,
+      "hang_gain": 30,
+      "tinh_online": null
+    },
+    {
+      "ten": "f22",
+      "thu_tu_dua_vao_mo_hinh": 15,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 9.3428316116333,
+      "khoang": [
+        0.0,
+        34.68455123901367
+      ],
+      "hang_permutation": 2,
+      "hang_permutation_rct_select": 3,
+      "hang_gain": 5,
+      "tinh_online": null
+    },
+    {
+      "ten": "f23",
+      "thu_tu_dua_vao_mo_hinh": 16,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        -7.346260070800781,
+        20.069978713989258
+      ],
+      "hang_permutation": 20,
+      "hang_permutation_rct_select": 1,
+      "hang_gain": 15,
+      "tinh_online": null
+    },
+    {
+      "ten": "f25",
+      "thu_tu_dua_vao_mo_hinh": 17,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        -7.346260070800781,
+        20.069978713989258
+      ],
+      "hang_permutation": 22,
+      "hang_permutation_rct_select": 28,
+      "hang_gain": 43,
+      "tinh_online": null
+    },
+    {
+      "ten": "f26",
+      "thu_tu_dua_vao_mo_hinh": 18,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        12.032391548156738
+      ],
+      "hang_permutation": 1,
+      "hang_permutation_rct_select": 14,
+      "hang_gain": 18,
+      "tinh_online": null
+    },
+    {
+      "ten": "f27",
+      "thu_tu_dua_vao_mo_hinh": 19,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 30.0,
+      "khoang": [
+        0.0,
+        100.0
+      ],
+      "hang_permutation": 16,
+      "hang_permutation_rct_select": 29,
+      "hang_gain": 13,
+      "tinh_online": null
+    },
+    {
+      "ten": "f28",
+      "thu_tu_dua_vao_mo_hinh": 20,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.41900700330734253,
+      "khoang": [
+        0.0,
+        0.9997580051422119
+      ],
+      "hang_permutation": 10,
+      "hang_permutation_rct_select": 16,
+      "hang_gain": 19,
+      "tinh_online": null
+    },
+    {
+      "ten": "f29",
+      "thu_tu_dua_vao_mo_hinh": 21,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        35.00081253051758
+      ],
+      "hang_permutation": 5,
+      "hang_permutation_rct_select": 17,
+      "hang_gain": 17,
+      "tinh_online": null
+    },
+    {
+      "ten": "f35",
+      "thu_tu_dua_vao_mo_hinh": 22,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        0.9997580051422119
+      ],
+      "hang_permutation": 23,
+      "hang_permutation_rct_select": 10,
+      "hang_gain": 12,
+      "tinh_online": null
+    },
+    {
+      "ten": "f38",
+      "thu_tu_dua_vao_mo_hinh": 23,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.26392900943756104,
+      "khoang": [
+        0.0,
+        0.8432220220565796
+      ],
+      "hang_permutation": 14,
+      "hang_permutation_rct_select": 6,
+      "hang_gain": 9,
+      "tinh_online": null
+    },
+    {
+      "ten": "f42",
+      "thu_tu_dua_vao_mo_hinh": 24,
+      "nguon": "goc",
+      "kieu": "nhi_phan",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        1.0
+      ],
+      "hang_permutation": 18,
+      "hang_permutation_rct_select": 36,
+      "hang_gain": 46,
+      "tinh_online": null
+    },
+    {
+      "ten": "f52",
+      "thu_tu_dua_vao_mo_hinh": 25,
+      "nguon": "goc",
+      "kieu": "nhi_phan",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        1.0
+      ],
+      "hang_permutation": 26,
+      "hang_permutation_rct_select": 66,
+      "hang_gain": 47,
+      "tinh_online": null
+    },
+    {
+      "ten": "f60",
+      "thu_tu_dua_vao_mo_hinh": 26,
+      "nguon": "goc",
+      "kieu": "nhi_phan",
+      "gia_tri_mac_dinh": 0.0,
+      "khoang": [
+        0.0,
+        1.0
+      ],
+      "hang_permutation": 27,
+      "hang_permutation_rct_select": 54,
+      "hang_gain": 62,
+      "tinh_online": null
+    },
+    {
+      "ten": "f68",
+      "thu_tu_dua_vao_mo_hinh": 27,
+      "nguon": "goc",
+      "kieu": "nhi_phan",
+      "gia_tri_mac_dinh": 1.0,
+      "khoang": [
+        0.0,
+        1.0
+      ],
+      "hang_permutation": 25,
+      "hang_permutation_rct_select": 68,
+      "hang_gain": 10,
+      "tinh_online": null
+    },
+    {
+      "ten": "f80",
+      "thu_tu_dua_vao_mo_hinh": 28,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.01372786145657301,
+      "khoang": [
+        -0.3480707108974457,
+        0.3274190425872803
+      ],
+      "hang_permutation": 6,
+      "hang_permutation_rct_select": 23,
+      "hang_gain": 35,
+      "tinh_online": null
+    },
+    {
+      "ten": "f82",
+      "thu_tu_dua_vao_mo_hinh": 29,
+      "nguon": "goc",
+      "kieu": "lien_tuc",
+      "gia_tri_mac_dinh": 0.6489617228507996,
+      "khoang": [
+        -0.5866663455963135,
+        0.6489617228507996
+      ],
+      "hang_permutation": 19,
+      "hang_permutation_rct_select": 65,
+      "hang_gain": 31,
+      "tinh_online": null
+    }
+  ]
+}

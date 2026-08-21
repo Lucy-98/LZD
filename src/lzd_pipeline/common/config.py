@@ -128,7 +128,7 @@ class Settings:
     metrics_port: int = field(default_factory=lambda: _env_int("METRICS_PORT", 9105))
     mlflow_tracking_uri: str = field(default_factory=lambda: _env("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     mlflow_experiment: str = field(default_factory=lambda: _env("MLFLOW_EXPERIMENT", "uplift-descn"))
-    uplift_threshold: float = field(default_factory=lambda: _env_float("UPLIFT_DECISION_THRESHOLD", 0.007190971))
+    uplift_threshold: float = field(default_factory=lambda: _env_float("UPLIFT_DECISION_THRESHOLD", 0.0070347543))
 
     kafka: KafkaConfig = field(default_factory=KafkaConfig)
     redis: RedisConfig = field(default_factory=RedisConfig)

@@ -17,7 +17,7 @@ offline:
   # Bang mart trong DuckDB dung lam nguon sync Redis (tên nghiệp vụ).
   serving_table: marts.serving_features
   training_table: marts.training_dataset
-  selected_feature_set_id: fs_2026_08_v3
+  selected_feature_set_id: fs_2026_08_v4
   event_time_column: feature_ts
   partition_column: dt
 
@@ -40,6 +40,39 @@ online:
 #    sync len Redis tai key fs:{version}:u:{user_id}
 # --------------------------------------------------------------------------
 batch_features:
+  # --- Immutable model input contract (DRLearner 30F) ---
+  # Kept as f* fields in Redis so serving never guesses an alias on the hot path.
+  - {name: f0, dtype: float, default: 2.0, group: model_30f}
+  - {name: f1, dtype: float, default: 172.0, group: model_30f}
+  - {name: f3, dtype: float, default: 1.0986123085021973, group: model_30f}
+  - {name: f4, dtype: float, default: 1.5, group: model_30f}
+  - {name: f5, dtype: float, default: 0.0, group: model_30f}
+  - {name: f6, dtype: float, default: 0.0, group: model_30f}
+  - {name: f7, dtype: float, default: 2.0, group: model_30f}
+  - {name: f8, dtype: float, default: 1.0, group: model_30f}
+  - {name: f9, dtype: float, default: 2.0281481742858887, group: model_30f}
+  - {name: f10, dtype: float, default: 1.5475624799728394, group: model_30f}
+  - {name: f13, dtype: float, default: 1.0, group: model_30f}
+  - {name: f16, dtype: float, default: 1.945910096168518, group: model_30f}
+  - {name: f17, dtype: float, default: 0.0, group: model_30f}
+  - {name: f20, dtype: float, default: 0.0, group: model_30f}
+  - {name: f21, dtype: float, default: 1.0, group: model_30f}
+  - {name: f22, dtype: float, default: 9.3428316116333, group: model_30f}
+  - {name: f23, dtype: float, default: 0.0, group: model_30f}
+  - {name: f25, dtype: float, default: 0.0, group: model_30f}
+  - {name: f26, dtype: float, default: 0.0, group: model_30f}
+  - {name: f27, dtype: float, default: 30.0, group: model_30f}
+  - {name: f28, dtype: float, default: 0.41900700330734253, group: model_30f}
+  - {name: f29, dtype: float, default: 0.0, group: model_30f}
+  - {name: f35, dtype: float, default: 0.0, group: model_30f}
+  - {name: f38, dtype: float, default: 0.26392900943756104, group: model_30f}
+  - {name: f42, dtype: float, default: 0.0, group: model_30f}
+  - {name: f52, dtype: float, default: 0.0, group: model_30f}
+  - {name: f60, dtype: float, default: 0.0, group: model_30f}
+  - {name: f68, dtype: float, default: 1.0, group: model_30f}
+  - {name: f80, dtype: float, default: 0.01372786145657301, group: model_30f}
+  - {name: f82, dtype: float, default: 0.6489617228507996, group: model_30f}
+
   # --- Profile: Customer Segmentation (T2) ---
   - name: price_sensitivity_segment
     dtype: float

@@ -109,7 +109,9 @@ def h1_objective_bound(d: DecodedTarget) -> tuple[int, int]:
     if d.n30 is None:
         days = max(len(forced), 1)
         total = d.counter_capacity + len(forced)
-        return (0, max(days, math.ceil(total / SESSION_CAPACITY)))
+        recency_days = {d.d1, d.d2}
+        outside_sessions = len(recency_days - forced)
+        return (0, outside_sessions + max(days, math.ceil(total / SESSION_CAPACITY)))
     k = d.n30
     if k < len(forced):
         raise Infeasible(

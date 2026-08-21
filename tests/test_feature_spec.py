@@ -31,16 +31,16 @@ def test_batch_features_are_the_selected_set(spec):
     assert "label" not in names
     assert "is_treat" not in names
     assert spec.offline["serving_table"] == "marts.serving_features"
-    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v3"
+    assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v4"
 
 
 def test_feature_set_artifact_loads_correctly():
     """Artifact contract v3 tải đúng 30 features."""
     from lzd_pipeline.reconstruction.feature_set import load_feature_set
 
-    v3_path = Path(__file__).resolve().parents[1] / "config" / "features" / "fs_2026_08_v3.yaml"
+    v3_path = Path(__file__).resolve().parents[1] / "config" / "features" / "fs_2026_08_v4.yaml"
     fs = load_feature_set(v3_path)
-    assert fs.id == "fs_2026_08_v3"
+    assert fs.id == "fs_2026_08_v4"
     assert len(fs.columns) == 30
     assert "f1" in fs.columns
     assert "f80" in fs.columns

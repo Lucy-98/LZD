@@ -1,0 +1,21 @@
+{
+  "source_repository": "https://github.com/hatuki0604/final-lazada-2.git",
+  "source_commit": "575fb1e0ea78ba0c9cb11876aac5984125308698",
+  "model_name": "uplift_voucher",
+  "model_type": "DRLearner-LightGBM",
+  "feature_count": 30,
+  "decision_threshold": 0.0070347543,
+  "run_mode": "full",
+  "sentinel": {
+    "input": "feature_contract_defaults",
+    "expected_uplift": 0.004436201035688247,
+    "absolute_tolerance": 1e-12
+  },
+  "sha256": {
+    "model_booster.txt": "41c42a31b484670c085a234b490b9446cadc4a995d7aa5a4f7cedc48a908c1a5",
+    "feature_contract.json": "869c7f22ce63988cdd3df2b597ce5cb646dca3402f05d35d8a18652c16615863",
+    "metadata.json": "c519f7aaa3b689b3be84c1d8febd27676ac6b600dfef0f80467d995ef6cd2434",
+    "golden_predictions.csv": "ae56e6fdd558df1bf24914f68d459dd394bae9f30adb36dc8835b6a145d2ed37",
+    "decision_threshold.json": "d1360b1be9d89a8e8a9e534a05f4be44e56940801dca1f379ba4178d498de4d9"
+  }
+}

@@ -1,5 +1,6 @@
 -- Reconstruction forward engine for the active 30-feature contract.
--- T1 counters in fs_2026_08_v3 are only f5 and f18.
+-- The production model contract consumes f5; f18 remains a harmless legacy
+-- forward-engine output for historical reconstruction artifacts.
 {{ config(materialized='table') }}
 
 {%- set counter_window = var('counter_window_days', 365) -%}

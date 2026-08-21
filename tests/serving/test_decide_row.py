@@ -62,7 +62,7 @@ def test_cot_thieu_khong_duoc_co_mat_trong_row(spec, model_76):
     """Phep kiem trung tam: store rong => row rong, KHONG phai row toan 0.0."""
     row, missing, supplied, _ = build_model_row(spec, model_76.feature_order, {}, {}, {})
     assert row == {}
-    assert missing == len(spec.all_names)
+    assert missing == len(model_76.feature_order)
     assert supplied == 0
 
 
@@ -77,7 +77,7 @@ def test_gia_tri_rong_cung_tinh_la_thieu(spec, model_76):
     """Redis tra chuoi rong cho field chua ghi — khong duoc coi la 0.0."""
     row, missing, _, _ = build_model_row(spec, model_76.feature_order, {"customer_value_score": ""}, {}, {})
     assert "customer_value_score" not in row
-    assert missing == len(spec.all_names)
+    assert missing == len(model_76.feature_order)
 
 
 # ===========================================================================

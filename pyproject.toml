@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lzd-pipeline"
+version = "0.1.0"
+description = "LZD Uplift Feature Platform & Event Reconstruction Engine"
+authors = [
+    { name = "LZD Data Platform Team" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Database",
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.31.0",
+    "pydantic>=2.9.0",
+    "redis>=5.1.0",
+    "confluent-kafka>=2.5.0",
+    "pyarrow>=17.0.0",
+    "boto3>=1.35.0",
+    "duckdb>=1.1.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+    "prometheus-client>=0.21.0",
+    "python-json-logger>=2.0.0",
+    "pyyaml>=6.0.0",
+    "tenacity>=9.0.0",
+    "psycopg2-binary>=2.9.0",
+]
+
+[project.optional-dependencies]
+ml = [
+    "lightgbm>=4.0.0",
+    "scikit-learn>=1.5.0",
+    "scipy>=1.14.0",
+    "mlflow-skinny>=2.16.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "fakeredis>=2.25.0",
+    "lupa>=2.8",
+    "jinja2>=3.1.0",
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --import-mode=importlib"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

@@ -54,7 +54,6 @@ def test_track_b_run_id_depends_on_track_a_parent():
 def test_recency_round_trip_uses_same_calendar_day_semantics_as_dbt():
     result = run_demo()
     assert result.reconstructed["f1"] == result.target.values["f1"]
-    assert result.reconstructed["f2"] == result.target.values["f2"]
 
 
 def test_runtime_config_rejects_unknown_semantic_branch():

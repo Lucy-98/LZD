@@ -81,8 +81,6 @@ def build_model_row(
     """
     context = context or {}
     row: dict[str, Any] = {}
-    missing = 0
-
     for f in spec.all_features:
         raw = context.get(f.name)
         if raw is None:
@@ -90,13 +88,13 @@ def build_model_row(
         if raw is None:
             raw = batch_raw.get(f.name)
         if raw is None or raw == "":
-            missing += 1
             continue                      # de hop dong dien trung vi
         row[f.name] = f.cast(raw)
 
     wanted = set(model_feature_order)
+    missing = sum(1 for name in wanted if name not in row)
     realtime_applied = sum(
         1 for name in row if name.startswith("rt_") and name in wanted
     )
-    supplied = sum(1 for name in row if name in wanted)
+    supplied = len(wanted) - missing
     return row, missing, supplied, realtime_applied

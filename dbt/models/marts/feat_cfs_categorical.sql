@@ -1,7 +1,7 @@
--- Reconstruction forward engine for the five active T2 features.
+-- Reconstruction forward engine for the seven active T2 features.
 -- f41/f42/f81/f82 remain encoding intermediates and never enter the target.
 -- synthetic_category_515 is MOT bien latent with four encodings; only f79/f80
--- are selected by fs_2026_08_v3.
+-- are selected by fs_2026_08_v4.
 {{ config(materialized='table') }}
 
 {%- set encoding_version = var('reconstruction_encoding_version') -%}
@@ -44,11 +44,13 @@ unioned as (
 
 select
     target_id,
-    max(value) filter (where column_name = 'f37') as f37,
     max(value) filter (where column_name = 'f38') as f38,
-    max(value) filter (where column_name = 'f40') as f40,
-    max(value) filter (where column_name = 'f79') as f79,
+    max(value) filter (where column_name = 'f42') as f42,
+    max(value) filter (where column_name = 'f52') as f52,
+    max(value) filter (where column_name = 'f60') as f60,
+    max(value) filter (where column_name = 'f68') as f68,
     max(value) filter (where column_name = 'f80') as f80,
+    max(value) filter (where column_name = 'f82') as f82,
     sum(value) filter (where column_name in ('f40', 'f41', 'f42')) as _g1_onehot_sum
 from unioned
 group by target_id

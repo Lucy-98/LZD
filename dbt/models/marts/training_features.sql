@@ -44,40 +44,40 @@ select
     b.dt,
     b.reference_ts as feature_ts,
 
-    -- T1 (4 cột - Event-Derived)
+    -- T1 (2 cột - Event-Derived)
     coalesce(r.f1, 0.0)  as f1,
-    coalesce(r.f2, 0.0)  as f2,
     coalesce(c.f5, 0.0)  as f5,
-    coalesce(c.f18, 0.0) as f18,
 
-    -- T2 (5 cột - Categorical Segment)
-    coalesce(cat.f37, 0.0) as f37,
+    -- T2 (7 cột - Categorical Segment)
     coalesce(cat.f38, 0.0) as f38,
-    coalesce(cat.f40, 0.0) as f40,
-    coalesce(cat.f79, 0.0) as f79,
+    coalesce(cat.f42, 0.0) as f42,
+    coalesce(cat.f52, 0.0) as f52,
+    coalesce(cat.f60, 0.0) as f60,
+    coalesce(cat.f68, 0.0) as f68,
     coalesce(cat.f80, 0.0) as f80,
+    coalesce(cat.f82, 0.0) as f82,
 
     -- T3 (21 cột - Latent Scores)
     coalesce(p.f0, 0.0)  as f0,
     coalesce(p.f3, 0.0)  as f3,
     coalesce(p.f4, 0.0)  as f4,
+    coalesce(p.f6, 0.0)  as f6,
+    coalesce(p.f7, 0.0)  as f7,
     coalesce(p.f8, 0.0)  as f8,
     coalesce(p.f9, 0.0)  as f9,
     coalesce(p.f10, 0.0) as f10,
-    coalesce(p.f12, 0.0) as f12,
     coalesce(p.f13, 0.0) as f13,
     coalesce(p.f16, 0.0) as f16,
     coalesce(p.f17, 0.0) as f17,
+    coalesce(p.f20, 0.0) as f20,
+    coalesce(p.f21, 0.0) as f21,
     coalesce(p.f22, 0.0) as f22,
     coalesce(p.f23, 0.0) as f23,
-    coalesce(p.f24, 0.0) as f24,
     coalesce(p.f25, 0.0) as f25,
     coalesce(p.f26, 0.0) as f26,
     coalesce(p.f27, 0.0) as f27,
     coalesce(p.f28, 0.0) as f28,
     coalesce(p.f29, 0.0) as f29,
-    coalesce(p.f31, 0.0) as f31,
-    coalesce(p.f34, 0.0) as f34,
     coalesce(p.f35, 0.0) as f35
 
 from boundary b

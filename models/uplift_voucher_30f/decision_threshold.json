@@ -1,0 +1,70 @@
+{
+  "quan_quan": "DRLearner",
+  "tap_ra_quyet_dinh": "rct_select",
+  "n": 90834,
+  "seed": 42,
+  "run_mode": "full",
+  "thoi_diem": "2026-08-20 17:46:45",
+  "so_cot_mo_hinh": 30,
+  "nguon_diem_cate": "model_booster.txt — 30 cột, đúng bản đang bàn giao",
+  "ma_bam_quyet_dinh_04b": "3960fbe51566cb1a",
+  "ma_bam_cong_08": "a4f5c2ff6ae084f6",
+  "qini": 0.0246460129543044,
+  "auuc": 0.026312295355692024,
+  "ate_rct_select": {
+    "ate": 0.0037187915667810864,
+    "se": 0.001221426755361183,
+    "ci_thap": 0.0013247951262731678,
+    "ci_cao": 0.006112788007289005,
+    "n": 90834,
+    "n_treat": 47340,
+    "n_control": 43494
+  },
+  "k_argmax": 0.9837505779774094,
+  "k_ci_95_bootstrap": [
+    0.577875575225136,
+    0.9997253231168945
+  ],
+  "cao_dinh_don_tren_nguoi": 0.0021402177462379003,
+  "se_dinh_bootstrap": 0.0005894736980194644,
+  "dinh_tach_duoc_khoi_nhieu": true,
+  "n_boot": 400,
+  "k_chon": 0.46751216504832993,
+  "quy_tac": "k nhỏ nhất còn nằm trong 1 sai số bootstrap của đỉnh đường Qini",
+  "nguong_qini": 0.007034754299254366,
+  "nguong_kinh_te": null,
+  "chi_phi_voucher": null,
+  "loi_nhuan_don": null,
+  "nguong_cuoi": 0.007034754299254366,
+  "nguon_nguong_cuoi": "qini_1se",
+  "ti_le_duoc_phat": 0.46751216504832993,
+  "kiem_chung_rct_select": {
+    "tren_nguong": {
+      "ate": 0.006386371349068526,
+      "se": 0.0022125451189420596,
+      "ci_thap": 0.0020497829159420895,
+      "ci_cao": 0.010722959782194962,
+      "n": 42466,
+      "n_treat": 22136,
+      "n_control": 20330
+    },
+    "duoi_nguong": {
+      "ate": 0.0013644420465283719,
+      "se": 0.0011974779331391,
+      "ci_thap": -0.0009826147024242643,
+      "ci_cao": 0.003711498795481008,
+      "n": 48368,
+      "n_treat": 25204,
+      "n_control": 23164
+    },
+    "chenh_lech": 0.005021929302540154,
+    "se_chenh_lech": 0.0025158118577726404,
+    "co_y_nghia_thong_ke": true
+  },
+  "nguong_cu_de_so_sanh": {
+    "nguong": 0.02,
+    "ti_le_duoc_phat": 0.1036285972213048,
+    "don_tang_them": 125.62582442548776,
+    "don_tang_them_nguong_moi": 271.20364570954405
+  }
+}

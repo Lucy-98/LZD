@@ -12,22 +12,17 @@ from lzd_pipeline.serving.trigger_engine import (
 
 
 def test_determine_voucher_code():
-    # Score >= 0.05 -> voucher_30
-    dec, code = determine_voucher_code(0.06)
+    # Score >= threshold -> SEND_VOUCHER
+    dec, code = determine_voucher_code(0.06, threshold=0.05)
     assert dec == "SEND_VOUCHER"
     assert code == "voucher_30"
 
-    # 0.02 <= Score < 0.05 -> voucher_15
-    dec, code = determine_voucher_code(0.03)
-    assert dec == "SEND_VOUCHER"
-    assert code == "voucher_15"
-
-    # Score < 0.02 -> no_voucher
-    dec, code = determine_voucher_code(0.01)
+    # Score < threshold -> NO_VOUCHER
+    dec, code = determine_voucher_code(0.01, threshold=0.05)
     assert dec == "NO_VOUCHER"
     assert code == "no_voucher"
 
-    # None -> no_voucher
+    # None -> NO_DECISION
     dec, code = determine_voucher_code(None)
     assert dec == "NO_DECISION"
     assert code == "no_voucher"

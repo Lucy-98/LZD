@@ -80,7 +80,7 @@ def test_track_a_batch_materializes_real_csv_shape(tmp_path):
     assert manifest["processed_rows"] == 1
     assert manifest["solved_rows"] == 1
     assert manifest["quarantined_rows"] == 0
-    assert manifest["raw_events"] == 6
+    assert manifest["raw_events"] == 2
     assert manifest["gate_sample"]["all_passed"] is True
 
     raw_path = Path(manifest["files"]["raw_events_v2"])
@@ -140,4 +140,3 @@ def test_track_a_batch_fails_on_missing_required_column(tmp_path):
             config=config,
             verify_limit=0,
         )
-

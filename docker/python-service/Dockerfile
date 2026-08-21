@@ -48,9 +48,8 @@ ENV PYTHONUNBUFFERED=1 \
 #   - healthcheck dung urllib cua Python thay vi curl
 #   - reaping process do `init: true` trong docker-compose lo
 #
-# NGOAI TRU `libgomp1`. Neu sau nay gan lai artifact 30F co dung LightGBM,
-# wheel se can OpenMP runtime. Hien tai API chay voi model boundary
-# "unconfigured" va tra `NO_DECISION` cho den khi artifact that duoc gan vao.
+# NGOAI TRU `libgomp1`: production artifact 30F dung LightGBM va can OpenMP
+# runtime. Artifact duoc mount read-only va kiem checksum luc khoi dong.
 #
 # ~150 KB. Khong dung `libgomp1-*-dev`: runtime khong can header.
 RUN apt-get update \

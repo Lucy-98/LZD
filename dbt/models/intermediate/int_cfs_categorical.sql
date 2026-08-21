@@ -1,5 +1,5 @@
 -- ============================================================================
--- INTERMEDIATE: CFS Categorical Features (T2) — f37, f38, f40, f79, f80
+-- INTERMEDIATE: CFS Categorical Features (T2) — active model 30F
 -- Nguồn: biz.customer_attribute, biz.encoding_map, biz.onehot_layout
 -- ============================================================================
 {{ config(materialized='table') }}
@@ -59,11 +59,13 @@ pivoted as (
 
     select
         target_id,
-        max(value) filter (where column_name = 'f37') as f37,
         max(value) filter (where column_name = 'f38') as f38,
-        max(value) filter (where column_name = 'f40') as f40,
-        max(value) filter (where column_name = 'f79') as f79,
-        max(value) filter (where column_name = 'f80') as f80
+        max(value) filter (where column_name = 'f42') as f42,
+        max(value) filter (where column_name = 'f52') as f52,
+        max(value) filter (where column_name = 'f60') as f60,
+        max(value) filter (where column_name = 'f68') as f68,
+        max(value) filter (where column_name = 'f80') as f80,
+        max(value) filter (where column_name = 'f82') as f82
     from unioned
     group by target_id
 
@@ -73,17 +75,14 @@ select
     target_id,
 
     -- Cột f* gốc
-    f37,
     f38,
-    f40,
-    f79,
-    f80,
+    f42, f52, f60, f68, f80, f82,
 
     -- Tên nghiệp vụ
-    coalesce(f37, 0.0) as price_sensitivity_segment,
     coalesce(f38, 0.0) as promo_affinity_segment,
-    coalesce(f40, 0.0) as platform_preference_flag,
-    coalesce(f79, 0.0) as preferred_category_enc_a,
+    coalesce(f42, 0.0) as platform_preference_flag,
+    coalesce(f52, 0.0) as price_sensitivity_segment,
+    coalesce(f60, 0.0) as preferred_category_enc_a,
     coalesce(f80, 0.0) as preferred_category_enc_b
 
 from pivoted

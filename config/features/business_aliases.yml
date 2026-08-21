@@ -1,51 +1,40 @@
-# Synthetic presentation aliases for the active 30-feature reconstruction set.
-# These names explain the demo business story; they are not Lazada facts.
-version: business_aliases_2026_08_v3
-feature_set_id: fs_2026_08_v3
-scope: selected_30_features
+version: business_aliases_2026_08_v4
+feature_set_id: fs_2026_08_v4
+scope: production_model_30_features
 semantic_status: SYNTHETIC_ASSUMPTION_NOT_LAZADA_FACT
 
 feature_aliases:
-  f1:  {tier: T1, alias: days_since_first_signal, display_name: Days since first signal, business_role: Lifecycle recency, source_family: recency, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: CFS witness only}
-  f2:  {tier: T1, alias: days_since_last_signal, display_name: Days since last signal, business_role: Recent intent, source_family: recency, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: CFS witness only}
-  f5:  {tier: T1, alias: browse_intensity_365d, display_name: Browse intensity 365d, business_role: Historical engagement, source_family: counter, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: EVT_F5 witness count}
-  f18: {tier: T1, alias: promo_touch_intensity_365d, display_name: Promo touch intensity 365d, business_role: Promotion exposure, source_family: counter, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: EVT_F18 witness count}
-
-  f37: {tier: T2, alias: price_sensitivity_segment, display_name: Price sensitivity segment, business_role: Synthetic segment, source_family: customer_attribute, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Encoded attribute}
-  f38: {tier: T2, alias: promo_affinity_segment, display_name: Promo affinity segment, business_role: Synthetic segment, source_family: customer_attribute, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Encoded attribute}
-  f40: {tier: T2, alias: platform_preference_flag, display_name: Platform preference flag, business_role: Synthetic platform preference, source_family: one_hot_attribute, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Selected bit from full group}
-  f79: {tier: T2, alias: preferred_category_enc_a, display_name: Preferred category encoding A, business_role: Synthetic category preference, source_family: customer_attribute, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Encoded attribute}
-  f80: {tier: T2, alias: preferred_category_enc_b, display_name: Preferred category encoding B, business_role: Synthetic category preference, source_family: customer_attribute, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Encoded attribute}
-
-  f0:  {tier: T3, alias: latent_ordinal_segment, display_name: Latent ordinal segment, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f3:  {tier: T3, alias: customer_value_score, display_name: Customer value score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f4:  {tier: T3, alias: purchase_power_score, display_name: Purchase power score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f8:  {tier: T3, alias: baseline_conversion_propensity, display_name: Baseline conversion propensity, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f9:  {tier: T3, alias: incremental_response_score, display_name: Incremental response score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f10: {tier: T3, alias: discount_sensitivity_score, display_name: Discount sensitivity score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f12: {tier: T3, alias: category_affinity_score, display_name: Category affinity score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f13: {tier: T3, alias: brand_affinity_score, display_name: Brand affinity score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f16: {tier: T3, alias: churn_risk_score, display_name: Churn risk score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f17: {tier: T3, alias: assortment_breadth_score, display_name: Assortment breadth score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f22: {tier: T3, alias: abuse_risk_score, display_name: Abuse risk score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f23: {tier: T3, alias: ltv_score_a, display_name: LTV score A, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f24: {tier: T3, alias: basket_stability_score, display_name: Basket stability score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f25: {tier: T3, alias: ltv_score_b, display_name: LTV score B, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f26: {tier: T3, alias: shipping_sensitivity_score, display_name: Shipping sensitivity score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f27: {tier: T3, alias: quality_index_a, display_name: Quality index A, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f28: {tier: T3, alias: payment_friction_score, display_name: Payment friction score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f29: {tier: T3, alias: search_intent_score, display_name: Search intent score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f31: {tier: T3, alias: campaign_fatigue_score, display_name: Campaign fatigue score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f34: {tier: T3, alias: quality_index_b, display_name: Quality index B, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
-  f35: {tier: T3, alias: seller_quality_pref_score, display_name: Seller quality preference score, business_role: Frozen latent signal, source_family: passthrough, confidence: SYNTHETIC_ASSUMPTION, reconstruction_note: Pass-through only}
+  f0:  {tier: T3, alias: model_feature_f0, source_family: passthrough}
+  f1:  {tier: T1, alias: days_since_first_signal, source_family: recency}
+  f3:  {tier: T3, alias: model_feature_f3, source_family: passthrough}
+  f4:  {tier: T3, alias: model_feature_f4, source_family: passthrough}
+  f5:  {tier: T1, alias: browse_intensity_365d, source_family: counter}
+  f6:  {tier: T3, alias: model_feature_f6, source_family: passthrough}
+  f7:  {tier: T3, alias: model_feature_f7, source_family: passthrough}
+  f8:  {tier: T3, alias: model_feature_f8, source_family: passthrough}
+  f9:  {tier: T3, alias: model_feature_f9, source_family: passthrough}
+  f10: {tier: T3, alias: model_feature_f10, source_family: passthrough}
+  f13: {tier: T3, alias: model_feature_f13, source_family: passthrough}
+  f16: {tier: T3, alias: model_feature_f16, source_family: passthrough}
+  f17: {tier: T3, alias: model_feature_f17, source_family: passthrough}
+  f20: {tier: T3, alias: model_feature_f20, source_family: passthrough}
+  f21: {tier: T3, alias: model_feature_f21, source_family: passthrough}
+  f22: {tier: T3, alias: model_feature_f22, source_family: passthrough}
+  f23: {tier: T3, alias: model_feature_f23, source_family: passthrough}
+  f25: {tier: T3, alias: model_feature_f25, source_family: passthrough}
+  f26: {tier: T3, alias: model_feature_f26, source_family: passthrough}
+  f27: {tier: T3, alias: model_feature_f27, source_family: passthrough}
+  f28: {tier: T3, alias: model_feature_f28, source_family: passthrough}
+  f29: {tier: T3, alias: model_feature_f29, source_family: passthrough}
+  f35: {tier: T3, alias: model_feature_f35, source_family: passthrough}
+  f38: {tier: T2, alias: model_feature_f38, source_family: customer_attribute}
+  f42: {tier: T2, alias: model_feature_f42, source_family: one_hot_attribute}
+  f52: {tier: T2, alias: model_feature_f52, source_family: one_hot_attribute}
+  f60: {tier: T2, alias: model_feature_f60, source_family: one_hot_attribute}
+  f68: {tier: T2, alias: model_feature_f68, source_family: one_hot_attribute}
+  f80: {tier: T2, alias: model_feature_f80, source_family: customer_attribute}
+  f82: {tier: T2, alias: model_feature_f82, source_family: customer_attribute}
 
 track_a_event_aliases:
-  EVT_ORDER_PAID:
-    alias: CFS_RECENCY_MARKER
-    note: Synthetic witness used for recency; not proof of a real paid order.
-  EVT_F5:
-    alias: CFS_BROWSE_WITNESS
-    note: Synthetic counter witness for f5.
-  EVT_F18:
-    alias: CFS_PROMO_TOUCH_WITNESS
-    note: Synthetic counter witness for f18.
+  EVT_ORDER_PAID: {alias: CFS_RECENCY_MARKER, note: Synthetic recency witness; not proof of a real paid order.}
+  EVT_F5: {alias: CFS_BROWSE_WITNESS, note: Synthetic counter witness for f5.}

@@ -482,7 +482,8 @@ services:
     environment:
       <<: *common-env
       SERVICE_NAME: inference-api
-      UPLIFT_DECISION_THRESHOLD: ${UPLIFT_DECISION_THRESHOLD:-0.02}
+      UPLIFT_DECISION_THRESHOLD: ${UPLIFT_DECISION_THRESHOLD:-0.0070347543}
+      MODEL_DIR: /opt/project/models/uplift_voucher_30f
       MODEL_STAGE: Production
     ports:
       - "${INFERENCE_API_PORT:-8000}:8000"

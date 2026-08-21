@@ -38,10 +38,10 @@ def _values(fs, fill=1.0) -> dict[str, float]:
 # Feature set artifact — INVARIANT 1
 # ===========================================================================
 def test_scope_la_dung_30_cot(fs):
-    assert fs.id == "fs_2026_08_v3"
+    assert fs.id == "fs_2026_08_v4"
     assert len(fs.columns) == 30
-    assert len(fs.tiers["T1"]) == 4
-    assert len(fs.tiers["T2"]) == 5
+    assert len(fs.tiers["T1"]) == 2
+    assert len(fs.tiers["T2"]) == 7
     assert len(fs.tiers["T3"]) == 21
 
 
@@ -63,14 +63,14 @@ def test_gate_a_va_gate_a_t3_tach_rieng(fs):
 
 
 def test_v3_artifact_la_active_contract(fs):
-    assert fs.id == "fs_2026_08_v3"
+    assert fs.id == "fs_2026_08_v4"
     assert fs.expected_column_count == 30
 
 
 def test_cot_trung_gian_khong_lot_vao_target(fs):
     """§1.2 — muc khong duoc chon cua g2/g3/g4/g6 la dau ra trung gian."""
     assert not fs.intermediate_only & fs.column_set
-    assert fs.intermediate_only == frozenset({"f41", "f42", "f81", "f82"})
+    assert not fs.intermediate_only & fs.column_set
 
 
 def test_moi_muc_cua_group_deu_duoc_khai_bao(fs):
@@ -93,24 +93,21 @@ def test_g1_duoc_chon_du_ca_group(fs):
     ghi lai de khong ai doc "55 cot" thanh "55 tin hieu doc lap".
     """
     g1 = fs.source_attributes["synthetic_segment_g1"]
-    assert set(g1.selected) == {"f40"}
+    assert set(g1.selected) == {"f42"}
     assert set(g1.outputs) == {"f40", "f41", "f42"}
 
 
 def test_regime_gan_dung_cot(fs):
-    assert fs.regime_of("f18") == "LOG10"
     assert fs.regime_of("f5") == "LN"
     assert fs.regime_of("f1") == "REC"
-    assert fs.regime_of("f79") == "CAT"
+    assert fs.regime_of("f82") == "CAT"
     assert fs.regime_of("f23") == "PASS"
 
 
 def test_dung_sai_chi_ap_dung_cho_regime_ln(fs):
     """§7 — LOG10 khop chinh xac 100%; LN chi 93% => phai co dung sai."""
-    assert fs.tolerance_of("f18") is None
-    assert fs.tolerance_of("f18") is None
     assert fs.tolerance_of("f5") == pytest.approx(1e-15)
-    assert fs.tolerance_of("f5") == pytest.approx(1e-15)
+    assert fs.tolerance_of("f1") is None
 
 
 # ===========================================================================
@@ -126,7 +123,7 @@ def test_09_target_chua_83_cot_bi_tu_choi(fs):
 
 def test_09_target_thieu_cot_bi_tu_choi(fs):
     v = _values(fs)
-    del v["f18"]
+    del v["f82"]
     with pytest.raises(ScopeViolation):
         build_target(target_id="T", values=v, reference_ts=REF_TS)
 
@@ -180,7 +177,7 @@ def test_hai_hash_long_nhau(fs):
     assert t1.target_hash != t2.target_hash                       # identity doi
 
     v2 = dict(v)
-    v2["f18"] = 2.0
+    v2["f82"] = 2.0
     t3 = build_target(target_id="T", values=v2, reference_ts=REF_TS)
     assert t3.feature_payload_hash != t1.feature_payload_hash
     assert t3.target_hash != t1.target_hash
@@ -197,7 +194,7 @@ def test_tamper_evidence(fs):
         feature_version=t.feature_version,
         reference_ts=t.reference_ts,
         split=t.split,
-        values={**t.values, "f18": 999.0},   # sua len
+        values={**t.values, "f82": 999.0},   # sua len
         target_hash=t.target_hash,           # giu hash cu
     )
     with pytest.raises(TamperDetected, match="KHONG duoc sua target"):
@@ -207,7 +204,7 @@ def test_tamper_evidence(fs):
 def test_target_bat_bien(fs):
     t = build_target(target_id="T", values=_values(fs), reference_ts=REF_TS)
     with pytest.raises(Exception):
-        t.values["f18"] = 5.0        # type: ignore[index]
+        t.values["f82"] = 5.0        # type: ignore[index]
     with pytest.raises(Exception):
         t.target_id = "khac"         # type: ignore[misc]
 

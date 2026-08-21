@@ -60,7 +60,7 @@ class DecodedTarget:
 
     n5: int
     n11: int | None
-    n18: int
+    n18: int | None
     n30: int | None
     d1: int          # days_since_first_*  (SYNTHETIC_ASSUMPTION S-01)
     d2: int          # days_since_last_*   (S-02);  bat bien do duoc: d1 >= d2
@@ -85,7 +85,9 @@ class DecodedTarget:
         candidate generation va constructive solver deu doc tu day, nen khong
         the lech nhau.
         """
-        demand = [(REASON_F5, self.n5), (REASON_F18, self.n18)]
+        demand = [(REASON_F5, self.n5)]
+        if self.n18 is not None:
+            demand.append((REASON_F18, self.n18))
         if self.n11 is not None:
             demand.append((REASON_F11, self.n11))
         if self.n19 is not None:

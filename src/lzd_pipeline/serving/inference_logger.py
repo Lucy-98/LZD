@@ -121,10 +121,10 @@ class InferenceLogger:
     def _flush(self, batch: list[tuple]) -> None:
         if not batch:
             return
-        from psycopg2.extras import execute_values
-
         for attempt in (1, 2):
             try:
+                from psycopg2.extras import execute_values
+
                 if self._conn is None or self._conn.closed:
                     self._conn = self._connect()
                 with self._conn.cursor() as cur:

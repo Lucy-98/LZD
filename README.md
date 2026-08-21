@@ -1,334 +1,291 @@
-# 🛍️ LZD Uplift Feature Platform & Event Reconstruction Engine
+# LZD Uplift Feature Platform
 
-> **Nền tảng Dữ liệu & Học máy Nhân quả (Causal ML) Toàn diện cho Bài toán Lazada Voucher Uplift:**
-> Tích hợp Kiến trúc Lakehouse Hiện đại (MinIO S3 + DuckDB OLAP + dbt 3 Tầng Medallion), Feature Store Thời gian thực (Redis + In-Memory Caching), Điều phối Tự động hóa (Apache Airflow 2.10), Đăng ký & Quản lý Mô hình (MLflow), Phục vụ Suy luận Độ trễ Thấp (FastAPI < 5ms), Động cơ Tái tạo Sự kiện Ngược (Track A Event Reconstruction Solver), cùng Hệ thống Giám sát Toàn diện (Prometheus + Grafana + Loki).
+Nền tảng dữ liệu và phục vụ quyết định voucher bằng uplift modeling. Repo tích hợp Lakehouse (MinIO, DuckDB, dbt), Feature Store online (Redis), Airflow, Kafka, FastAPI, MLflow và Prometheus/Grafana/Loki.
 
----
+Model production đi kèm repo là **DRLearner–LightGBM, đúng 30 feature**. API chỉ phát voucher khi uplift score lớn hơn hoặc bằng:
 
-## 📑 Mục Lục
-
-1. [Tổng quan Dự án & Kiến trúc 2 Luồng Dữ liệu](#1-tổng-quan-dự-án--kiến-trúc-2-luồng-dữ-liệu)
-2. [Ý Nghĩa Toàn Bộ Input & Output của Dự Án](#2-ý-nghĩa-toàn-bộ-input--output-của-dự-án)
-3. [Danh Sách Các Công Cụ Trong Stack & Đường Dẫn Truy Cập](#3-danh-sách-các-công-cụ-trong-stack--đường-dẫn-truy-cập)
-4. [Hướng Dẫn Cài Đặt Cho macOS & Linux](#4-hướng-dẫn-cài-đặt-cho-macos--linux)
-5. [Hướng Dẫn Cài Đặt Cho Windows (PowerShell & WSL2)](#5-hướng-dẫn-cài-đặt-cho-windows-powershell--wsl2)
-6. [Cách Sử Dụng & Thao Tác Chi Tiết Từng Công Cụ](#6-cách-sử-dụng--thao-tác-chi-tiết-từng-công-cụ)
-7. [Thứ Tự Vận Hành 8 Airflow DAGs Chuẩn Production](#7-thứ-tự-vận-hành-8-airflow-dags-chuẩn-production)
-8. [Chạy Nhanh Local Không Cần Docker (Test Suite & Solver)](#8-chạy-nhanh-local-không-cần-docker-test-suite--solver)
-9. [Xử Lý Sự Cố Thường Gặp (Troubleshooting)](#9-xử-lý-sự-cố-thường-gặp-troubleshooting)
-
----
-
-## 1. Tổng quan Dự án & Kiến trúc 2 Luồng Dữ liệu
-
-Dự án giải quyết bài toán **Tối ưu hóa Chi phí Khuyến mãi (Voucher Allocation)** thông qua **Mô hình Uplift (Causal Inference)**: Xác định chính xác nhóm khách hàng *Persuadables* (chỉ mua khi có voucher) thay vì lãng phí voucher cho nhóm *Sure Things* (không có voucher vẫn mua) hoặc nhóm *Lost Causes* / *Sleeping Dogs*.
-
-Hệ thống được thiết kế với **2 luồng dữ liệu chuyên biệt**:
-
-```
-                                  ┌────────────────────────────────────────────────────────┐
-                                  │                LZD UPLIFT ARCHITECTURE                 │
-                                  └────────────────────────────────────────────────────────┘
-
-    [ LUỒNG 1: EVENT RECONSTRUCTION & dbt 3-TIER MEDALLION ]
-
-    data/full_trainset.csv ──► Track A Solver (DAG 60) ──► MinIO (raw/events_v2: Raw Events E*) + DuckDB (biz.*)
-                                                                 │
-                                                                 ▼ (DAG 20: dbt Medallion)
-                                  🥉 TẦNG ĐỒNG: stg_events_v2, stg_app_events
-                                                                 │
-                                                                 ▼
-                                  🥈 TẦNG BẠC: int_cfs_counter, int_cfs_recency, int_cfs_categorical,
-                                               int_passthrough, int_event_behaviour
-                                                                 │
-                                  ┌──────────────────────────────┴──────────────────────────────┐
-                                  ▼                                                             ▼
-                   🥇 marts.training_features (30f: f0..f80)                      🥇 marts.serving_features (~41 features)
-                                  │                                                             │ (Tên nghiệp vụ)
-                                  ▼                                                             ▼ (DAG 40 sync 01:30 AM)
-                   Jupyter Notebook / MLflow                                     Redis Feature Store (fs:{version}:u:{id})
-                                  │                                                             │
-                                  └──────────────────────────────┬──────────────────────────────┘
-                                                                 ▼
-                                                    FastAPI POST /decide (< 5ms)
-                                                    Hybrid Trigger: voucher_30, voucher_15, no_voucher
-
-
-    [ LUỒNG 2: NEAR-REALTIME STREAMING & IN-SESSION INTENT ]
-
-    Hành vi User sau t₀ ──► Kafka (app.user.events.v1) ──► Stream Consumer
-                                                                 │
-                                ┌────────────────────────────────┴────────────────────────────────┐
-                                ▼                                                                 ▼
-                 MinIO Lake (raw/app_events/)                                      Redis Realtime: rt:u:{user_id}
-                 (Immutable Source of Truth)                                       (TTL 48h, sliding window 5m + 1h)
+```text
+UPLIFT_DECISION_THRESHOLD=0.0070347543
 ```
 
----
+## Trạng thái đã kiểm chứng
 
-## 2. Ý Nghĩa Toàn Bộ Input & Output của Dự Án
+- Model nguồn: `https://github.com/hatuki0604/final-lazada-2.git`
+- Commit model nguồn: `575fb1e0ea78ba0c9cb11876aac5984125308698`
+- Model version khi phục vụ: `20260820-575fb1e0ea78`
+- Feature contract: `fs_2026_08_v4`, đúng 30 feature và đúng thứ tự
+- Golden sentinel score: `0.004436201035688247`
+- Sai số tuyệt đối cho sentinel: `1e-12`
+- Test repo: 327 passed; 2 test LightGBM có thể bị skip trên macOS thiếu `libomp`
+- Model thật đã được kiểm chứng trong Linux container
 
-### 📥 2.1. Danh Sách Input (Dữ Liệu & Cấu Hình Đầu Vào)
+Model bundle nằm tại [`models/uplift_voucher_30f`](models/uplift_voucher_30f). `import_manifest.json` giữ nguồn, commit, threshold, sentinel và SHA-256 của từng artifact. Loader kiểm tra toàn bộ thông tin này khi API khởi động; artifact sai hoặc thiếu sẽ làm serving **fail-closed**, không tự chuyển sang model giả.
 
-| Tên Input | Định Dạng / Vị Trí | Ý Nghĩa Nghiệp Vụ & Kỹ Thuật | Nơi Sử Dụng |
-|---|---|---|---|
-| **`full_trainset.csv`** | CSV (`data/full_trainset.csv`) | Tập dữ liệu lịch sử của **926,669 người dùng**, chứa đặc trưng hành vi, cờ can thiệp voucher (`is_treat`), và nhãn chuyển đổi đơn hàng (`conversion`). | Track A Solver (`DAG 60`), `DAG 00_bootstrap_lake` |
-| **`full_testset.csv`** | CSV (`data/full_testset.csv`) | Tập dữ liệu kiểm định độc lập (**181,669 người dùng**), dùng làm RCT Holdout chuẩn để đánh giá khách quan các mô hình Uplift. | dbt `eval_holdout.sql`, MLflow benchmark |
-| **`AppEvent Stream`** | JSON Stream qua Kafka topic `app.user.events.v1` | Chuỗi sự kiện hành vi realtime phát sinh từ ứng dụng Web/Mobile: `page_view`, `add_to_cart`, `search`, `checkout`, `order`, v.v. | `event-producer`, `stream-consumer`, `DAG 10_ingest_stream_to_lake` |
-| **`fs_2026_08_v3.yaml`** | YAML (`config/features/fs_2026_08_v3.yaml`) | **Hợp đồng Scope 30 Features** phân theo 3 tier: T1 (4 event-level), T2 (5 categorical segments), T3 (21 latent scores). | Track A Solver, dbt models |
-| **`feature_spec.yml`** | YAML (`config/features/feature_spec.yml`) | **Hợp đồng Feature Store (Data Contract)** định nghĩa danh sách features tên nghiệp vụ sạch, kiểu dữ liệu, ngưỡng chặn Data Quality (min, max, null rate), và TTL Redis **48 giờ**. | dbt models, Feature Sync (DAG 40), API Serving |
-| **`uplift_training.yml`** | YAML (`config/training/uplift_training.yml`) | Cấu hình huấn luyện mô hình: siêu tham số LightGBM, thuật toán DR-Learner / T-Learner / X-Learner, tỷ lệ train/val, và tiêu chuẩn qua cổng promote (`qini > 0.015`, `uplift@10 > 0.01`). | Jupyter Notebook, `DAG 30_train_uplift_model` |
+## Kiến trúc
 
----
+```text
+full_trainset.csv
+      │
+      ▼
+Track A reconstruction ──► PostgreSQL biz.* / DuckDB / MinIO
+                                      │
+                                      ▼
+                          dbt Bronze → Silver → Gold
+                                      │
+                        ┌─────────────┴─────────────┐
+                        ▼                           ▼
+              training_features (30F)     serving_features
+                                                    │
+                                                    ▼
+                                          Redis versioned store
+                                                    │
+Kafka events ──► stream consumer ──► Redis realtime overlay
+                                                    │
+                                                    ▼
+                                     FastAPI + LightGBM 30F
+                                                    │
+                                                    ▼
+                                       PostgreSQL inference audit
+```
 
-### 📤 2.2. Danh Sách Output (Kết Quả & Sản Phẩm Đầu Ra)
+Feature version trong Redis là phiên bản dữ liệu, khác với model version. Tên có hậu tố `smoke` chỉ dành cho dữ liệu kiểm thử thủ công, không phải dữ liệu production và không phải model giả.
 
-| Tên Output | Định Dạng / Nơi Lưu Trữ | Ý Nghĩa Nghiệp Vụ & Kỹ Thuật | Ai / Hệ Thống Nào Sử Dụng |
-|---|---|---|---|
-| **Raw Events Lake** | Parquet trên MinIO (`s3://lakehouse/raw/events_v2/`) | Chuỗi Raw Events ($E^*$) do Track A Solver tái tạo từ dataset, làm nguồn dữ liệu thô cho toàn bộ luồng dbt. | dbt `stg_events_v2`, DuckDB Engine |
-| **Training Features Mart** | Bảng DuckDB (`marts.training_features`) | Chứa đúng **30 cột `f*`** được tính toán từ events và profile. | Jupyter Notebook đọc để huấn luyện mô hình offline |
-| **Serving Features Mart** | Bảng DuckDB (`marts.serving_features`) | Chứa **~41 cột tên nghiệp vụ** (`customer_value_score`, `order_cnt_7d`, `browse_intensity_365d`...). | Airflow Sync (`DAG 40`) đồng bộ lên Redis |
-| **Online Feature Store Keys** | Hash Map trong Redis (`localhost:6379`) | <ul><li>`fs:{version}:u:{user_id}`: Hash chứa ~41 features tên nghiệp vụ phục vụ đọc < 1ms.</li><li>`rt:u:{user_id}`: Realtime sliding window counters (5m + 1h), TTL 48h.</li><li>`fs:meta:active_version`: Con trỏ phiên bản active (Atomic Swap).</li></ul> | FastAPI Inference API (`/decide`, `/features/{user_id}`, `/trigger/*`) |
-| **Trained Uplift Model** | Docker Image & MLflow Registry (`http://localhost:5001`) | Best model được xuất artifact từ Notebook và đóng gói vào Docker Image của serving service. | FastAPI Inference API (`ModelLoader`) |
-| **Quyết Định Phân Phối Voucher** | JSON Response từ FastAPI (`POST /decide`) | Kết quả tính toán: `decision` (`SEND_VOUCHER` / `NO_VOUCHER`), `voucher_code` (`voucher_30`, `voucher_15`, `no_voucher`), `uplift_score`, `latency_ms`. | Lazada App Checkout / Giỏ hàng / Notification |
-| **Giám Sát & Cảnh Báo Hệ Thống** | Prometheus Metrics & Grafana Dashboards | Theo dõi trực quan: Tốc độ ghi Redis Shard, Tỷ lệ lỗi task, Độ trễ suy luận P95/P99, Data Drift, Null Rate, và CPU/RAM container. | Đội ngũ Vận hành SRE / Data Platform |
+## Yêu cầu máy
 
----
+- Git 2.x và Git LFS
+- Docker Desktop hoặc Docker Engine với Compose v2
+- Python 3.11 hoặc 3.12 nếu muốn chạy test ngoài Docker
+- Docker được cấp ít nhất 4 CPU, 10 GB RAM và khoảng 25 GB ổ đĩa trống
+- macOS, Linux hoặc Windows chạy Docker Desktop/WSL2
 
-## 3. Danh Sách Các Công Cụ Trong Stack & Đường Dẫn Truy Cập
-
-| Công Cụ | Biểu Tượng / Vai Trò | Địa Chỉ Truy Cập (URL) | Tài Khoản Mặc Định | Chức Năng Chính |
-|---|---|---|---|---|
-| **Apache Airflow** | ⏱️ Điều phối Pipeline | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` | Lập lịch, giám sát và quản lý 8 DAGs xử lý dữ liệu tự động. |
-| **FastAPI Inference** | ⚡ Serving Suy Luận | [http://localhost:8000/docs](http://localhost:8000/docs) | *Không yêu cầu* | Swagger UI cung cấp API ra quyết định tặng voucher độ trễ < 5ms. |
-| **MLflow Registry** | 🧪 Quản lý Experiment & Model | [http://localhost:5001](http://localhost:5001) | *Không yêu cầu* | Theo dõi tham số huấn luyện, so sánh mô hình và quản lý Model Registry. |
-| **MinIO Storage** | 🪣 S3 Object Lakehouse | [http://localhost:9001](http://localhost:9001) | `minioadmin` / `minioadmin123` | Giao diện quản trị Data Lake, xem các file Parquet raw/staging. |
-| **RedisInsight** | 🔴 Quản trị Redis UI | [http://localhost:5540](http://localhost:5540) | *Không yêu cầu* | Duyệt key `fs:*`, xem chi tiết Hash features tên nghiệp vụ của từng `user_id`. |
-| **Kafka UI** | 📬 Giám sát Message Bus | [http://localhost:8082](http://localhost:8082) | *Không yêu cầu* | Xem message streaming realtime, topics, partitions và consumer lag. |
-| **Grafana** | 📊 Dashboards Trực quan | [http://localhost:3000](http://localhost:3000) | `admin` / `admin` | Xem các bảng điều khiển Feature Sync, Serving Performance, Data Drift. |
-| **Prometheus** | 📈 Thu thập Metrics | [http://localhost:9090](http://localhost:9090) | *Không yêu cầu* | Truy vấn PromQL và kiểm tra trạng thái targets/alert rules. |
-| **DuckDB OLAP** | 🦆 Embedded Lakehouse Engine | `/opt/lakehouse/warehouse.duckdb` | CLI / Read-only | Kho dữ liệu nhúng hiệu năng cao, thực thi các truy vấn dbt transform. |
-| **dbt-duckdb** | 🏗️ Biến đổi Dữ liệu | `dbt/` (Model + Macros) | CLI | Quản lý data lineage 3 tầng (Đồng $\rightarrow$ Bạc $\rightarrow$ Vàng) và schema tests. |
-
----
-
-## 4. Hướng Dẫn Cài Đặt Cho macOS & Linux
-
-### 4.1. Yêu cầu hệ thống
-- **Hệ điều hành**: macOS (Apple Silicon M1/M2/M3/M4 hoặc Intel) hoặc Linux (Ubuntu 20.04+, Debian, Fedora).
-- **Phần mềm**: Docker Desktop (hoặc Docker Engine + Compose v2), Python 3.11+, Git, Make.
-- **Tài nguyên Docker khuyên nghị**: CPU: 4–6 cores, RAM: tối thiểu 8 GB (khuyên dùng 12 GB), Disk: trống tối thiểu 15 GB.
-
-### 4.2. Các bước cài đặt từng bước
+Kiểm tra nhanh:
 
 ```bash
-# Bước 1: Clone kho mã nguồn về máy
-git clone <REPO_URL> LZD
-cd LZD
+git --version
+git lfs version
+docker version
+docker compose version
+```
 
-# Bước 2: Tạo môi trường ảo Python 3.11+ và kích hoạt
+## Dựng lại trên máy mới
+
+### 1. Clone đúng phiên bản mã nguồn
+
+Để hai máy cho cùng kết quả, không chạy trực tiếp từ một branch đang thay đổi. Dùng cùng commit hoặc release tag trên cả hai máy:
+
+```bash
+git lfs install
+git clone https://github.com/Lucy-98/LZD.git
+cd LZD
+git checkout <RELEASE_TAG_HOAC_COMMIT>
+git lfs pull
+git status --short
+git rev-parse HEAD
+```
+
+`git status --short` phải rỗng. Lưu kết quả `git rev-parse HEAD` cùng báo cáo chạy để có thể truy nguyên chính xác phiên bản. Hai CSV lớn trong `data/` dùng Git LFS; nếu chỉ thấy file pointer vài trăm byte thì `git lfs pull` chưa hoàn tất.
+
+### 2. Tạo cấu hình
+
+Compose có giá trị mặc định đủ để chạy local. Tạo `.env` nếu cần cấu hình rõ ràng:
+
+```bash
+cp .env.example .env
+```
+
+Giữ nguyên dòng sau nếu muốn tái lập quyết định hiện tại:
+
+```dotenv
+UPLIFT_DECISION_THRESHOLD=0.0070347543
+```
+
+Không sửa model bundle hoặc `feature_contract.json`. Không dùng credential mặc định trong môi trường public/production.
+
+### 3. Xóa trạng thái cũ và build sạch
+
+Lệnh dưới đây xóa database, Redis, Kafka, MinIO và các volume của project hiện tại. Chỉ dùng khi cần một lần dựng hoàn toàn mới:
+
+```bash
+docker compose --profile all down -v --remove-orphans
+docker compose --profile all build --pull
+docker compose --profile all up -d
+```
+
+Không cần realtime simulator thì dùng `docker compose up -d`.
+
+Chờ các service khởi động rồi kiểm tra:
+
+```bash
+docker compose ps
+curl --fail http://localhost:8000/health
+```
+
+`/health` chỉ cho biết process còn sống. `/ready` chỉ trả về `ready` sau khi có một feature version thật đã được đồng bộ và kích hoạt trong Redis.
+
+### 4. Xác minh đúng model, không cần dữ liệu smoke
+
+Kiểm tra model ngay trong môi trường Linux của container:
+
+```bash
+docker compose exec -T inference-api python -c "from lzd_pipeline.serving.model_loader import get_model; m=get_model(True); row={k:m.contract.defaults[k] for k in m.feature_order}; print(m.version, len(m.feature_order), m.predict_uplift([row])[0])"
+```
+
+Kết quả bắt buộc:
+
+```text
+20260820-575fb1e0ea78 30 0.004436201035688247
+```
+
+Kiểm tra log nạp model:
+
+```bash
+docker compose logs inference-api | grep model_loaded
+```
+
+Phải thấy `feature_count: 30` và không được có `model_not_configured`.
+
+### 5. Tạo feature version chính thức
+
+Đăng nhập Airflow tại <http://localhost:8080> bằng `admin/admin`, sau đó chạy theo thứ tự:
+
+1. `00_bootstrap_lake` – tạo cấu trúc lake và nạp dữ liệu nguồn.
+2. `60_reconstruction_e2e` – chọn `mode=backfill`, `land=true`.
+3. `20_build_features_dbt` – build và test Bronze/Silver/Gold.
+4. `40_sync_features_to_redis` – validate, atomic activate feature version.
+5. `50_data_quality` – chạy kiểm tra chất lượng sau đồng bộ.
+
+Lần kiểm tra nhanh nên đặt `row_limit=5000`. Muốn xử lý toàn bộ train split đặt `row_limit=0`; quá trình này có thể sinh khoảng 17,9 triệu event và cần nhiều thời gian/dung lượng hơn. Không chạy DAG 20 hoặc DAG 40 trước khi Track A backfill và land thành công.
+
+Sau khi DAG 40 thành công:
+
+```bash
+curl --fail http://localhost:8000/ready
+```
+
+Response sẽ chứa feature version chính thức dạng `vYYYYMMDD`, không cần seed `vmodel30-smoke`.
+
+### 6. Gọi API quyết định
+
+Lấy một `user_id` đã đồng bộ từ DAG 40 rồi gọi:
+
+```bash
+curl --fail --request POST http://localhost:8000/decide \
+  --header 'content-type: application/json' \
+  --data '{"user_id":"<USER_ID_DA_SYNC>","context":{}}'
+```
+
+Response phải có:
+
+- `model_version: "20260820-575fb1e0ea78"`
+- `threshold: 0.0070347543`
+- `features_supplied: 30`
+- `features_missing: 0` với một bản ghi đầy đủ
+- `decision: "VOUCHER"` khi score `>= threshold`, ngược lại `NO_VOUCHER`
+
+Không so sánh `latency_ms`, timestamp hoặc ID run giữa hai máy: đây là dữ liệu runtime và đương nhiên thay đổi. Model version, thứ tự feature, threshold và uplift score cho cùng một vector đầu vào mới là hợp đồng cần giống nhau.
+
+## Chạy test local
+
+macOS/Linux:
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Bước 3: Nâng cấp pip và cài đặt dependencies cho phát triển & testing
-pip install --upgrade pip
-pip install -r requirements-dev.txt
-pip install -e .
-
-# Bước 4: Tạo file cấu hình môi trường từ mẫu
-cp .env.example .env
-
-# Bước 5: Chạy chẩn đoán môi trường trước khi khởi động
-./scripts/stack.sh doctor
-
-# Bước 6: Khởi động toàn bộ nền tảng (Full Stack kèm Observability & Stream)
-make up-all
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev,ml]'
+python -m pytest -q
 ```
 
-Kiểm tra trạng thái sau khi khởi động:
-```bash
-make status
-make health
-```
-
----
-
-## 5. Hướng Dẫn Cài Đặt Cho Windows (PowerShell & WSL2)
-
-### 5.1. Phương Án 1: Dùng Windows PowerShell Thuần (Native)
-
-Mở **PowerShell** (Run as Administrator):
+Windows PowerShell:
 
 ```powershell
-# Bước 1: Cho phép PowerShell thực thi script
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-
-# Bước 2: Di chuyển vào thư mục dự án
-cd LZD
-
-# Bước 3: Tạo môi trường ảo Python và kích hoạt
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# Bước 4: Cài đặt dependencies
-pip install --upgrade pip
-pip install -r requirements-dev.txt
-pip install -e .
-
-# Bước 5: Tạo file .env từ file mẫu
-Copy-Item .env.example .env
-
-# Bước 6: Chạy kiểm tra Docker và kéo images
-.\scripts\stack.ps1 doctor
-
-# Bước 7: Khởi động toàn bộ stack
-.\scripts\stack.ps1 up-all
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev,ml]"
+python -m pytest -q
 ```
 
-Kiểm tra trạng thái hệ thống:
-```powershell
-.\scripts\stack.ps1 status
-.\scripts\stack.ps1 health
-```
-
----
-
-## 6. Cách Sử Dụng & Thao Tác Chi Tiết Từng Công Cụ
-
-### 6.1. FastAPI Inference API & Hybrid Trigger
-- **Truy cập tài liệu Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Kiểm tra thông tin Feature Store**:
-  ```bash
-  curl http://localhost:8000/store/info
-  ```
-- **Gửi request quyết định cấp voucher cho 1 User**:
-  ```bash
-  curl -X POST http://localhost:8000/decide \
-       -H "Content-Type: application/json" \
-       -d '{"user_id": "U0000001", "context": {"rt_page_view_5m": 3}}'
-  ```
-  *Kết quả trả về:*
-  ```json
-  {
-    "user_id": "U0000001",
-    "decision": "SEND_VOUCHER",
-    "voucher_code": "voucher_30",
-    "uplift_score": 0.0542,
-    "threshold": 0.02,
-    "feature_version": "v20260805",
-    "model_version": "DRLearner-LightGBM",
-    "cache_hit": true,
-    "latency_ms": 2.1
-  }
-  ```
-- **Đánh giá phiên người dùng qua Hybrid Trigger**:
-  ```bash
-  curl -X POST http://localhost:8000/trigger/evaluate-session \
-       -H "Content-Type: application/json" \
-       -d '{"user_id": "U0000001"}'
-  ```
-
----
-
-### 6.2. DuckDB & dbt (Kho Dữ Liệu & Biến Đổi 3 Tầng)
-Kho dữ liệu lưu trữ tại `/opt/lakehouse/warehouse.duckdb`.
-
-#### Truy vấn SQL nhanh trong DuckDB:
-```bash
-# Xem 30 features f* trong training mart
-docker compose exec airflow-scheduler python -c "from lzd_pipeline.common.clients import duckdb_conn; con=duckdb_conn().__enter__(); print(con.execute('SELECT user_id, f0, f1, f5, f18, f80 FROM marts.training_features LIMIT 5').fetchdf())"
-
-# Xem features tên nghiệp vụ trong serving mart
-docker compose exec airflow-scheduler python -c "from lzd_pipeline.common.clients import duckdb_conn; con=duckdb_conn().__enter__(); print(con.execute('SELECT user_id, customer_value_score, order_cnt_7d, browse_intensity_365d FROM marts.serving_features LIMIT 5').fetchdf())"
-```
-
-#### Chạy dbt:
-```bash
-# Chạy staging, intermediate và marts
-docker compose exec airflow-scheduler bash -c "cd /opt/project/dbt && dbt run && dbt test"
-```
-
----
-
-### 6.3. Redis Feature Store
-```bash
-# Xem phiên bản feature đang active
-docker compose exec redis redis-cli get fs:meta:active_version
-
-# Lấy features tên nghiệp vụ của user
-docker compose exec redis redis-cli hgetall fs:v20260805:u:U0000001
-```
-
----
-
-## 7. Thứ Tự Vận Hành 8 Airflow DAGs Chuẩn Production
-
-```
-[DAG 60_reconstruction_e2e] ──► [DAG 20_build_features_dbt] ──► [DAG 40_sync_features_to_redis] ──► [DAG 50_data_quality]
-                                              │
-                                              ▼
-                                   [DAG 30_train_uplift_model]
-```
-
-### Chi tiết nhiệm vụ từng DAG:
-1. **`60_reconstruction_e2e`** (Track A Reconstruction):
-   - Đọc dataset CSV, giải mã ngược ra chuỗi Raw Events ($E^*$) đẩy vào MinIO `raw/events_v2/` và nạp bảng điều khiển `biz.*`.
-2. **`20_build_features_dbt`** (dbt 3 Tầng Medallion):
-   - Chạy các model staging $\rightarrow$ intermediate $\rightarrow$ marts trên DuckDB, xây dựng bảng `training_features` (30f) và `serving_features` (tên nghiệp vụ).
-3. **`40_sync_features_to_redis`** (Đồng bộ Online Feature Store - 01:30 AM):
-   - Đọc bảng `marts.serving_features` từ DuckDB, chia đều **32 shards** nạp song song vào Redis (`HSET`), kiểm tra toàn vẹn và thực hiện **Atomic Swap** con trỏ `fs:meta:active_version`.
-4. **`30_train_uplift_model`** (Khung Huấn Luyện MLOps):
-   - Khung huấn luyện DR-Learner đọc `marts.training_dataset`, đánh giá chất lượng và đăng ký mô hình vào MLflow Registry.
-5. **`50_data_quality`** (Kiểm Tra Chất Lượng Dữ Liệu):
-   - Đo lường freshness, tỷ lệ null, độ lệch phân phối và cảnh báo qua Prometheus.
-6. **`10_ingest_stream_to_lake`** (Micro-batch Streaming):
-   - Định kỳ nạp sự kiện realtime từ Kafka vào MinIO.
-7. **`00_bootstrap_lake`** (Khởi tạo Lakehouse):
-   - Nạp ban đầu các bảng nền tảng.
-8. **`99_ops_toolbox`** (Công Cụ Bảo Trì):
-   - Hỗ trợ xóa cache Redis, chạy lại shard lỗi, reload service.
-
----
-
-## 8. Chạy Nhanh Local Không Cần Docker (Test Suite & Solver)
-
-Bạn có thể chạy toàn bộ unit tests và contract tests ngay trên máy tính:
+LightGBM trên macOS cần OpenMP:
 
 ```bash
-# 1. Kích hoạt môi trường ảo
-source .venv/bin/activate       # Trên macOS/Linux
-# .\.venv\Scripts\Activate.ps1   # Trên Windows PowerShell
-
-# 2. Chạy toàn bộ 329 Unit Tests
-pytest tests/ -v
+brew install libomp
 ```
 
----
+Nếu không muốn cài `libomp`, vẫn có thể xác minh model bằng lệnh chạy trong `inference-api` ở bước 4.
 
-## 9. Xử Lý Sự Cố Thường Gặp (Troubleshooting)
+Kiểm tra dbt và Airflow:
 
-### 9.1. Lỗi Docker daemon không chạy
-- **Hiện tượng**: `Cannot connect to the Docker daemon at unix:///...`
-- **Cách xử lý**: Mở ứng dụng **Docker Desktop** và đợi biểu tượng chuyển sang màu xanh lá cây.
-
-### 9.2. Trùng Cổng (Port Conflict)
-- **Hiện tượng**: Lỗi `bind: address already in use` khi khởi động container.
-- **Cách xử lý**: Mở file `.env` và đổi port tương ứng (ví dụ: `POSTGRES_PORT=5433`, `REDIS_PORT=6380`).
-
-### 9.3. Dừng Hệ Thống & Reset Dữ Liệu Sạch
 ```bash
-# Dừng tất cả container:
-make down
-
-# Xóa sạch toàn bộ container và dữ liệu volumes để bắt đầu lại:
-make reset
+docker compose exec -T airflow-webserver bash -lc 'cd /opt/project/dbt && dbt parse --no-version-check'
+docker compose exec -T airflow-webserver airflow dags list-import-errors
 ```
 
----
+Lệnh thứ hai phải trả về `No data found`.
 
-## 📚 Tài Liệu Kỹ Thuật Bổ Trợ
+## Chứng minh artifact giống nhau
 
-- 📊 [docs/DATA_FLOW.md](file:///Users/user/Intern/LZD/docs/DATA_FLOW.md): Sơ đồ luồng dữ liệu chi tiết giữa các tầng.
-- 🔍 [docs/CHI_TIET_AIRFLOW_DAGS_VA_DBT.md](file:///Users/user/Intern/LZD/docs/CHI_TIET_AIRFLOW_DAGS_VA_DBT.md): Chi tiết cấu trúc 8 Airflow DAGs và dbt 3 tầng.
-- 📖 [docs/HUONG_DAN_CHAY_END_TO_END.md](file:///Users/user/Intern/LZD/docs/HUONG_DAN_CHAY_END_TO_END.md): Hướng dẫn vận hành end-to-end.
-- 📐 [docs/PIPELINE_ARCHITECTURE.md](file:///Users/user/Intern/LZD/docs/PIPELINE_ARCHITECTURE.md): Bản vẽ thiết kế kiến trúc kỹ thuật.
+Các SHA-256 chuẩn nằm trong [`models/uplift_voucher_30f/import_manifest.json`](models/uplift_voucher_30f/import_manifest.json):
+
+| Artifact | SHA-256 |
+|---|---|
+| `model_booster.txt` | `41c42a31b484670c085a234b490b9446cadc4a995d7aa5a4f7cedc48a908c1a5` |
+| `feature_contract.json` | `869c7f22ce63988cdd3df2b597ce5cb646dca3402f05d35d8a18652c16615863` |
+| `metadata.json` | `c519f7aaa3b689b3be84c1d8febd27676ac6b600dfef0f80467d995ef6cd2434` |
+| `golden_predictions.csv` | `ae56e6fdd558df1bf24914f68d459dd394bae9f30adb36dc8835b6a145d2ed37` |
+| `decision_threshold.json` | `d1360b1be9d89a8e8a9e534a05f4be44e56940801dca1f379ba4178d498de4d9` |
+
+Loader tự kiểm tra các hash này mỗi lần process API nạp model. Vì vậy health check xanh nhưng `/ready` báo model chưa cấu hình là dấu hiệu cần xem ngay log `inference-api`, không được bỏ qua.
+
+## Dịch vụ và cổng mặc định
+
+| Dịch vụ | URL | Tài khoản local |
+|---|---|---|
+| Inference API | <http://localhost:8000/docs> | Không có |
+| Airflow | <http://localhost:8080> | `admin/admin` |
+| Grafana | <http://localhost:3000> | `admin/admin` |
+| MLflow | <http://localhost:5001> | Không có |
+| Kafka UI | <http://localhost:8082> | Không có |
+| MinIO Console | <http://localhost:9001> | `minioadmin/minioadmin123` |
+| Prometheus | <http://localhost:9090> | Không có |
+| RedisInsight | <http://localhost:5540> | Không có |
+
+## Lệnh vận hành
+
+```bash
+./scripts/stack.sh doctor
+./scripts/stack.sh status
+./scripts/stack.sh health
+./scripts/stack.sh logs inference-api
+./scripts/stack.sh up
+./scripts/stack.sh up-all
+./scripts/stack.sh down              # dừng, giữ volume
+./scripts/stack.sh reset             # xóa toàn bộ volume và log
+```
+
+Trên Windows dùng các lệnh tương ứng trong `scripts/stack.ps1`.
+
+## Giới hạn tái lập
+
+Repo bảo đảm **tái lập kết quả suy luận** bằng commit mã nguồn, model hash, feature order, threshold và sentinel. Đây chưa phải build byte-for-byte hoàn toàn vì một số dependency Python dùng khoảng phiên bản và một số image dịch vụ được tham chiếu bằng tag. Để phát hành production nghiêm ngặt hơn cần:
+
+1. Tạo release tag/commit chứa toàn bộ thay đổi.
+2. Tạo dependency lock file với hash.
+3. Pin mọi Docker image theo digest.
+4. Lưu `docker compose config`, image digest và kiến trúc CPU cùng release.
+5. Dùng snapshot dữ liệu đầu vào bất biến thay vì dữ liệu phát sinh theo thời gian.
+
+Không nên tuyên bố hai lần chạy “y hệt” chỉ vì container đều healthy. Chỉ coi là đạt khi hash artifact khớp, sentinel khớp và cùng input cho cùng uplift score.
+
+## Khắc phục lỗi nhanh
+
+- `git lfs pull` chưa chạy: CSV trong `data/` chỉ là pointer và DAG bootstrap fail.
+- `/ready` chưa ready: chưa có active feature version hoặc model không hợp lệ.
+- `model_not_configured`: kiểm tra mount `./models:/opt/project/models:ro` và hash.
+- Port đã dùng: đổi port tương ứng trong `.env`, không sửa port nội bộ container.
+- macOS test LightGBM fail vì `libomp.dylib`: chạy `brew install libomp` hoặc test model trong container.
+- Muốn dựng sạch hoàn toàn: sao lưu dữ liệu cần giữ rồi chạy `docker compose --profile all down -v --remove-orphans`.
+
+## Bảo mật
+
+Credential trong `.env.example` chỉ phục vụ local development. Khi triển khai thật phải thay mật khẩu PostgreSQL/MinIO/Grafana/Airflow, sinh Fernet key mới, đặt reverse proxy/TLS, giới hạn network và quản lý secret ngoài Git.

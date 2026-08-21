@@ -14,7 +14,7 @@ Module nay dua thu muc do vao ba noi, moi noi mot vai tro khac han:
     3. MinIO      <- artifact      (event tho)
 
 Postgres di TRUOC vi no la noi duy nhat co rang buoc that:
-`ck_scope_55`, `ck_no_label`, FK toi `reconstruction_target`, va trigger chan
+`ck_scope_30`, `ck_no_label`, FK toi `reconstruction_target`, va trigger chan
 UPDATE/DELETE. Nap DuckDB truoc roi Postgres do se de lai warehouse chua du
 lieu ma control plane da tu choi — trang thai khong the dieu tra duoc.
 
