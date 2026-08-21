@@ -211,7 +211,43 @@ def data_quality():
         return result
 
     @task
-    def summarize(consistency: dict, volume: dict, streaming: dict) -> dict:
+    def check_compatibility(freshness: dict, **context) -> dict:
+        """Block a green DQ result when the serving tuple is incompatible."""
+        from lzd_pipeline.common import audit
+        from lzd_pipeline.features.compatibility import check_model_feature_compatibility
+        from lzd_pipeline.features.online_store import OnlineFeatureStore
+        from lzd_pipeline.features.spec import load_feature_spec
+        from lzd_pipeline.serving.model_loader import get_model
+
+        version = freshness.get("version")
+        if not version:
+            return {"compatible": False, "reasons": ["no active feature version"]}
+        store = OnlineFeatureStore()
+        spec = load_feature_spec()
+        model = get_model(force_reload=True)
+        if not model.is_configured:
+            result = {"compatible": False, "reasons": ["model is not configured"]}
+        else:
+            report = check_model_feature_compatibility(
+                model_features=model.feature_order,
+                model_feature_spec_version=model.feature_spec_version,
+                model_realtime_semantics_version=model.realtime_semantics_version,
+                requires_realtime=model.requires_realtime,
+                spec=spec,
+                active_status=store.get_version_status(version),
+            )
+            result = report.as_dict()
+        audit.record_dq(
+            context["ds"], "model_feature_compatibility", f"redis:{version}",
+            bool(result["compatible"]), observed=float(bool(result["compatible"])),
+            threshold=1.0, details=result,
+        )
+        return result
+
+    @task
+    def summarize(
+        consistency: dict, volume: dict, streaming: dict, compatibility: dict
+    ) -> dict:
         """Gom ket qua - task nay fail neu co check nghiem trong that bai."""
         from lzd_pipeline.common.logging_setup import get_logger
 
@@ -222,6 +258,8 @@ def data_quality():
         if not volume.get("skipped") and not volume.get("passed", True):
             failures.append(
                 f"volume: redis={volume.get('online_keys')} vs duckdb={volume.get('offline_rows')}")
+        if not compatibility.get("compatible", False):
+            failures.append(f"compatibility: {compatibility.get('reasons')}")
 
         result = {"failures": failures, "streaming_ok": streaming.get("passed")}
         if failures:
@@ -231,7 +269,10 @@ def data_quality():
         return result
 
     fresh = check_freshness()
-    summarize(check_consistency(fresh), check_volume(fresh), check_streaming())
+    summarize(
+        check_consistency(fresh), check_volume(fresh), check_streaming(),
+        check_compatibility(fresh),
+    )
 
 
 data_quality()

@@ -105,7 +105,8 @@ def prepare_sync(logical_date: str, shards: int | None = None) -> dict[str, Any]
             f"Bang offline '{offline.table}' chua ton tai. Chay DAG 20_build_features_dbt truoc."
         )
 
-    missing = load_feature_spec().validate_columns(offline.columns(), scope="batch")
+    spec = load_feature_spec()
+    missing = spec.validate_columns(offline.columns(), scope="batch")
     if missing:
         raise RuntimeError(
             f"Bang {offline.table} thieu cot so voi feature_spec.yml: {missing[:10]}"
@@ -129,6 +130,11 @@ def prepare_sync(logical_date: str, shards: int | None = None) -> dict[str, Any]
     checksum = offline.checksum(dt=dt)
 
     audit.open_sync(version, dt, offline.table, shards, expected_rows)
+    from lzd_pipeline.features.compatibility import (
+        REALTIME_SEMANTICS_VERSION,
+        feature_schema_hash,
+    )
+
     online.set_version_status(
         version,
         status="IN_PROGRESS",
@@ -137,6 +143,10 @@ def prepare_sync(logical_date: str, shards: int | None = None) -> dict[str, Any]
         checksum=checksum,
         total_shards=shards,
         started_at=int(time.time()),
+        feature_spec_version=(spec.offline.get("selected_feature_set_id")
+                              or f"feature_spec_v{spec.version}"),
+        schema_hash=feature_schema_hash(spec),
+        realtime_semantics_version=REALTIME_SEMANTICS_VERSION,
     )
 
     log.info(
@@ -168,7 +178,11 @@ def sync_shard(logical_date: str, shard_id: int, shards: int | None = None) -> d
 
     # Idempotency: shard da xong o lan chay truoc -> bo qua ngay
     if online.is_shard_done(version, shard_id):
-        audit.record_shard(version, shard_id, "DONE", rows_written=0)
+        # Rerun cung version khong duoc ghi de so dong cua lan sync goc ve 0.
+        # Van record attempt/status de audit biet shard da duoc xem xet.
+        audit.record_shard(
+            version, shard_id, "DONE", rows_written=0, preserve_rows=True
+        )
         slog.info("shard da xong tu truoc, bo qua", extra={"event": "shard_skipped"})
         return {"shard_id": shard_id, "rows": 0, "skipped": True}
 
@@ -291,7 +305,11 @@ def validate_sync(logical_date: str, sample_size: int | None = None) -> dict[str
         "passed": passed,
     }
 
-    audit.set_sync_status(version, "VALIDATING", checksum=checksum_now, validation_report=report)
+    final_status = "VALIDATED" if passed else "FAILED"
+    online.set_version_status(version, status=final_status,
+                              validation_passed=str(passed).lower())
+    audit.set_sync_status(version, final_status, checksum=checksum_now,
+                          validation_report=report, written_rows=online_rows)
     audit.record_dq(dt, "online_offline_consistency", f"redis:{version}", passed,
                     observed=mismatch_ratio, threshold=tolerance, details=report)
     push_batch_metrics(
@@ -329,6 +347,14 @@ def activate_version(logical_date: str) -> dict[str, Any]:
     online = OnlineFeatureStore()
 
     status = online.get_version_status(version)
+    expected_shards = int(float(status.get("total_shards") or 0))
+    completed_shards = int(online.r.scard(online.spec.meta_key(version, "shards")))
+    if status.get("status") != "VALIDATED" or status.get("validation_passed") != "true":
+        raise RuntimeError(f"refuse activation of unvalidated feature version {version}")
+    if expected_shards <= 0 or completed_shards != expected_shards:
+        raise RuntimeError(
+            f"refuse activation: completed shards {completed_shards}/{expected_shards}"
+        )
     started_at = float(status.get("started_at") or time.time())
     written_rows = int(float(status.get("rows_written") or 0))
 

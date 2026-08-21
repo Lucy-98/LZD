@@ -34,8 +34,10 @@ tay, khong phai cua DAG hang tuan.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from lzd_pipeline.common.config import get_settings
@@ -109,6 +111,43 @@ def _failed_sanity(client, run_id: str) -> list[str]:
     )
 
 
+def _deployment_package_gate(client, run_id: str) -> tuple[bool, str]:
+    """Verify deploy metadata and active feature compatibility before alias swap."""
+    try:
+        manifest_path = Path(client.download_artifacts(run_id, "model/import_manifest.json"))
+        contract_path = Path(client.download_artifacts(run_id, "model/feature_contract.json"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected_contract_hash = (manifest.get("sha256") or {}).get("feature_contract.json")
+        actual_contract_hash = hashlib.sha256(contract_path.read_bytes()).hexdigest()
+        if not expected_contract_hash or expected_contract_hash != actual_contract_hash:
+            return False, "feature contract checksum missing or invalid"
+
+        from lzd_pipeline.features.compatibility import check_model_feature_compatibility
+        from lzd_pipeline.features.online_store import OnlineFeatureStore
+        from lzd_pipeline.features.spec import load_feature_spec
+        from lzd_pipeline.serving.feature_contract import load_contract
+
+        contract = load_contract(contract_path)
+        compatibility = manifest.get("compatibility") or {}
+        store = OnlineFeatureStore()
+        version = store.get_active_version()
+        if not version:
+            return False, "Redis has no active feature version"
+        report = check_model_feature_compatibility(
+            model_features=contract.order,
+            model_feature_spec_version=str(compatibility.get("feature_spec_version", "")),
+            model_realtime_semantics_version=str(
+                compatibility.get("realtime_semantics_version", "")
+            ),
+            requires_realtime=bool(compatibility.get("requires_realtime", False)),
+            spec=load_feature_spec(),
+            active_status=store.get_version_status(version),
+        )
+        return report.compatible, "; ".join(report.reasons)
+    except Exception as exc:
+        return False, f"deployment package gate failed: {exc}"
+
+
 def promote_if_better(
     run_id: str,
     *,
@@ -144,6 +183,13 @@ def promote_if_better(
     if new_score is None:
         report["reason"] = f"run khong co metric {metric!r}"
         log.warning("khong promote - thieu metric",
+                    extra={"event": "promote_rejected", **report})
+        return report
+
+    package_ok, package_reason = _deployment_package_gate(client, run_id)
+    if not package_ok:
+        report["reason"] = package_reason
+        log.warning("khong promote - deployment package khong tuong thich",
                     extra={"event": "promote_rejected", **report})
         return report
 

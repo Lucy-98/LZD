@@ -6,6 +6,11 @@
   "feature_count": 30,
   "decision_threshold": 0.0070347543,
   "run_mode": "full",
+  "compatibility": {
+    "feature_spec_version": "fs_2026_08_v4",
+    "requires_realtime": false,
+    "realtime_semantics_version": "event_time_5m_1h_dedup_v1"
+  },
   "sentinel": {
     "input": "feature_contract_defaults",
     "expected_uplift": 0.004436201035688247,

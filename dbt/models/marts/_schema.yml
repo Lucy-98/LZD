@@ -5,45 +5,45 @@ models:
     description: "Gold 1: exactly 30 f* columns reconstructed for model training."
     columns:
       - name: user_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: dt
-        tests: [not_null]
+        data_tests: [not_null]
       - name: feature_ts
-        tests: [not_null]
+        data_tests: [not_null]
       - name: f1
-        tests: [not_null]
+        data_tests: [not_null]
       - name: f35
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: serving_features
-    description: "Gold 2: 41 business-named batch features synced to Redis."
+    description: "Gold 2: 71 batch fields synced to Redis, including the immutable 30F vector."
     columns:
       - name: user_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: dt
-        tests: [not_null]
+        data_tests: [not_null]
       - name: feature_ts
-        tests: [not_null]
+        data_tests: [not_null]
       - name: price_sensitivity_segment
-        tests: [not_null]
+        data_tests: [not_null]
       - name: user_tenure_days
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: training_dataset
-    description: "Training view: Gold-1 features plus label/is_treat/split metadata."
+    description: "PIT training view: 71 batch + 12 realtime fields plus outcomes."
     columns:
       - name: user_id
-        tests: [not_null]
+        data_tests: [not_null]
       - name: label
-        tests:
+        data_tests:
           - not_null
           - accepted_values: {values: [0, 1], quote: false}
       - name: is_treat
-        tests:
+        data_tests:
           - not_null
           - accepted_values: {values: [0, 1], quote: false}
       - name: split
-        tests:
+        data_tests:
           - accepted_values: {values: ['train'], quote: true}
 
   - name: feat_user_selected_serving
@@ -53,10 +53,10 @@ models:
     description: "Offline PIT mirror for evaluation only; realtime serving uses Redis rt:u:*."
     columns:
       - name: user_id
-        tests: [not_null]
+        data_tests: [not_null]
 
   - name: feat_user_behaviour
     description: "Legacy behaviour mart retained for compatibility."
     columns:
       - name: user_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]

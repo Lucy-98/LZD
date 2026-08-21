@@ -101,6 +101,29 @@ groups:
         annotations:
           summary: "Cache miss > 5% - nhieu user chua co feature tren Redis"
 
+      - alert: ModelFeatureCompatibilityFailure
+        expr: increase(lzd_compatibility_failures_total[10m]) > 0
+        for: 0m
+        labels: {severity: critical, layer: serving}
+        annotations:
+          summary: "Model/feature/spec tuple khong tuong thich"
+
+      - alert: RealtimeReplayRateHigh
+        expr: |
+          sum(rate(lzd_realtime_events_deduplicated_total[10m]))
+            / clamp_min(sum(rate(lzd_realtime_events_applied_total[10m])), 0.001) > 0.05
+        for: 5m
+        labels: {severity: warning, layer: ingestion}
+        annotations:
+          summary: "Kafka replay/dedup rate > 5%"
+
+      - alert: RealtimeLateDropDetected
+        expr: increase(lzd_realtime_events_late_total{action=~"dropped|future_dropped"}[10m]) > 0
+        for: 0m
+        labels: {severity: warning, layer: ingestion}
+        annotations:
+          summary: "Realtime event bi loai boi watermark"
+
   # ======================================================================
   # Ha tang
   # ======================================================================

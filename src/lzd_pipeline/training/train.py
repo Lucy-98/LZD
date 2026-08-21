@@ -24,7 +24,7 @@ file nay train tren dung tap cot ma `feature_spec.yml` khai bao.
 
 ★ RUN NAY PHUC VU DUOC — NHUNG KHONG TU DONG THAY MODEL CU
 --------------------------------------------------------------------------
-Moi run dang ky deu kem `feature_contract.json` mo ta dung 62 cot no an
+Moi run dang ky deu kem `feature_contract.json` mo ta dung 83 cot hien tai
 (`training/contract.py`), nen `MlflowUpliftModel` nap duoc thang tu registry.
 Con viec no CO duoc phuc vu hay khong la quyet dinh rieng cua
 `training/promote.py`: alias `Production` chi doi khi qua tu kiem va hon
@@ -33,6 +33,7 @@ Con viec no CO duoc phuc vu hay khong la quyet dinh rieng cua
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import time
@@ -220,15 +221,52 @@ def run_training(
             import tempfile
 
             with tempfile.TemporaryDirectory() as tmp:
-                (Path(tmp) / "model_booster.txt").write_text(
+                artifact_dir = Path(tmp)
+                (artifact_dir / "model_booster.txt").write_text(
                     model.booster_text(), encoding="utf-8")
-                contract.write_contract(
-                    contract.build_contract(
+                model_contract = contract.build_contract(
                         train_df, spec,
                         version=f"{dt}-{run.info.run_id[:8]}",
                         run_id=run.info.run_id,
-                    ),
-                    tmp,
+                )
+                contract.write_contract(model_contract, tmp)
+                model_order = [item["ten"] for item in model_contract["dac_trung"]]
+                default_row = {
+                    item["ten"]: item["gia_tri_mac_dinh"]
+                    for item in model_contract["dac_trung"]
+                }
+                sentinel_score = float(
+                    predict_uplift(model, [[default_row[n] for n in model_order]])[0]
+                )
+                hashes = {}
+                for name in ("model_booster.txt", "feature_contract.json"):
+                    hashes[name] = hashlib.sha256((artifact_dir / name).read_bytes()).hexdigest()
+                (artifact_dir / "import_manifest.json").write_text(
+                    json.dumps({
+                        "source_repository": "lzd_pipeline.training.train",
+                        "source_commit": run.info.run_id,
+                        "model_name": MODEL_NAME,
+                        "model_type": "DRLearner-LightGBM",
+                        "feature_count": len(model_order),
+                        "decision_threshold": settings.uplift_threshold,
+                        "sentinel": {
+                            "input": "feature_contract_defaults",
+                            "expected_uplift": sentinel_score,
+                            "absolute_tolerance": 1e-12,
+                        },
+                        "compatibility": {
+                            "feature_spec_version": (
+                                spec.offline.get("selected_feature_set_id")
+                                or f"feature_spec_v{spec.version}"
+                            ),
+                            "requires_realtime": any(
+                                name in spec.realtime_names for name in model_order
+                            ),
+                            "realtime_semantics_version": "event_time_5m_1h_dedup_v1",
+                        },
+                        "sha256": hashes,
+                    }, indent=2),
+                    encoding="utf-8",
                 )
                 mlflow.log_artifacts(tmp, artifact_path="model")
 

@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import pendulum
 from airflow.decorators import dag, task
+from airflow.exceptions import AirflowSkipException
 from airflow.models import Param
+from airflow.utils.trigger_rule import TriggerRule
 
 from lzd_utils.callbacks import DEFAULT_ARGS
 
@@ -44,9 +46,10 @@ DEFAULT_OUTPUT_DIR = "/opt/lakehouse/track_a"
     doc_md=DOC,
     params={
         "mode": Param(
-            "contract", type="string", enum=["contract", "backfill"],
+            "backfill", type="string", enum=["contract", "backfill"],
             description="contract = dry-run 1 target, khong cham ha tang. "
-                        "backfill = train split that + GHI Postgres/DuckDB/MinIO.",
+                        "backfill = train split that + GHI Postgres/DuckDB/MinIO. "
+                        "Mac dinh backfill de DAG 20 co du input sau khi trigger.",
         ),
         "row_limit": Param(
             5000, type="integer",
@@ -76,7 +79,7 @@ def reconstruction_e2e():
         from lzd_pipeline.reconstruction.e2e import run_demo
 
         if context["params"]["mode"] != "contract":
-            return {"skipped": "mode != contract"}
+            raise AirflowSkipException("mode != contract")
 
         result = run_demo()
         summary = result.summary()
@@ -85,7 +88,12 @@ def reconstruction_e2e():
             raise RuntimeError(f"reconstruction gates failed: {summary['gates']}")
         return summary
 
-    @task(pool="duckdb_writer", execution_timeout=pendulum.duration(hours=6))
+    @task(
+        pool="duckdb_writer",
+        execution_timeout=pendulum.duration(hours=6),
+        # contract_dry_run bi SKIPPED la trang thai dung khi mode=backfill.
+        trigger_rule=TriggerRule.ALL_DONE,
+    )
     def backfill_train_split(**context) -> dict:
         """Track A tren train split THAT -> artifact -> ha tang.
 
@@ -105,7 +113,7 @@ def reconstruction_e2e():
 
         params = context["params"]
         if params["mode"] != "backfill":
-            return {"skipped": "mode != backfill"}
+            raise AirflowSkipException("mode != backfill")
 
         log = get_logger(__name__)
         limit = int(params["row_limit"]) or None
@@ -134,7 +142,9 @@ def reconstruction_e2e():
             )
 
         if not params["land"]:
-            return {"manifest": manifest, "landed": "SKIPPED (land=False)"}
+            raise AirflowSkipException(
+                "land=False: artifact da duoc tao nhung KHONG ghi Postgres/DuckDB/MinIO"
+            )
 
         with duckdb_writer() as con:
             report = land_track_a(output_dir, params["dt"], con=con)
@@ -154,7 +164,7 @@ def reconstruction_e2e():
 
         params = context["params"]
         if params["mode"] != "backfill" or not params["land"]:
-            return {"skipped": "khong land thi khong co gi de kiem"}
+            raise AirflowSkipException("khong land thi khong co source de kiem")
 
         with duckdb_writer() as con:
             return assert_reconstruction_sources_ready(con)

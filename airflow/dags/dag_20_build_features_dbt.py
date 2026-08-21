@@ -2,8 +2,8 @@
 
 Track A must first land raw/events_v2 and biz.*. This DAG then builds:
   - Gold 1 training_features: exactly 30 f* columns;
-  - training_dataset view: the same 30 plus label/is_treat/split;
-  - Gold 2 serving_features: exactly 41 business-named batch keys.
+  - training_dataset view: 71 batch + 12 realtime PIT + label/is_treat/split;
+  - Gold 2 serving_features: 71 batch fields, including the immutable 30F vector.
 
 Persisted Track B app events contribute daily behaviour aggregates. The stream
 consumer still writes Redis rt:u:* directly; FastAPI merges that realtime
@@ -22,6 +22,7 @@ from lzd_utils.callbacks import DEFAULT_ARGS
 DOC = __doc__
 
 DBT_DIR = "/opt/project/dbt"
+TRACK_A_EVENTS_GLOB = "s3://lakehouse/raw/events_v2/**/*.parquet"
 DBT_ENV = {
     "DBT_PROFILES_DIR": DBT_DIR,
     "DUCKDB_PATH": "{{ var.value.get('duckdb_path', '/opt/lakehouse/warehouse.duckdb') }}",
@@ -45,6 +46,37 @@ DBT_ENV = {
     },
 )
 def build_features_dbt():
+
+    @task(pool="duckdb_writer", retries=0)
+    def validate_reconstruction_inputs() -> dict:
+        """Fail fast neu Track A chua land du du lieu cho hai Gold marts.
+
+        `dbt run` co the build thanh cong vai model truoc khi cham vao
+        stg_events_v2. Kiem tra tai day giup bao loi dependency ro rang va
+        tranh mot lan build do dang chi vi DAG 60 chay mode=contract/land=False.
+        """
+        from lzd_pipeline.common.clients import duckdb_writer
+        from lzd_pipeline.reconstruction.warehouse import (
+            assert_reconstruction_sources_ready,
+        )
+
+        with duckdb_writer() as con:
+            counts = assert_reconstruction_sources_ready(con)
+            event_files = int(
+                con.execute(
+                    f"SELECT count(*) FROM glob('{TRACK_A_EVENTS_GLOB}')"
+                ).fetchone()[0]
+            )
+
+        if event_files == 0:
+            raise RuntimeError(
+                f"Track A chua san sang: khong co file {TRACK_A_EVENTS_GLOB}. "
+                "Trigger DAG 60_reconstruction_e2e voi "
+                "mode=backfill, land=true, doi task assert_sources_ready thanh cong, "
+                "roi chay lai DAG 20."
+            )
+
+        return {"event_files": event_files, "biz_row_counts": counts}
 
     # ------------------------------------------------------------------
     # dbt deps/run/test chay bang Bash de log cua dbt hien nguyen ven
@@ -122,6 +154,8 @@ def build_features_dbt():
 
         serving_cols = offline.columns(spec.offline["serving_table"])
         missing_serving = spec.validate_columns(serving_cols, scope="batch")
+        training_cols = offline.columns(spec.offline["training_table"])
+        missing_training = spec.validate_columns(training_cols, scope="all")
 
         if missing_serving:
             log.error(
@@ -132,6 +166,12 @@ def build_features_dbt():
                     "missing_columns": missing_serving,
                 },
             )
+
+        if missing_training:
+            raise AssertionError(
+                f"{spec.offline['training_table']} thieu {len(missing_training)} cot "
+                f"batch/realtime PIT: {missing_training[:10]}..."
+            )
             raise AssertionError(
                 f"{spec.offline['serving_table']} thieu {len(missing_serving)} cot: "
                 f"{missing_serving[:10]}..."
@@ -139,7 +179,8 @@ def build_features_dbt():
 
         log.info("mart phu hop feature_spec.yml",
                  extra={"event": "spec_validated", "columns": len(serving_cols)})
-        return {"columns": len(serving_cols), "status": "ok"}
+        return {"serving_columns": len(serving_cols),
+                "training_columns": len(training_cols), "status": "ok"}
 
     # ------------------------------------------------------------------
     # Ket qua dbt test -> Postgres ops.dq_result + Pushgateway
@@ -289,7 +330,8 @@ def build_features_dbt():
     # profile_features va publish_dbt_results deu la ALL_DONE: du dbt_test co
     # fail thi so lieu van len duoc Grafana - do la luc can nhin nhat.
     contract = assert_spec_contract()
-    dbt_debug >> dbt_run >> contract >> dbt_test >> publish_dbt_results() >> profile_features()
+    inputs_ready = validate_reconstruction_inputs()
+    inputs_ready >> dbt_debug >> dbt_run >> contract >> dbt_test >> publish_dbt_results() >> profile_features()
 
 
 build_features_dbt()

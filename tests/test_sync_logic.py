@@ -143,6 +143,59 @@ def test_realtime_bucket_cleans_stale_cells_on_write(store):
             assert int(suffix) >= now - 3600
 
 
+def test_realtime_event_replay_is_applied_exactly_once(store):
+    now = 1_800_000_000.0
+    assert store.apply_realtime_event(
+        "event-1", "U1", now - 30, {"rt_events_1h": 1}, now=now
+    )
+    assert not store.apply_realtime_event(
+        "event-1", "U1", now - 30, {"rt_events_1h": 1}, now=now
+    )
+    raw = store.r.hgetall("rt:u:U1")
+    aggregated = store.aggregate_realtime(raw, now=now)
+    assert aggregated["rt_events_1h"] == 1.0
+    assert float(raw["rt_last_event_ts"]) == now - 30
+
+
+def test_realtime_event_uses_event_time_bucket(store):
+    now = 1_800_000_000.0
+    event_ts = now - 601
+    store.apply_realtime_event(
+        "event-late", "U1", event_ts, {"rt_events_1h": 2}, now=now
+    )
+    bucket = int(event_ts // 300) * 300
+    assert store.r.hget("rt:u:U1", f"rt_events_1h|{bucket}") == "2"
+
+
+def test_realtime_dedup_marker_has_longer_ttl_than_overlay(store):
+    now = 1_800_000_000.0
+    store.apply_realtime_event(
+        "event-ttl", "U1", now, {"rt_events_1h": 1},
+        now=now, ttl=60, dedup_ttl=120,
+    )
+    assert 0 < store.r.ttl("rt:u:U1") <= 60
+    assert store.r.ttl("rt:dedup:event-ttl") > store.r.ttl("rt:u:U1")
+
+
+def test_realtime_session_length_is_replay_safe_and_event_time_based(store):
+    now = 1_800_000_000.0
+    store.apply_realtime_event(
+        "session-1", "U1", now - 100, {"rt_events_1h": 1},
+        session_id="S1", now=now,
+    )
+    store.apply_realtime_event(
+        "session-2", "U1", now - 40, {"rt_events_1h": 1},
+        session_id="S1", now=now,
+    )
+    store.apply_realtime_event(
+        "session-2", "U1", now - 40, {"rt_events_1h": 1},
+        session_id="S1", now=now,
+    )
+    raw = store.r.hgetall("rt:u:U1")
+    assert float(raw["rt_session_len_sec"]) == 60.0
+    assert store.aggregate_realtime(raw, now=now)["rt_events_1h"] == 2.0
+
+
 # --------------------------------------------------------------- mget_raw
 def test_mget_raw_tra_ve_dung_so_va_thu_tu(store):
     store.write_rows("v1", [

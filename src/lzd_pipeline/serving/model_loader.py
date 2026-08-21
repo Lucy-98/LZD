@@ -1,13 +1,9 @@
-"""Inference model boundary.
+"""Inference model boundary for the immutable bundled 30F artifact.
 
-The repository currently ships no bundled uplift artifact. The real model
-will be supplied later from the external training repo and must match the
-30-feature contract before this boundary is enabled.
-
-This module keeps the API honest: it does not fall back to a synthetic score
-or any legacy local artifact. Until a real model is wired in, the serving API
-can still exercise Redis merge, realtime overlay and logging, but every
-decision remains `NO_DECISION`.
+The repository ships a LightGBM text booster plus manifest, feature contract
+and golden sentinel under ``models/uplift_voucher_30f``. Loading is
+fail-closed: an absent or invalid artifact becomes ``UnconfiguredModel`` and
+readiness/decisions cannot silently use a synthetic score.
 """
 from __future__ import annotations
 
@@ -41,6 +37,9 @@ class UpliftModel(ABC):
     version: str = "unconfigured"
     feature_order: list[str] = []
     expected_feature_count: int = EXPECTED_FEATURE_COUNT
+    feature_spec_version: str = ""
+    realtime_semantics_version: str = ""
+    requires_realtime: bool = False
 
     @abstractmethod
     def predict_uplift(self, feature_rows: Sequence[dict[str, Any]]) -> list[float]:
@@ -56,7 +55,7 @@ class UpliftModel(ABC):
 
 
 class UnconfiguredModel(UpliftModel):
-    """Placeholder until the external 30F artifact is installed."""
+    """Fail-closed fallback when the bundled 30F artifact cannot be verified."""
 
     version = "unconfigured-30f-pending"
     expected_feature_count = EXPECTED_FEATURE_COUNT
@@ -77,6 +76,9 @@ class LightGBMUpliftModel(UpliftModel):
         self.booster = None
         self.version = "unloaded"
         self.feature_order: list[str] = []
+        self.feature_spec_version = ""
+        self.realtime_semantics_version = ""
+        self.requires_realtime = False
 
     @property
     def is_configured(self) -> bool:
@@ -86,8 +88,9 @@ class LightGBMUpliftModel(UpliftModel):
         root = os.path.abspath(self.model_dir)
         with open(os.path.join(root, "import_manifest.json"), encoding="utf-8") as fh:
             manifest = json.load(fh)
-        if manifest.get("feature_count") != EXPECTED_FEATURE_COUNT:
-            raise ValueError("model manifest feature_count must be 30")
+        feature_count = int(manifest.get("feature_count", 0))
+        if feature_count <= 0:
+            raise ValueError("model manifest feature_count must be positive")
         for name, expected in manifest.get("sha256", {}).items():
             path = os.path.join(root, name)
             with open(path, "rb") as fh:
@@ -100,15 +103,28 @@ class LightGBMUpliftModel(UpliftModel):
         import lightgbm as lgb
 
         manifest = self._verify_manifest()
+        self.expected_feature_count = int(manifest["feature_count"])
+        compatibility = manifest.get("compatibility") or {}
+        self.feature_spec_version = str(
+            compatibility.get("feature_spec_version", "fs_2026_08_v4")
+        )
+        self.realtime_semantics_version = str(
+            compatibility.get("realtime_semantics_version", "")
+        )
+        self.requires_realtime = bool(compatibility.get("requires_realtime", False))
         contract_path = os.path.join(self.model_dir, "feature_contract.json")
         self.contract = load_contract(contract_path)
         self.feature_order = list(self.contract.order)
-        if len(self.feature_order) != EXPECTED_FEATURE_COUNT:
-            raise ValueError(f"model contract has {len(self.feature_order)} features, expected 30")
-        self.booster = lgb.Booster(model_file=os.path.join(self.model_dir, "model_booster.txt"))
-        if self.booster.num_feature() != EXPECTED_FEATURE_COUNT:
+        if len(self.feature_order) != self.expected_feature_count:
             raise ValueError(
-                f"LightGBM has {self.booster.num_feature()} features, expected 30"
+                f"model contract has {len(self.feature_order)} features, "
+                f"expected {self.expected_feature_count}"
+            )
+        self.booster = lgb.Booster(model_file=os.path.join(self.model_dir, "model_booster.txt"))
+        if self.booster.num_feature() != self.expected_feature_count:
+            raise ValueError(
+                f"LightGBM has {self.booster.num_feature()} features, "
+                f"expected {self.expected_feature_count}"
             )
         sentinel = manifest.get("sentinel") or {}
         if sentinel:

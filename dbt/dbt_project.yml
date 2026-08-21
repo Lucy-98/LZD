@@ -89,7 +89,7 @@ models:
         +tags: ["reconstruction"]
 
 # Chay `dbt test` sau moi lan build - ket qua duoc DAG doc va ghi vao ops.dq_result
-tests:
+data_tests:
   lzd_uplift:
     +store_failures: true
     +schema: dq_failures

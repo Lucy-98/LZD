@@ -73,6 +73,14 @@ def test_dag_20_exclude_duong_reconstruction():
     assert body.count("DBT_SELECTOR") >= 3   # 1 dinh nghia + 2 lan dung
 
 
+def test_dag_20_fail_fast_khi_track_a_chua_land():
+    body = DAG_20.read_text(encoding="utf-8")
+    assert "def validate_reconstruction_inputs()" in body
+    assert "assert_reconstruction_sources_ready(con)" in body
+    assert "raw/events_v2/**/*.parquet" in body
+    assert "inputs_ready >> dbt_debug >> dbt_run" in body
+
+
 # ===========================================================================
 # 2 · dbt_project.yml phai co tag
 # ===========================================================================

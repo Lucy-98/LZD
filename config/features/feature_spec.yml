@@ -33,7 +33,7 @@ online:
   realtime_key_template: "rt:u:{user_id}"
   meta_prefix: "fs:meta"
   stale_ttl_seconds: 86400
-  realtime_ttl_seconds: 172800   # 48 gio: giu context hanh vi xuyen phien
+  realtime_ttl_seconds: 3600     # khop REALTIME_OVERLAY_TTL_SECONDS/runtime
 
 # --------------------------------------------------------------------------
 # 1) BATCH FEATURES - Tên nghiệp vụ, tinh hang ngay tu warehouse,
@@ -247,7 +247,7 @@ batch_features:
 
 # --------------------------------------------------------------------------
 # 2) REALTIME FEATURES - stream consumer ghi Redis overlay
-#    TTL 48 gio.
+#    TTL 1 gio, khop cua so truot runtime va dbt.
 # --------------------------------------------------------------------------
 realtime_features:
   # Cua so 5 phut (In-Session Intent)

@@ -115,6 +115,15 @@ class FeatureStoreConfig:
     versions_to_keep: int = field(default_factory=lambda: _env_int("FEATURE_VERSIONS_TO_KEEP", 2))
     stale_ttl_seconds: int = field(default_factory=lambda: _env_int("FEATURE_STALE_TTL_SECONDS", 86400))
     realtime_ttl_seconds: int = field(default_factory=lambda: _env_int("REALTIME_OVERLAY_TTL_SECONDS", 3600))
+    realtime_dedup_ttl_seconds: int = field(
+        default_factory=lambda: _env_int("REALTIME_DEDUP_TTL_SECONDS", 86400)
+    )
+    realtime_allowed_lateness_seconds: int = field(
+        default_factory=lambda: _env_int("REALTIME_ALLOWED_LATENESS_SECONDS", 600)
+    )
+    realtime_future_skew_seconds: int = field(
+        default_factory=lambda: _env_int("REALTIME_FUTURE_SKEW_SECONDS", 300)
+    )
     validation_sample: int = field(default_factory=lambda: _env_int("FEATURE_VALIDATION_SAMPLE", 500))
 
 

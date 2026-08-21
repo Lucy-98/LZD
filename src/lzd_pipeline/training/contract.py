@@ -17,15 +17,14 @@ kho phat hien nhat. Nen hop dong duoc log CUNG RUN voi booster.
 Hai model an hai vector khac nhau — day la su that ve du lieu, khong phai
 thu de dung nhat:
 
-    notebook  76 cot = 55 batch + 7 fe_* service tu tinh + 14 dien mac dinh
-    train.py  62 cot = 55 batch + 7 rt_* realtime          (khong co cot bu)
+    baseline bundle = 30 cot f* bat bien
+    train.py         = 71 batch + 12 realtime PIT theo feature_spec hien tai
 
-Trung hop kho chiu: notebook cung dem duoc so 62 ("62/76 cot lay tu redis"),
-nhung 62 do la 55+7 fe_*, con 62 o day la 55+7 rt_*. Hai tap KHAC NHAU. Dung
-doi chieu hai con so nay voi nhau.
+Hai model co contract rieng; khong suy dien compatibility tu so luong cot.
+Deployment gate doi chieu ordered contract va feature-spec metadata.
 
 Vi moi cot deu doc thang tu Redis nen hop dong nay khong co cot dan xuat va
-khong co cot dien mac dinh: `build_row()` chi viec lay dung 62 gia tri ma
+khong co cot dien mac dinh: `build_row()` chi viec lay dung 83 gia tri ma
 `spec.merge()` da tron san (batch tu `fs:`, realtime tu `rt:`).
 
 ★ GIA TRI MAC DINH LA TRUNG VI, KHONG PHAI 0

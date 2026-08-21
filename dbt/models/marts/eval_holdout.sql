@@ -41,7 +41,7 @@
 
 with serving as (
 
-    select * from {{ ref('feat_user_serving') }}
+    select * from {{ ref('serving_features') }}
     where dt = date '{{ holdout_dt }}'
 
 ),
@@ -68,10 +68,15 @@ select
     '{{ holdout_version }}'             as holdout_version,
     s.*,
 
+    coalesce(r.rt_page_view_5m,    0)   as rt_page_view_5m,
+    coalesce(r.rt_add_to_cart_5m,  0)   as rt_add_to_cart_5m,
+    coalesce(r.rt_cart_gmv_5m,     0.0) as rt_cart_gmv_5m,
+    coalesce(r.rt_search_cnt_5m,   0)   as rt_search_cnt_5m,
     coalesce(r.rt_events_1h,       0)   as rt_events_1h,
     coalesce(r.rt_page_view_1h,    0)   as rt_page_view_1h,
     coalesce(r.rt_add_to_cart_1h,  0)   as rt_add_to_cart_1h,
     coalesce(r.rt_order_1h,        0)   as rt_order_1h,
+    coalesce(r.rt_search_cnt_1h,   0)   as rt_search_cnt_1h,
     coalesce(r.rt_gmv_1h,          0.0) as rt_gmv_1h,
     coalesce(r.rt_session_len_sec, 0.0) as rt_session_len_sec,
     coalesce(r.rt_last_event_ts,   0)   as rt_last_event_ts,

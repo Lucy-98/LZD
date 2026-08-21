@@ -5,18 +5,18 @@ models:
     description: "Snapshot user da chuan hoa kieu + khu trung theo (user_id, dt)"
     columns:
       - name: user_id
-        tests:
+        data_tests:
           - not_null
       - name: dt
-        tests:
+        data_tests:
           - not_null
       - name: is_treat
-        tests:
+        data_tests:
           - accepted_values:
               values: [0, 1]
               quote: false
       - name: label
-        tests:
+        data_tests:
           - accepted_values:
               values: [0, 1]
               quote: false
@@ -25,13 +25,13 @@ models:
     description: "Event da khu trung theo event_id (chong at-least-once duplicate)"
     columns:
       - name: event_id
-        tests:
+        data_tests:
           - not_null
           - unique          # test nay chinh la bang chung dedup hoat dong
       - name: user_id
-        tests:
+        data_tests:
           - not_null
       - name: event_type
-        tests:
+        data_tests:
           - accepted_values:
               values: [app_open, page_view, search, add_to_cart, checkout, order, voucher_view, voucher_claim]

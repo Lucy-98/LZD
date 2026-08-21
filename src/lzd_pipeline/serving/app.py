@@ -6,11 +6,11 @@ Duong di 1 request (SLA < 100ms):
       -> doc fs:meta:active_version                     (Redis, ~0.2ms)
       -> HGETALL fs:{v}:u:{uid} + rt:u:{uid} (1 RTT)    (Redis, ~1-3ms)
       -> merge theo feature_spec.yml, dien default
-      -> model.predict_uplift()                          (TODO teammate)
+      -> LightGBM 30F predict_uplift()
       -> so voi nguong -> SEND_VOUCHER / NO_VOUCHER
 
-Phan feature (doc Redis, merge, do latency, log) DA XONG.
-Phan model la khung - xem serving/model_loader.py.
+Model bundle bat bien duoc nap tu `models/uplift_voucher_30f`; checksum,
+feature order va golden sentinel deu duoc kiem tra truoc khi serving ready.
 
 Endpoint:
     GET  /health          - liveness
@@ -23,12 +23,13 @@ Endpoint:
 """
 from __future__ import annotations
 
+import hmac
 import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Header, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,8 +42,11 @@ from lzd_pipeline.common.metrics import (
     INFERENCE_DECISIONS,
     INFERENCE_LATENCY,
     INFERENCE_REQUESTS,
+    SERVING_TUPLE_INFO,
+    COMPATIBILITY_FAILURES,
 )
 from lzd_pipeline.features.online_store import OnlineFeatureStore
+from lzd_pipeline.features.compatibility import check_model_feature_compatibility
 from lzd_pipeline.features.spec import load_feature_spec
 from lzd_pipeline.serving.decide_input import (
     ContextError,
@@ -195,8 +199,33 @@ def ready() -> dict[str, Any]:
     model = get_model()
     if not model.is_configured:
         raise HTTPException(status_code=503, detail="model uplift chua duoc cau hinh")
-    return {"status": "ready", "feature_version": version,
-            "model_version": model.version}
+    spec = load_feature_spec()
+    report = check_model_feature_compatibility(
+        model_features=model.feature_order,
+        model_feature_spec_version=model.feature_spec_version,
+        model_realtime_semantics_version=model.realtime_semantics_version,
+        requires_realtime=model.requires_realtime,
+        spec=spec,
+        active_status=store().get_version_status(version),
+    )
+    if not report.compatible:
+        COMPATIBILITY_FAILURES.inc()
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "model/feature tuple khong tuong thich", **report.as_dict()},
+        )
+    SERVING_TUPLE_INFO.labels(
+        feature_version=version,
+        feature_spec_version=report.feature_spec_version,
+        model_version=model.version,
+        realtime_semantics_version=report.realtime_semantics_version,
+    ).set(1)
+    return {
+        "status": "ready",
+        "feature_version": version,
+        "model_version": model.version,
+        **report.as_dict(),
+    }
 
 
 @app.get("/metrics")
@@ -437,8 +466,13 @@ def decide_batch(req: BatchDecideRequest) -> dict[str, Any]:
 
 
 @app.post("/admin/reload-model")
-def reload_model() -> dict[str, Any]:
+def reload_model(x_model_reload_token: str | None = Header(default=None)) -> dict[str, Any]:
     """Nap lai model sau khi co ban moi tren Registry (khong can restart)."""
+    expected = os.environ.get("MODEL_RELOAD_TOKEN", "")
+    if not expected or not x_model_reload_token or not hmac.compare_digest(
+        expected, x_model_reload_token
+    ):
+        raise HTTPException(status_code=403, detail="model reload is restricted")
     model = get_model(force_reload=True)
     return {
         "model_name": model.name,

@@ -110,6 +110,62 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return 1
 """
 
+# Apply exactly one event. The dedup marker and counter mutation live in the
+# same Lua transaction, so a Kafka replay after a crash cannot double count.
+# KEYS[1] overlay hash, KEYS[2] event-id marker
+# ARGV bucket, cutoff, overlay_ttl, dedup_ttl, event_ts, session_id,
+#      pair_count, pairs...
+_LUA_APPLY_EVENT = """
+if redis.call('EXISTS', KEYS[2]) == 1 then
+  return 0
+end
+local bucket = ARGV[1]
+local cutoff = tonumber(ARGV[2])
+local overlay_ttl = tonumber(ARGV[3])
+local dedup_ttl = tonumber(ARGV[4])
+local event_ts = tonumber(ARGV[5])
+local session_id = ARGV[6]
+local pairs_n = tonumber(ARGV[7])
+local i = 8
+for _ = 1, pairs_n do
+  redis.call('HINCRBYFLOAT', KEYS[1], ARGV[i] .. '|' .. bucket, ARGV[i + 1])
+  i = i + 2
+end
+local previous_ts = tonumber(redis.call('HGET', KEYS[1], 'rt_last_event_ts') or '0')
+if event_ts > previous_ts then
+  redis.call('HSET', KEYS[1], 'rt_last_event_ts', event_ts)
+end
+if session_id ~= '' then
+  local current_session = redis.call('HGET', KEYS[1], '_rt_session_id')
+  local session_start = tonumber(redis.call('HGET', KEYS[1], '_rt_session_start_ts') or '0')
+  local session_end = tonumber(redis.call('HGET', KEYS[1], '_rt_session_end_ts') or '0')
+  if not current_session or current_session ~= session_id then
+    if event_ts >= session_end then
+      redis.call('HSET', KEYS[1], '_rt_session_id', session_id,
+                 '_rt_session_start_ts', event_ts, '_rt_session_end_ts', event_ts,
+                 'rt_session_len_sec', 0)
+    end
+  else
+    if session_start == 0 or event_ts < session_start then session_start = event_ts end
+    if event_ts > session_end then session_end = event_ts end
+    redis.call('HSET', KEYS[1], '_rt_session_start_ts', session_start,
+               '_rt_session_end_ts', session_end,
+               'rt_session_len_sec', session_end - session_start)
+  end
+end
+local fields = redis.call('HKEYS', KEYS[1])
+for _, f in ipairs(fields) do
+  local sep = string.find(f, '|', 1, true)
+  if sep then
+    local b = tonumber(string.sub(f, sep + 1))
+    if b and b < cutoff then redis.call('HDEL', KEYS[1], f) end
+  end
+end
+redis.call('EXPIRE', KEYS[1], overlay_ttl)
+redis.call('SET', KEYS[2], '1', 'EX', dedup_ttl)
+return 1
+"""
+
 
 def _decode(value: Any) -> str:
     """Lua tra ve bytes ngay ca khi client dat decode_responses=True."""
@@ -145,6 +201,7 @@ class OnlineFeatureStore:
         self._lua_ok = True          # tat neu Redis khong ho tro EVAL
         self._script_read = None
         self._script_incr = None
+        self._script_apply_event = None
 
     # ------------------------------------------------------------------
     _NO_LUA = object()   # sentinel: Redis khong chay duoc Lua
@@ -372,6 +429,81 @@ class OnlineFeatureStore:
                 _, _, suffix = field.partition(RT_FIELD_SEP)
                 if suffix.isdigit() and int(suffix) < cutoff:
                     self.r.hdel(key, field)
+
+    def apply_realtime_event(
+        self,
+        event_id: str,
+        user_id: str,
+        event_ts: float,
+        counters: dict[str, float],
+        *,
+        session_id: str | None = None,
+        now: float | None = None,
+        ttl: int | None = None,
+        dedup_ttl: int | None = None,
+    ) -> bool:
+        """Atomically apply an event once, bucketed by event time.
+
+        Returns ``True`` when applied and ``False`` for a replay. Callers must
+        decide lateness policy before invoking this method.
+        """
+        if not event_id:
+            raise ValueError("event_id is required for replay-safe realtime update")
+        current_time = time.time() if now is None else float(now)
+        bucket = rt_bucket_start(float(event_ts))
+        cutoff = rt_cutoff(current_time)
+        if bucket < cutoff:
+            raise ValueError("event is outside the active realtime window")
+        overlay_key = self.spec.realtime_key(user_id)
+        dedup_key = f"rt:dedup:{event_id}"
+        overlay_ttl = ttl or self.cfg.realtime_ttl_seconds
+        marker_ttl = dedup_ttl or self.cfg.realtime_dedup_ttl_seconds
+        args: list[Any] = [
+            bucket, cutoff, overlay_ttl, marker_ttl, float(event_ts),
+            session_id or "", len(counters)
+        ]
+        for field, delta in counters.items():
+            args.extend([field, float(delta)])
+        result = self._run_script(
+            "_script_apply_event",
+            _LUA_APPLY_EVENT,
+            keys=[overlay_key, dedup_key],
+            args=args,
+        )
+        if result is not self._NO_LUA:
+            return bool(int(result))
+
+        # Development/test fallback for Redis implementations without Lua.
+        # Production Redis supports EVAL; the marker is removed if mutation
+        # fails so retry cannot silently lose an event.
+        if not self.r.set(dedup_key, "1", nx=True, ex=marker_ttl):
+            return False
+        try:
+            self.incr_realtime_counters(
+                user_id, counters, ttl=overlay_ttl, now=float(event_ts)
+            )
+            previous = self.r.hget(overlay_key, "rt_last_event_ts")
+            if previous is None or float(event_ts) > float(previous):
+                self.r.hset(overlay_key, "rt_last_event_ts", float(event_ts))
+            if session_id:
+                current_session = self.r.hget(overlay_key, "_rt_session_id")
+                start = float(self.r.hget(overlay_key, "_rt_session_start_ts") or 0)
+                end = float(self.r.hget(overlay_key, "_rt_session_end_ts") or 0)
+                if current_session == session_id:
+                    start = min(start or float(event_ts), float(event_ts))
+                    end = max(end, float(event_ts))
+                elif float(event_ts) >= end:
+                    start = end = float(event_ts)
+                    self.r.hset(overlay_key, "_rt_session_id", session_id)
+                self.r.hset(overlay_key, mapping={
+                    "_rt_session_start_ts": start,
+                    "_rt_session_end_ts": end,
+                    "rt_session_len_sec": max(end - start, 0),
+                })
+            return True
+        except Exception:
+            self.r.delete(dedup_key)
+            raise
 
     def aggregate_realtime(
         self, rt_raw: dict[str, Any], now: float | None = None

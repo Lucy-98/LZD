@@ -122,9 +122,10 @@ def bootstrap_lake():
         msg = (
             f"Lake da san sang: {verified['rows']:,} dong / {verified['users']:,} user.\n"
             "Buoc tiep theo:\n"
-            "  1) Bat DAG 20_build_features_dbt -> tao bang marts.feat_user_serving\n"
-            "  2) Bat DAG 40_sync_features_to_redis -> day feature len Redis\n"
-            "  3) Kiem tra: curl http://localhost:8000/store/info"
+            "  1) Chay DAG 60_reconstruction_e2e -> land Track A\n"
+            "  2) Chay DAG 20_build_features_dbt -> tao marts.serving_features\n"
+            "  3) Chay DAG 40_sync_features_to_redis -> day feature len Redis\n"
+            "  4) Kiem tra: curl http://localhost:8000/store/info"
         )
         print(msg)
         return msg

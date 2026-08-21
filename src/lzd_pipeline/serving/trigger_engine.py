@@ -1,8 +1,8 @@
 """Hybrid trigger engine for the serving API.
 
-This module keeps the realtime path alive, but it no longer assumes a bundled
-uplift model exists in the repo. Until the external 30F artifact is wired in,
-the engine can still merge batch + realtime features and emit `NO_DECISION`.
+The bundled immutable 30F model is used when its manifest and sentinel pass.
+If verification fails, the engine keeps the merge path observable but emits
+``NO_DECISION`` instead of falling back to a synthetic score.
 """
 from __future__ import annotations
 

@@ -19,7 +19,7 @@ from prometheus_client import (
     Counter,
     Gauge,
     Histogram,
-    push_to_gateway,
+    pushadd_to_gateway,
     start_http_server,
 )
 
@@ -64,6 +64,22 @@ EVENT_E2E_LAG = Histogram(
 REALTIME_OVERLAY_KEYS = Gauge(
     "lzd_realtime_overlay_keys", "Uoc luong so key rt:u:* dang co tren Redis"
 )
+REALTIME_EVENTS_APPLIED = Counter(
+    "lzd_realtime_events_applied_total", "So event duoc ap dung vao realtime overlay"
+)
+REALTIME_EVENTS_DEDUPLICATED = Counter(
+    "lzd_realtime_events_deduplicated_total", "So event replay bi bo qua theo event_id"
+)
+REALTIME_EVENTS_LATE = Counter(
+    "lzd_realtime_events_late_total", "So event den tre", ["action"]
+)
+REALTIME_UPDATE_FAILURES = Counter(
+    "lzd_realtime_update_failures_total", "So lan cap nhat realtime that bai"
+)
+LAKE_IDEMPOTENCY_CONFLICTS = Counter(
+    "lzd_lake_idempotency_conflicts_total",
+    "So object Kafka offset-range trung key nhung khac payload",
+)
 
 # --- serving ---------------------------------------------------------------
 INFERENCE_REQUESTS = Counter(
@@ -90,6 +106,14 @@ FEATURES_MISSING = Histogram(
 MODEL_INFO = Gauge(
     "lzd_model_info", "Model dang duoc load (gia tri luon = 1)",
     ["model_name", "model_version", "stage"],
+)
+SERVING_TUPLE_INFO = Gauge(
+    "lzd_serving_tuple_info", "Active compatible feature/spec/model tuple",
+    ["feature_version", "feature_spec_version", "model_version",
+     "realtime_semantics_version"],
+)
+COMPATIBILITY_FAILURES = Counter(
+    "lzd_compatibility_failures_total", "Model/feature compatibility failures"
 )
 
 
@@ -157,7 +181,11 @@ def push_batch_metrics(
 
     try:
         # Khong dung grouping_key trung ten voi label cua metric (Pushgateway se tu choi).
-        push_to_gateway(
+        # Mot DAG gom nhieu task day cac tap metric khac nhau vao cung job.
+        # `push_to_gateway` se thay the TOAN BO metric group, lam task cleanup
+        # xoa mat active_version/row_count ma task activate vua day. Push-add
+        # chi thay the cac metric cung ten va giu lai metric cua task truoc.
+        pushadd_to_gateway(
             settings.pushgateway_url.replace("http://", ""),
             job=job,
             registry=registry,

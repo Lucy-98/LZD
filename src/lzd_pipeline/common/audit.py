@@ -119,6 +119,7 @@ def record_shard(
     rows_written: int = 0,
     duration_ms: int | None = None,
     error_message: str | None = None,
+    preserve_rows: bool = False,
 ) -> None:
     with pg_cursor() as cur:
         cur.execute(
@@ -128,14 +129,17 @@ def record_shard(
             VALUES (%s, %s, %s, %s, 1, %s, %s, %s)
             ON CONFLICT (feature_version, shard_id) DO UPDATE
                 SET status = EXCLUDED.status,
-                    rows_written = EXCLUDED.rows_written,
+                    rows_written = CASE
+                        WHEN %s THEN ops.feature_sync_shard.rows_written
+                        ELSE EXCLUDED.rows_written
+                    END,
                     attempt = ops.feature_sync_shard.attempt + 1,
                     duration_ms = EXCLUDED.duration_ms,
                     error_message = EXCLUDED.error_message,
                     updated_at = EXCLUDED.updated_at
             """,
             (feature_version, shard_id, status, rows_written, duration_ms,
-             error_message, _utcnow()),
+             error_message, _utcnow(), preserve_rows),
         )
         cur.execute(
             """
@@ -172,6 +176,7 @@ def set_sync_status(
     validation_report: dict[str, Any] | None = None,
     error_message: str | None = None,
     activated: bool = False,
+    written_rows: int | None = None,
 ) -> None:
     with pg_cursor() as cur:
         cur.execute(
@@ -180,6 +185,7 @@ def set_sync_status(
                SET status = %s,
                    checksum = COALESCE(%s, checksum),
                    validation_report = COALESCE(%s::jsonb, validation_report),
+                   written_rows = COALESCE(%s, written_rows),
                    error_message = %s,
                    activated_at = CASE WHEN %s THEN %s ELSE activated_at END,
                    finished_at  = CASE WHEN %s IN ('ACTIVE','FAILED','ROLLED_BACK')
@@ -188,7 +194,8 @@ def set_sync_status(
             """,
             (status, checksum,
              json.dumps(validation_report) if validation_report is not None else None,
-             error_message, activated, _utcnow(), status, _utcnow(), feature_version),
+             written_rows, error_message, activated, _utcnow(), status, _utcnow(),
+             feature_version),
         )
 
 

@@ -52,6 +52,7 @@ joined as (
         s.user_id,
         s.dt,
         s.feature_ts,
+        s.bucket_start_epoch,
         e.event_type,
         e.gmv,
         e.event_ts,
@@ -68,6 +69,19 @@ joined as (
                   s.bucket_start_epoch - {{ (n_buckets - 1) * bucket_seconds }}
               )
 
+),
+
+latest_session as (
+
+    select
+        user_id,
+        dt,
+        feature_ts,
+        arg_max(session_id, event_ts) as latest_session_id
+    from joined
+    where event_ts is not null
+    group by user_id, dt, feature_ts
+
 )
 
 select
@@ -75,12 +89,34 @@ select
     dt,
     feature_ts,
     cast(count(event_type) as integer)                                   as rt_events_1h,
+    cast(count(*) filter (
+        where event_type = 'page_view'
+          and event_ts >= to_timestamp(bucket_start_epoch)
+    ) as integer)                                                        as rt_page_view_5m,
+    cast(count(*) filter (
+        where event_type = 'add_to_cart'
+          and event_ts >= to_timestamp(bucket_start_epoch)
+    ) as integer)                                                        as rt_add_to_cart_5m,
+    cast(coalesce(sum(gmv) filter (
+        where event_type = 'order'
+          and event_ts >= to_timestamp(bucket_start_epoch)
+    ), 0.0) as double)                                                   as rt_cart_gmv_5m,
+    cast(count(*) filter (
+        where event_type = 'search'
+          and event_ts >= to_timestamp(bucket_start_epoch)
+    ) as integer)                                                        as rt_search_cnt_5m,
     cast(count(*) filter (where event_type = 'page_view')   as integer)  as rt_page_view_1h,
     cast(count(*) filter (where event_type = 'add_to_cart') as integer)  as rt_add_to_cart_1h,
     cast(count(*) filter (where event_type = 'order')       as integer)  as rt_order_1h,
+    cast(count(*) filter (where event_type = 'search')      as integer)  as rt_search_cnt_1h,
     cast(coalesce(sum(gmv) filter (where event_type = 'order'), 0.0) as double) as rt_gmv_1h,
     -- Do dai phien gan nhat (giay)
-    cast(coalesce(date_diff('second', min(event_ts), max(event_ts)), 0) as double) as rt_session_len_sec,
+    cast(coalesce(date_diff(
+        'second',
+        min(event_ts) filter (where session_id = latest_session_id),
+        max(event_ts) filter (where session_id = latest_session_id)
+    ), 0) as double) as rt_session_len_sec,
     cast(coalesce(epoch(max(event_ts)), 0) as bigint)                    as rt_last_event_ts
 from joined
-group by user_id, dt, feature_ts
+left join latest_session using (user_id, dt, feature_ts)
+group by user_id, dt, feature_ts, bucket_start_epoch, latest_session_id

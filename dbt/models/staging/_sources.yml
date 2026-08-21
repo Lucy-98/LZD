@@ -16,7 +16,7 @@ sources:
         columns:
           - name: user_id
             description: "Khoa entity - dan tu data_id"
-            tests: [not_null]
+            data_tests: [not_null]
           - name: label
             description: "1 = user co conversion"
           - name: is_treat
@@ -49,9 +49,9 @@ sources:
           external_location: "s3://lakehouse/raw/events_v2/**/*.parquet"
         columns:
           - name: event_id
-            tests: [not_null]
+            data_tests: [not_null]
           - name: customer_id
-            tests: [not_null]
+            data_tests: [not_null]
           - name: target_id
           - name: generation_run_id
 

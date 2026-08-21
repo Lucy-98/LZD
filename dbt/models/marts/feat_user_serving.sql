@@ -1,7 +1,7 @@
 -- ============================================================================
 -- BUSINESS READY BASELINE - full mart, KHONG phai selected Redis sync source.
 --
--- Bang duoc sync len Redis la `serving_features`: 41 key nghiep vu.
+-- Bang duoc sync len Redis la `serving_features`: 71 batch fields.
 -- Mart nay giu full f0..f82 + legacy hist_* de doi chieu/phan tich; no khong
 -- nam tren duong Gold/Redis hien tai.
 --

@@ -34,12 +34,19 @@ def test_batch_features_are_the_selected_set(spec):
     assert spec.offline["selected_feature_set_id"] == "fs_2026_08_v4"
 
 
+def test_feature_store_contract_size_and_realtime_ttl(spec):
+    """README, Redis sync va runtime phai cung mo ta mot contract."""
+    assert len(spec.batch_features) == 71
+    assert len(spec.realtime_features) == 12
+    assert spec.online["realtime_ttl_seconds"] == 3600
+
+
 def test_feature_set_artifact_loads_correctly():
-    """Artifact contract v3 tải đúng 30 features."""
+    """Artifact contract v4 tải đúng 30 features."""
     from lzd_pipeline.reconstruction.feature_set import load_feature_set
 
-    v3_path = Path(__file__).resolve().parents[1] / "config" / "features" / "fs_2026_08_v4.yaml"
-    fs = load_feature_set(v3_path)
+    v4_path = Path(__file__).resolve().parents[1] / "config" / "features" / "fs_2026_08_v4.yaml"
+    fs = load_feature_set(v4_path)
     assert fs.id == "fs_2026_08_v4"
     assert len(fs.columns) == 30
     assert "f1" in fs.columns
@@ -96,3 +103,12 @@ def test_all_features_have_defaults(spec):
     """Moi feature phai co default - neu khong, cache miss se lam vo request."""
     for feature in spec.all_features:
         assert feature.default is not None, feature.name
+
+
+def test_training_sql_projects_complete_realtime_contract(spec):
+    root = Path(__file__).resolve().parents[1]
+    training_sql = (root / "dbt/models/marts/training_dataset.sql").read_text()
+    pit_sql = (root / "dbt/models/marts/feat_user_realtime_pit.sql").read_text()
+    for name in spec.realtime_names:
+        assert name in training_sql, f"training_dataset thieu {name}"
+        assert name in pit_sql, f"PIT reconstruction thieu {name}"

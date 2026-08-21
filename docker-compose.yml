@@ -60,6 +60,11 @@ x-common-env: &common-env
   FEATURE_VERSIONS_TO_KEEP: ${FEATURE_VERSIONS_TO_KEEP:-2}
   FEATURE_STALE_TTL_SECONDS: ${FEATURE_STALE_TTL_SECONDS:-86400}
   REALTIME_OVERLAY_TTL_SECONDS: ${REALTIME_OVERLAY_TTL_SECONDS:-3600}
+  REALTIME_DEDUP_TTL_SECONDS: ${REALTIME_DEDUP_TTL_SECONDS:-86400}
+  REALTIME_ALLOWED_LATENESS_SECONDS: ${REALTIME_ALLOWED_LATENESS_SECONDS:-600}
+  REALTIME_FUTURE_SKEW_SECONDS: ${REALTIME_FUTURE_SKEW_SECONDS:-300}
+  MODEL_RELOAD_TOKEN: ${MODEL_RELOAD_TOKEN:-local-model-reload-change-me}
+  MODEL_DIR: ${MODEL_DIR:-/opt/serving-models/active}
   FEATURE_VALIDATION_SAMPLE: ${FEATURE_VALIDATION_SAMPLE:-500}
 
 x-logging: &default-logging
@@ -112,6 +117,7 @@ x-airflow-common: &airflow-common
     # `training/register.py` doc booster + hop dong tu day de dang ky vao
     # MLflow Registry. `:ro` — DAG khong duoc sua artifact goc.
     - ./models:/opt/project/models:ro
+    - serving-models:/opt/serving-models
     - lakehouse:/opt/lakehouse
   user: "${AIRFLOW_UID:-50000}:0"
   logging: *default-logging
@@ -326,6 +332,13 @@ services:
         airflow connections add lzd_postgres --conn-uri \
           "postgresql://${POSTGRES_USER:-lzd}:${POSTGRES_PASSWORD:-lzd_secret}@postgres:5432/pipeline" || true
         airflow connections add lzd_redis --conn-type redis --conn-host redis --conn-port 6379 --conn-extra '{"db": 0}' || true
+        mkdir -p /opt/serving-models/versions
+        if [ ! -L /opt/serving-models/active ]; then
+          if [ ! -d /opt/serving-models/versions/20260820-575fb1e0ea78 ]; then
+            cp -R /opt/project/models/uplift_voucher_30f /opt/serving-models/versions/20260820-575fb1e0ea78
+          fi
+          ln -s /opt/serving-models/versions/20260820-575fb1e0ea78 /opt/serving-models/active
+        fi
         UNPAUSE="${AIRFLOW_UNPAUSE_DAGS:-none}"
         if [ "$$UNPAUSE" != "none" ]; then
           # `unpause` doc DagModel trong DB, ma luc nay scheduler chua chay lan
@@ -483,8 +496,9 @@ services:
       <<: *common-env
       SERVICE_NAME: inference-api
       UPLIFT_DECISION_THRESHOLD: ${UPLIFT_DECISION_THRESHOLD:-0.0070347543}
-      MODEL_DIR: /opt/project/models/uplift_voucher_30f
+      MODEL_DIR: ${MODEL_DIR:-/opt/serving-models/active}
       MODEL_STAGE: Production
+      MODEL_RELOAD_TOKEN: ${MODEL_RELOAD_TOKEN:-local-model-reload-change-me}
     ports:
       - "${INFERENCE_API_PORT:-8000}:8000"
     depends_on:
@@ -502,6 +516,7 @@ services:
       #
       # `:ro` co y — serving khong bao gio duoc ghi vao artifact model.
       - ./models:/opt/project/models:ro
+      - serving-models:/opt/serving-models:ro
       # CO Y KHONG mount `lakehouse` vao day: service serving khong duoc phep
       # cham vao file DuckDB. Chi can mo nham o che do ghi la khoa ca file va
       # lam chet dbt dang chay. Feature luc serve doc tu Redis, khong tu DuckDB.
@@ -756,6 +771,7 @@ volumes:
   redisinsight-data:
   # DuckDB file + file tam cua dbt, share giua airflow va inference-api
   lakehouse:
+  serving-models:
 
 networks:
   default:

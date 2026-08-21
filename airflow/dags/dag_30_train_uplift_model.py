@@ -21,7 +21,7 @@ nguoi vua clone repo ve. Bat tu dong bang bien moi truong:
 
 ★ MODEL O DAY KHONG THAY THE MODEL NOTEBOOK MOT CACH TU DONG
 --------------------------------------------------------------------------
-Hai model an hai vector khac nhau (62 cot vs 76 cot — xem
+Model baseline an 30F; model do DAG nay train an contract 83 cot hien tai — xem
 `training/contract.py`). `promote_model` se KHONG doi alias khi ban dang
 chay khong co metric `qini` de so, ma model dang ky tu notebook bang
 `register.py` chinh la truong hop do. Muon chuyen han sang model train
@@ -29,6 +29,7 @@ trong repo thi phai quyet dinh bang tay, sau khi benchmark.
 """
 from __future__ import annotations
 
+import os
 import pendulum
 from airflow.decorators import dag, task
 from airflow.models import Param
@@ -131,11 +132,11 @@ def train_uplift_model():
 
     @task
     def notify_serving(result: dict) -> dict:
-        """Goi /admin/reload-model de API nap model moi ma khong can restart."""
-        import json
-        import urllib.request
+        """Deploy verified alias artifact, then reload API; rollback alias on failure."""
+        from pathlib import Path
 
         from lzd_pipeline.common.logging_setup import get_logger
+        from lzd_pipeline.serving.deployment import deploy_production_alias
 
         log = get_logger(__name__)
         promotion = result.get("promotion") or {}
@@ -147,19 +148,34 @@ def train_uplift_model():
                             "reason": promotion.get("reason", "")})
             return {"reloaded": False, "reason": promotion.get("reason", "")}
 
-        url = "http://inference-api:8000/admin/reload-model"
         try:
-            req = urllib.request.Request(url, method="POST", data=b"{}",
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                body = json.loads(resp.read())
-            log.info("da bao inference-api nap lai model",
-                     extra={"event": "model_reload_notified", **body})
-            return body
+            deployed = deploy_production_alias(
+                root=Path("/opt/serving-models"),
+                model_name=promotion["model_name"],
+                alias=promotion["alias"],
+                reload_url="http://inference-api:8000/admin/reload-model",
+                reload_token=os.environ.get("MODEL_RELOAD_TOKEN"),
+            )
+            log.info("model da deploy co kiem soat",
+                     extra={"event": "model_deployed", **deployed})
+            return deployed
         except Exception as exc:
-            log.warning("khong goi duoc inference-api",
-                        extra={"event": "model_reload_failed", "error": str(exc)})
-            return {"error": str(exc)}
+            from mlflow.tracking import MlflowClient
+            from lzd_pipeline.common.config import get_settings
+
+            client = MlflowClient(tracking_uri=get_settings().mlflow_tracking_uri)
+            previous = promotion.get("current_version")
+            if previous:
+                client.set_registered_model_alias(
+                    promotion["model_name"], promotion["alias"], previous
+                )
+            else:
+                client.delete_registered_model_alias(
+                    promotion["model_name"], promotion["alias"]
+                )
+            log.exception("deployment that bai; da rollback registry alias",
+                          extra={"event": "model_deploy_rollback", "error": str(exc)})
+            raise
 
     stats = check_training_data()
     result = train(stats)

@@ -76,7 +76,7 @@ def build_model_row(
     `realtime_applied` dem tin hieu realtime THUC SU vao duoc model. Bang 0
     KHONG co nghia la client gui thieu — model 76 cot cua notebook khong co o
     nao cho `rt_*`, nen realtime khong bao gio vao duoc no. Chi model do
-    `train.py` huan luyen (62 cot, 7 cot rt_*) moi dung den. Truong nay de
+    `train.py` huan luyen theo contract RT-aware moi dung den. Truong nay de
     cho su that do lo ra thay vi phai suy tu score.
     """
     context = context or {}
