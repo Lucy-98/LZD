@@ -81,6 +81,11 @@ def test_dag_20_fail_fast_khi_track_a_chua_land():
     assert "inputs_ready >> dbt_debug >> dbt_run" in body
 
 
+def test_gold_contracts_reject_empty_relations():
+    schema = (DBT_MODELS / "marts" / "_schema.yml").read_text(encoding="utf-8")
+    assert schema.count("min_rows: {n: 1000}") >= 2
+
+
 # ===========================================================================
 # 2 · dbt_project.yml phai co tag
 # ===========================================================================

@@ -487,7 +487,11 @@ def materialize_track_a(
                 samples.append(result)
             boundary_writer.writerow({
                 "target_id": result.target.target_id,
-                "customer_id_hint": result.target.target_id,
+                # Phai cung entity key voi snapshot train va Kafka producer.
+                # Neu ghi `train_0` o day trong khi stg_user_snapshot dung
+                # `U0000000`, training_dataset inner join theo user_id se rong
+                # du dbt not-null/accepted-values van co the pass tren bang rong.
+                "customer_id_hint": lzd_user_id(result.target.target_id),
                 "reference_ts": result.target.reference_ts.isoformat(),
             })
             for name, level in sorted(result.attributes.items()):

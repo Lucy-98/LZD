@@ -89,6 +89,12 @@ def test_track_a_batch_materializes_real_csv_shape(tmp_path):
     assert {row["source_type"] for row in rows} == {"RECONSTRUCTED"}
     assert "gen_reason" not in rows[0]
 
+    boundary_path = Path(manifest["files"]["biz_reconstruction_boundary"])
+    with boundary_path.open(encoding="utf-8") as fh:
+        boundary = next(csv.DictReader(fh))
+    assert boundary["target_id"] == "train_fixture_0"
+    assert boundary["customer_id_hint"] == "U0000000"
+
 
 def test_track_a_batch_fails_clearly_on_git_lfs_stub(tmp_path):
     stub_file = tmp_path / "full_trainset.csv"

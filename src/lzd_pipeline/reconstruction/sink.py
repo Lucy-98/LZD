@@ -56,7 +56,7 @@ BIZ_LOAD_ORDER: tuple[tuple[str, str], ...] = (
 #:             (`v_reconstruction_boundary`) dan xuat tu `reconstruction_target`.
 #:             COPY vao view se do.
 #:
-#:   DuckDB    bo `reconstruction_target`: no chua `payload` = ca 55 gia tri
+#:   DuckDB    bo `reconstruction_target`: no chua full selected-feature payload
 #:             feature. Dua vao warehouse la mo duong cho Track B nhin trom
 #:             target (INVARIANT 4, SPEC §3.4-1). Trong DuckDB `boundary` la
 #:             bang phang, nap thang tu artifact.
@@ -274,7 +274,7 @@ def load_biz_into_duckdb(
     """Nap 5 relation ma dbt doc vao shell `biz.*` cua DuckDB.
 
     `reconstruction_target` KHONG duoc nap: khong model dbt nao doc no, va no
-    chua `payload` — tuc toan bo 55 gia tri feature. Dua no vao warehouse la mo
+    chua `payload` — tuc toan bo selected-feature target. Dua no vao warehouse la mo
     duong cho Track B "nhin trom" target (INVARIANT 4, SPEC §3.4-1).
     """
     fs = fs or load_feature_set()

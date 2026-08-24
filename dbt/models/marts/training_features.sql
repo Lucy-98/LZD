@@ -1,7 +1,8 @@
 -- ============================================================================
 -- MARTS (GOLD): Training Features (30 CỘT f*)
 -- Nguồn phục vụ trực tiếp cho Jupyter Notebook để huấn luyện Uplift Model.
--- T1 (4) tính từ events; T2 (5) & T3 (21) decode/lấy từ biz.*
+-- Contract active fs_2026_08_v4: T1 (2) tính từ events;
+-- T2 (7) decode từ categorical state; T3 (21) controlled passthrough.
 -- ============================================================================
 {{ config(
     materialized='table',

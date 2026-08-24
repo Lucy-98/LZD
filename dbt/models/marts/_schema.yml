@@ -17,6 +17,8 @@ models:
 
   - name: serving_features
     description: "Gold 2: 71 batch fields synced to Redis, including the immutable 30F vector."
+    data_tests:
+      - min_rows: {n: 1000}
     columns:
       - name: user_id
         data_tests: [not_null, unique]
@@ -31,6 +33,10 @@ models:
 
   - name: training_dataset
     description: "PIT training view: 71 batch + 12 realtime fields plus outcomes."
+    # not_null/accepted_values pass vacuously tren relation rong, nen can
+    # row-count gate de bat entity-key/PIT join sai ngay trong DAG 20.
+    data_tests:
+      - min_rows: {n: 1000}
     columns:
       - name: user_id
         data_tests: [not_null]

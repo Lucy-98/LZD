@@ -116,7 +116,11 @@ def ingest_stream_to_lake():
 
         settings = get_settings()
         window_start = context["data_interval_start"]
-        src = f"{settings.lake_root}/{scan['prefix']}part-*.parquet"
+        # Consumer ghi theo identity bat bien:
+        #   .../hour=HH/topic=.../partition=N/offset-FIRST-LAST.parquet
+        # Nen phai quet qua cac thu muc topic/partition. Glob `part-*` cu
+        # khong khop object nao va chi lo ra khi mot gio co >1 file.
+        src = f"{settings.lake_root}/{scan['prefix']}**/offset-*.parquet"
         dst = f"{settings.lake_root}/curated/app_events/dt={window_start:%Y-%m-%d}/hour={window_start:%H}/compacted.parquet"
 
         with duckdb_writer() as con:      # pool=duckdb_writer dam bao doc quyen

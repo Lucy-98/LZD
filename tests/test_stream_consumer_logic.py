@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from lzd_pipeline.ingestion.stream_consumer import StreamConsumer
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class _MissingObject(Exception):
@@ -62,6 +66,14 @@ def test_lake_object_identity_uses_partition_and_offset_range():
     assert len(keys) == 2
     assert any("partition=0/offset-10-11.parquet" in key for key in keys)
     assert any("partition=1/offset-7-7.parquet" in key for key in keys)
+
+
+def test_hourly_compaction_glob_matches_consumer_object_identity():
+    dag_source = (ROOT / "airflow" / "dags" / "dag_10_ingest_stream_to_lake.py").read_text(
+        encoding="utf-8"
+    )
+    assert "**/offset-*.parquet" in dag_source
+    assert "part-*.parquet" not in dag_source
 
 
 def test_replaying_same_offset_range_does_not_create_another_object():

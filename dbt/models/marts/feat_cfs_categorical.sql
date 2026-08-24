@@ -1,7 +1,8 @@
 -- Reconstruction forward engine for the seven active T2 features.
--- f41/f42/f81/f82 remain encoding intermediates and never enter the target.
--- synthetic_category_515 is MOT bien latent with four encodings; only f79/f80
--- are selected by fs_2026_08_v4.
+-- Cac cot trung gian van duoc tao de decode dung latent attribute, nhung
+-- projection active chi lay: f38, f42, f52, f60, f68, f80, f82.
+-- synthetic_category_515 la MOT bien latent co nhieu encoding; contract
+-- fs_2026_08_v4 chon hai projection f80 va f82 cua cung bien do.
 {{ config(materialized='table') }}
 
 {%- set encoding_version = var('reconstruction_encoding_version') -%}
